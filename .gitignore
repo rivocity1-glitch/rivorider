@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Expo
+.expo/
+.expo-shared/
+
+# Build output
+dist/
+build/
+
+# Android / iOS
+android/
+ios/
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
