@@ -44,6 +44,7 @@ interface Order {
   created_at: string;
   delivered_at?: string | null;
   vendor_id: string;
+  customer_id?: string;
   rider_id: string | null;
   vendor_earning: number;
   rider_earning: number;
@@ -95,6 +96,18 @@ export default function DeliveriesScreen() {
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const toastFadeAnim = useRef(new Animated.Value(0)).current;
+
+  // OTP Verification States
+  const [otpModalVisible, setOtpModalVisible] = useState(false);
+  const [otpValues, setOtpValues] = useState<string[]>(['', '', '', '', '', '']);
+  const [otpAttempts, setOtpAttempts] = useState(0);
+  const [otpError, setOtpError] = useState('');
+  const [otpSuccess, setOtpSuccess] = useState(false);
+  const [fetchingOtp, setFetchingOtp] = useState(false);
+  const [dbDeliveryCode, setDbDeliveryCode] = useState('');
+
+  // OTP input reference array for managing autofocus and auto-move workflow
+  const otpInputsRef = useRef<TextInput[]>([]);
 
   const theme = {
     bg: isDarkMode ? COLORS.jetBlack : COLORS.offWhite,
@@ -241,6 +254,7 @@ export default function DeliveriesScreen() {
           created_at,
           delivered_at,
           vendor_id,
+          customer_id,
           rider_id,
           vendor_earning,
           rider_earning,
@@ -291,6 +305,7 @@ export default function DeliveriesScreen() {
         created_at: order.created_at,
         delivered_at: order.delivered_at || null,
         vendor_id: order.vendor_id,
+        customer_id: order.customer_id,
         rider_id: order.rider_id,
         vendor_earning: order.vendor_earning || 0,
         rider_earning: order.rider_earning || 0,
@@ -360,6 +375,97 @@ export default function DeliveriesScreen() {
     }
   };
 
+  // Intermediate OTP verification trigger workflow sequence
+  const startOtpVerificationWorkflow = async (order: Order) => {
+    try {
+      setSelectedOrder(order);
+      setOtpValues(['', '', '', '', '', '']);
+      setOtpAttempts(0);
+      setOtpError('');
+      setOtpSuccess(false);
+      setFetchingOtp(true);
+      setOtpModalVisible(true);
+
+      const { data, error } = await supabase
+        .from('orders')
+        .select('delivery_code')
+        .eq('id', order.id)
+        .single();
+
+      if (error) throw error;
+      setDbDeliveryCode(data?.delivery_code || '');
+    } catch (err) {
+      console.error('Error fetching order delivery code metadata:', err);
+      Alert.alert('Error', 'Failed to initialize delivery verification process.');
+      setOtpModalVisible(false);
+    } finally {
+      setFetchingOtp(false);
+    }
+  };
+
+  const handleOtpInputChange = (text: string, index: number) => {
+    // Handle paste operation support contextually
+    if (text.length > 1) {
+      const cleanDigits = text.replace(/[^0-9]/g, '').slice(0, 6);
+      const updatedOtp = [...otpValues];
+      for (let i = 0; i < 6; i++) {
+        updatedOtp[i] = cleanDigits[i] || '';
+      }
+      setOtpValues(updatedOtp);
+      const nextFocusIndex = Math.min(cleanDigits.length, 5);
+      otpInputsRef.current[nextFocusIndex]?.focus();
+      return;
+    }
+
+    const cleanVal = text.replace(/[^0-9]/g, '');
+    const updatedOtp = [...otpValues];
+    updatedOtp[index] = cleanVal;
+    setOtpValues(updatedOtp);
+
+    if (cleanVal !== '' && index < 5) {
+      otpInputsRef.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOtpKeyPress = (e: any, index: number) => {
+    if (e.nativeEvent.key === 'Backspace') {
+      if (otpValues[index] === '' && index > 0) {
+        const updatedOtp = [...otpValues];
+        updatedOtp[index - 1] = '';
+        setOtpValues(updatedOtp);
+        otpInputsRef.current[index - 1]?.focus();
+      }
+    }
+  };
+
+  const verifyDeliveryOtpCode = () => {
+    const enteredOtp = otpValues.join('');
+    if (enteredOtp.length !== 6) {
+      setOtpError('Please enter the full 6-digit OTP.');
+      return;
+    }
+
+    if (enteredOtp === dbDeliveryCode) {
+      setOtpSuccess(true);
+      setOtpError('');
+      setTimeout(() => {
+        setOtpModalVisible(false);
+        // Continue instantly to standard flow payment verification setup
+        if (selectedOrder) {
+          openCompletionModal(selectedOrder);
+        }
+      }, 1200);
+    } else {
+      const advancedAttemptsCount = otpAttempts + 1;
+      setOtpAttempts(advancedAttemptsCount);
+      if (advancedAttemptsCount >= 3) {
+        setOtpError('Maximum verification attempts reached.\nPlease contact support.');
+      } else {
+        setOtpError('Incorrect OTP\nPlease ask the customer for the correct Delivery OTP.');
+      }
+    }
+  };
+
   const openCompletionModal = (order: Order) => {
     setSelectedOrder(order);
     setPaymentMethod('cash');
@@ -418,6 +524,66 @@ export default function DeliveriesScreen() {
         throw orderUpdateError;
       }
       console.log("STEP 1 SUCCESS - Order marked as delivered successfully.");
+
+      // STEP 1.25 - Generate Invoice[cite: 4]
+      try {
+        console.log("========== INVOICE FLOW START ==========");
+        console.log("Selected Order:", selectedOrder);
+
+        const { data: existingInvoice, error: invoiceCheckError } = await supabase
+          .from('invoices')
+          .select('id')
+          .eq('order_id', selectedOrder.id)
+          .maybeSingle();
+
+        if (invoiceCheckError) {
+          console.error("INVOICE QUERY ERROR - Checking existing invoice failed:", invoiceCheckError);
+        } else if (existingInvoice) {
+          console.log("INVOICE FLOW - Invoice already exists for order_id. Skipping generation.");
+        } else {
+          // Generate an exact unique human-readable invoice string format matching target date constraint
+          const now = new Date();
+          const yearStr = now.getFullYear().toString();
+          const monthStr = (now.getMonth() + 1).toString().padStart(2, '0');
+          const dayStr = now.getDate().toString().padStart(2, '0');
+          const suffixRand = Math.floor(100000 + Math.random() * 900000).toString();
+          const uniqueInvoiceNo = `RIVO-${yearStr}${monthStr}${dayStr}-${suffixRand}`;
+
+          console.log("Invoice Payload", {
+            order_id: selectedOrder.id,
+            vendor_id: selectedOrder.vendor_id,
+            customer_id: selectedOrder.customer_id,
+            invoice_number: uniqueInvoiceNo,
+            status: "generated",
+            created_at: nowIso
+          });
+
+          const { data: insertedInvoice, error: invoiceInsertError } = await supabase
+            .from("invoices")
+            .insert({
+              order_id: selectedOrder.id,
+              vendor_id: selectedOrder.vendor_id,
+              customer_id: selectedOrder.customer_id,
+              invoice_number: uniqueInvoiceNo,
+              status: "generated",
+              created_at: nowIso,
+              invoice_url: null
+            })
+            .select();
+
+          console.log("Inserted Invoice:", insertedInvoice);
+          console.log("Invoice Insert Error:", invoiceInsertError);
+
+          if (invoiceInsertError) {
+            console.log(JSON.stringify(invoiceInsertError, null, 2));
+            console.error("INVOICE GENERATION ERROR - Failed to insert invoice record:", invoiceInsertError);
+          } else {
+            console.log("Invoice generated successfully.");
+          }
+        }
+      } catch (invoiceWorkflowError) {
+        console.error("INVOICE FLOW EXCEPTION - Background operation intercepted:", invoiceWorkflowError);
+      }
 
       // STEP 1.5: Update payments table status directly following order success
       const { error: paymentUpdateError } = await supabase
@@ -790,7 +956,7 @@ export default function DeliveriesScreen() {
                       </View>
                     </View>
 
-                    {/* Delivered At Timestamp Section */}
+                    {/* Delivered At Timestamp Section section */}
                     {isDelivered && deliveredTimestamp && (
                       <View style={{ backgroundColor: theme.bg, padding: 12, borderRadius: 16, marginTop: 4, borderWidth: 1, borderColor: theme.border }}>
                         <Text style={{ fontSize: 12, color: theme.textMuted, fontWeight: '700', marginBottom: 4 }}>DELIVERED TIMELOG</Text>
@@ -860,7 +1026,7 @@ export default function DeliveriesScreen() {
                       <TouchableOpacity
                         activeOpacity={0.8}
                         style={[styles.completeButton, { backgroundColor: COLORS.emeraldGreen }]}
-                        onPress={() => openCompletionModal(item)}
+                        onPress={() => startOtpVerificationWorkflow(item)}
                       >
                         <Text style={styles.completeButtonText}>Delivered</Text>
                       </TouchableOpacity>
@@ -872,6 +1038,81 @@ export default function DeliveriesScreen() {
           )}
         </ScrollView>
       )}
+
+      {/* Modern Clean OTP Verification Modal Component Pane */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={otpModalVisible}
+        onRequestClose={() => setOtpModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={styles.modalDismissArea} activeOpacity={1} onPress={() => setOtpModalVisible(false)} />
+          <View style={[styles.bottomSheetContainer, { backgroundColor: theme.cardBg }]}>
+            <View style={[styles.modalKnob, { backgroundColor: theme.border }]} />
+            
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Delivery Verification</Text>
+            <Text style={[styles.modalSubtitle, { color: theme.textMuted }]}>Ask the customer for the 6-digit Delivery OTP.</Text>
+
+            {fetchingOtp ? (
+              <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                <ActivityIndicator size="small" color={COLORS.emeraldGreen} />
+              </View>
+            ) : (
+              <View style={{ marginBottom: 24 }}>
+                <View style={styles.otpInputsWrapperRow}>
+                  {Array.from({ length: 6 }).map((_, idx) => (
+                    <TextInput
+                      key={idx}
+                      ref={(ref) => {
+                        if (ref) otpInputsRef.current[idx] = ref;
+                      }}
+                      style={[
+                        styles.otpSingleBoxField,
+                        { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text },
+                        otpValues[idx] !== '' && { borderColor: COLORS.emeraldGreen }
+                      ]}
+                      maxLength={6}
+                      keyboardType="numeric"
+                      autoFocus={idx === 0}
+                      value={otpValues[idx]}
+                      onChangeText={(text) => handleOtpInputChange(text, idx)}
+                      onKeyPress={(e) => handleOtpKeyPress(e, idx)}
+                      selectTextOnFocus
+                    />
+                  ))}
+                </View>
+
+                {otpError !== '' && (
+                  <Text style={[styles.otpFeedbackMessageText, { color: COLORS.danger }]}>{otpError}</Text>
+                )}
+
+                {otpSuccess && (
+                  <View style={styles.otpSuccessContainer}>
+                    <Ionicons name="checkmark-circle" size={24} color={COLORS.emeraldGreen} />
+                    <Text style={[styles.otpFeedbackMessageText, { color: COLORS.emeraldGreen, marginTop: 0 }]}>
+                      OTP Verified
+                    </Text>
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  style={[
+                    styles.submitButton,
+                    { backgroundColor: COLORS.emeraldGreen, marginTop: 24 },
+                    (otpAttempts >= 3 || otpSuccess) && { backgroundColor: '#CCCCCC', opacity: 0.6 }
+                  ]}
+                  disabled={otpAttempts >= 3 || otpSuccess}
+                  onPress={verifyDeliveryOtpCode}
+                >
+                  <Text style={styles.submitButtonText}>Verify OTP</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {/* Enhanced Bottom Sheet Modal Framework */}
       <Modal
@@ -1421,5 +1662,34 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 14,
     fontWeight: '700',
+  },
+  otpInputsWrapperRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    gap: 6,
+  },
+  otpSingleBoxField: {
+    flex: 1,
+    height: 50,
+    borderWidth: 1.5,
+    borderRadius: 12,
+    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  otpFeedbackMessageText: {
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 16,
+    lineHeight: 18,
+  },
+  otpSuccessContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 16,
   },
 });
