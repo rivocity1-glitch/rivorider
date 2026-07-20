@@ -1,5 +1,14 @@
-// src/services/auth.ts
 import { supabase } from '../lib/supabase';
+
+export interface RegisterRiderPayload {
+  rider_name: string;
+  email: string;
+  phone: string;
+  vehicle_type: string;
+  vehicle_number?: string;
+  is_specially_abled?: boolean;
+  password?: string;
+}
 
 export async function signInRider(
   email: string,
@@ -34,7 +43,11 @@ export async function getCurrentRider() {
   return data;
 }
 
-export async function registerRider(payload: any) {
+export async function registerRider(payload: RegisterRiderPayload) {
+  if (!payload.password) {
+    throw new Error('Password is required for registration.');
+  }
+
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email: payload.email,
     password: payload.password,
@@ -52,7 +65,8 @@ export async function registerRider(payload: any) {
         email: payload.email,
         phone: payload.phone,
         vehicle_type: payload.vehicle_type,
-        vehicle_number: payload.vehicle_number,
+        vehicle_number: payload.vehicle_number || 'N/A',
+        is_specially_abled: payload.is_specially_abled ?? false,
         status: 'inactive',
         availability_status: 'offline',
         orders_completed: 0,

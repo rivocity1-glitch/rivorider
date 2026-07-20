@@ -1,4 +1,4 @@
-// src/app/(tabs)/dashboard.tsx
+// app/(tabs)/dashboard.tsx
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -36,11 +36,9 @@ const COLORS = {
   danger: '#EF4444',
   cardBg: '#FFFFFF',
   border: '#E5E7EB',
-  // Dark mode specialized values
   darkCard: '#1F2937',
   darkBorder: '#374151',
   darkMuted: '#9CA3AF',
-  // KYC specific styling colors
   amberBgLight: '#FFFBEB',
   amberBgDark: '#2D2210',
   amberBorderLight: '#D97706',
@@ -73,16 +71,13 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [errorProfile, setErrorProfile] = useState<boolean>(false);
   
-  // Notification Unread Count State
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState<number>(0);
   const bellScale = useRef(new Animated.Value(1)).current;
   const avatarScale = useRef(new Animated.Value(1)).current;
 
-  // Theme Toggle State
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const themeToggleAnim = useRef(new Animated.Value(isDarkMode ? 1 : 0)).current;
 
-  // Modals & Dynamic Form Inputs
   const [shiftModalVisible, setShiftModalVisible] = useState<boolean>(false);
   const [sosModalVisible, setSosModalVisible] = useState<boolean>(false);
   const [reportingSos, setReportingSos] = useState<boolean>(false);
@@ -90,21 +85,19 @@ export default function DashboardScreen() {
   const [customInputText, setCustomInputText] = useState<string>('');
   const [attachedPhotoUri, setAttachedPhotoUri] = useState<string | null>(null);
 
-  // Shift Control States
   const [shiftTimeRemaining, setShiftTimeRemaining] = useState<number>(0); 
-  const [showExtensionReminder, setShowExtensionReminder] = useState<boolean>(false);
+  const [showExtensionModal, setShowExtensionModal] = useState<boolean>(false);
   const [hasExtendedCurrentShift, setHasExtendedCurrentShift] = useState<boolean>(false);
+  
   const [showTutorial, setShowTutorial] = useState<boolean>(false);
   const [tutorialStep, setTutorialStep] = useState<number>(0);
 
-  // Dynamic Rich Greeting State
   const [greeting, setGreeting] = useState({
     text: '',
     subtitle: '',
     icon: '',
   });
 
-  // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
   const onlineBtnScale = useRef(new Animated.Value(1)).current;
@@ -125,33 +118,16 @@ export default function DashboardScreen() {
     const totalMinutes = hours * 60 + minutes;
 
     if (totalMinutes >= 5 * 60 && totalMinutes < 12 * 60) {
-      setGreeting({
-        text: 'Good Morning',
-        subtitle: "Ready to conquer today's deliveries?",
-        icon: '👋',
-      });
+      setGreeting({ text: 'Good Morning', subtitle: "Ready to conquer today's deliveries?", icon: '👋' });
     } else if (totalMinutes >= 12 * 60 && totalMinutes < 17 * 60) {
-      setGreeting({
-        text: 'Good Afternoon',
-        subtitle: 'Hope your deliveries are going smoothly.',
-        icon: '☀️',
-      });
+      setGreeting({ text: 'Good Afternoon', subtitle: 'Hope your deliveries are going smoothly.', icon: '☀️' });
     } else if (totalMinutes >= 17 * 60 && totalMinutes < 21 * 60) {
-      setGreeting({
-        text: 'Good Evening',
-        subtitle: "You're doing great. Finish today's deliveries strong.",
-        icon: '🌇',
-      });
+      setGreeting({ text: 'Good Evening', subtitle: "You're doing great. Finish today's deliveries strong.", icon: '🌇' });
     } else {
-      setGreeting({
-        text: 'Good Night',
-        subtitle: 'Drive safely and have a peaceful night.',
-        icon: '🌙',
-      });
+      setGreeting({ text: 'Good Night', subtitle: 'Drive safely and have a peaceful night.', icon: '🌙' });
     }
   };
 
-  // Fetch Unread Notification Counts
   const fetchUnreadCount = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -171,7 +147,6 @@ export default function DashboardScreen() {
     loadDashboardData();
     checkTutorialStatus();
 
-    // Set up auto-update interval for the greeting state every minute
     const greetingInterval = setInterval(() => {
       updateGreeting();
     }, 60000);
@@ -179,11 +154,9 @@ export default function DashboardScreen() {
     return () => clearInterval(greetingInterval);
   }, []);
 
-  // Sync count on component load and screen focus changes
   useFocusEffect(
     useCallback(() => {
       fetchUnreadCount();
-      // Refetch rider profile to get fresh KYC status
       if (rider?.id) {
         getCurrentRiderProfile().then((profileData) => {
           if (profileData) {
@@ -202,6 +175,7 @@ export default function DashboardScreen() {
     }).start();
   }, [isDarkMode]);
 
+  // SHIFT TIMER & 10-MINUTE EXTENSION TRIGGER
   useEffect(() => {
     let interval: any = setInterval(() => {
       calculateShiftTimers();
@@ -221,7 +195,6 @@ export default function DashboardScreen() {
     setRefreshing(false);
   }, []);
 
-  // Interpolate position of slider thumb (moving from left to right)
   const translateX = themeToggleAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [2, 26], 
@@ -245,7 +218,6 @@ export default function DashboardScreen() {
     }
   }
 
-  // Safety compliance sync to offline if KYC verification statuses fail
   const handleKycSafetySync = async (profileData: any) => {
     const isOnline = profileData.availability_status?.toLowerCase() === 'available';
     const kycStatus = profileData.kyc_status;
@@ -274,8 +246,39 @@ export default function DashboardScreen() {
         return;
       }
 
-      await handleKycSafetySync(profileData);
+      // 1. Calculate Today's Earnings & Deliveries
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
 
+      const { data: todayOrders } = await supabase
+        .from('orders')
+        .select('rider_earning, updated_at, created_at')
+        .eq('rider_id', profileData.id)
+        .ilike('order_status', 'delivered')
+        .gte('created_at', startOfDay.toISOString());
+
+      const earningsToday = (todayOrders || []).reduce((sum, o) => sum + (Number(o.rider_earning) || 0), 0);
+      const ordersCompletedToday = todayOrders?.length || 0;
+
+      // 2. Calculate Lifetime Earnings directly from delivered orders
+      const { data: totalOrders } = await supabase
+        .from('orders')
+        .select('rider_earning')
+        .eq('rider_id', profileData.id)
+        .ilike('order_status', 'delivered');
+
+      const totalEarnings = (totalOrders || []).reduce((sum, o) => sum + (Number(o.rider_earning) || 0), 0);
+
+      const enhancedProfile = {
+        ...profileData,
+        earnings_today: earningsToday,
+        orders_completed: ordersCompletedToday,
+        total_earnings: totalEarnings,
+      };
+
+      await handleKycSafetySync(enhancedProfile);
+
+      // Active shift lookup
       const { data: shiftData } = await supabase
         .from('rider_shifts')
         .select('*')
@@ -284,28 +287,42 @@ export default function DashboardScreen() {
         .order('created_at', { ascending: false })
         .limit(1);
 
+      let currentActiveShift = null;
       if (shiftData && shiftData.length > 0) {
-        setActiveShift(shiftData[0]);
+        currentActiveShift = shiftData[0];
+        setActiveShift(currentActiveShift);
       } else {
         setActiveShift(null);
-        setShowExtensionReminder(false);
+        setShowExtensionModal(false);
         setHasExtendedCurrentShift(false);
       }
+
+      // 3. Store Order Assignments (Only count if rider is Online and has Active Shift)
+      const isRiderOnline = profileData.availability_status?.toLowerCase() === 'available';
+      const hasActiveShift = !!currentActiveShift;
 
       const vendorsData = await getAssignedVendors();
       const enhancedVendors = await Promise.all(
         (vendorsData || []).map(async (v: any) => {
+          // Guard: If rider is offline or has no active shift, pending orders stay 0
+          if (!isRiderOnline || !hasActiveShift) {
+            return { ...v, pendingOrdersCount: 0 };
+          }
+
           const { count } = await supabase
             .from('orders')
             .select('*', { count: 'exact', head: true })
             .eq('vendor_id', v.id)
-            .eq('rider_id', profileData.id)
-            .not('order_status', 'in', '("delivered","cancelled")');
+            .or(`rider_id.eq.${profileData.id},rider_id.is.null`)
+            .not('order_status', 'ilike', 'delivered')
+            .not('order_status', 'ilike', 'cancel%');
+            
           return { ...v, pendingOrdersCount: count || 0 };
         })
       );
       setVendors(enhancedVendors);
 
+      // Customer reviews
       const { data: reviewsData } = await supabase
         .from('reviews')
         .select('*')
@@ -313,11 +330,12 @@ export default function DashboardScreen() {
         .order('created_at', { ascending: false });
       setReviews(reviewsData || []);
 
+      // Recent deliveries
       const { data: deliveriesData } = await supabase
         .from('orders')
         .select('id, order_number, order_status, total_amount, updated_at, vendor:vendors(shop_name)')
         .eq('rider_id', profileData.id)
-        .eq('order_status', 'delivered')
+        .ilike('order_status', 'delivered')
         .order('updated_at', { ascending: false })
         .limit(5);
       setRecentDeliveries(deliveriesData || []);
@@ -343,6 +361,7 @@ export default function DashboardScreen() {
   function calculateShiftTimers() {
     if (!activeShift || activeShift.status !== 'active') {
       setShiftTimeRemaining(0);
+      setShowExtensionModal(false);
       return;
     }
 
@@ -353,15 +372,15 @@ export default function DashboardScreen() {
       const remainingSeconds = Math.max(0, Math.floor((end - now) / 1000));
       setShiftTimeRemaining(remainingSeconds);
 
-      // Trigger reminder card dynamically when remaining time drops below 30 minutes
-      if (remainingSeconds <= 1800 && !hasExtendedCurrentShift) {
-        setShowExtensionReminder(true);
+      // Trigger Modal popup when 10 minutes (600s) or less remain
+      if (remainingSeconds <= 600 && remainingSeconds > 0 && !hasExtendedCurrentShift) {
+        setShowExtensionModal(true);
       } else {
-        setShowExtensionReminder(false);
+        setShowExtensionModal(false);
       }
     } else {
       setShiftTimeRemaining(0);
-      setShowExtensionReminder(false);
+      setShowExtensionModal(false);
       triggerAutoShiftCompletion();
     }
   }
@@ -370,7 +389,7 @@ export default function DashboardScreen() {
     if (!activeShift || activeShift.status !== 'active') return;
     try {
       const now = new Date();
-      const { data } = await supabase
+      await supabase
         .from('rider_shifts')
         .update({
           shift_end: now.toISOString(),
@@ -382,7 +401,8 @@ export default function DashboardScreen() {
 
       setActiveShift(null);
       setHasExtendedCurrentShift(false);
-      setShowExtensionReminder(false);
+      setShowExtensionModal(false);
+      await loadDashboardData(true);
     } catch (error) {
       console.error(error);
     }
@@ -391,6 +411,12 @@ export default function DashboardScreen() {
   async function handleSelectShift(shift: typeof AVAILABLE_SHIFTS[0]) {
     if (rider?.kyc_status !== 'verified') {
       alert('Complete your KYC verification first.');
+      return;
+    }
+
+    // Guard: Prevent offline riders from selecting a shift
+    if (rider?.availability_status?.toLowerCase() !== 'available') {
+      alert('You must be Online to select a shift. Turn your status to Online first.');
       return;
     }
 
@@ -423,6 +449,7 @@ export default function DashboardScreen() {
       }
       
       setShiftModalVisible(false);
+      await loadDashboardData(true);
     } catch (error) {
       console.error(error);
       setShiftModalVisible(false);
@@ -433,7 +460,7 @@ export default function DashboardScreen() {
     if (!activeShift || activeShift.status !== 'active') return;
     try {
       const now = new Date();
-      const { data } = await supabase
+      await supabase
         .from('rider_shifts')
         .update({
           shift_end: now.toISOString(),
@@ -446,7 +473,8 @@ export default function DashboardScreen() {
       setActiveShift(null);
       setShiftTimeRemaining(0);
       setHasExtendedCurrentShift(false);
-      setShowExtensionReminder(false);
+      setShowExtensionModal(false);
+      await loadDashboardData(true);
     } catch (error) {
       console.error(error);
     }
@@ -456,7 +484,8 @@ export default function DashboardScreen() {
     if (!activeShift || activeShift.status !== 'active') return;
     try {
       const currentEnd = new Date(activeShift.shift_end);
-      const extendedEnd = new Date(currentEnd.getTime() + 4 * 60 * 60 * 1000);
+      // Extend shift by 2 hours
+      const extendedEnd = new Date(currentEnd.getTime() + 2 * 60 * 60 * 1000);
 
       const { data, error } = await supabase
         .from('rider_shifts')
@@ -469,7 +498,7 @@ export default function DashboardScreen() {
       if (data) {
         setActiveShift(data);
         setHasExtendedCurrentShift(true);
-        setShowExtensionReminder(false);
+        setShowExtensionModal(false);
       }
     } catch (error) {
       console.error('[Shift Extension System] Failed to extend operational shift windows:', error);
@@ -479,7 +508,6 @@ export default function DashboardScreen() {
   async function toggleAvailability() {
     if (!rider) return;
 
-    // Strict KYC verification interceptors
     if (rider.kyc_status === 'pending') {
       alert('Your account is under verification.');
       return;
@@ -499,7 +527,10 @@ export default function DashboardScreen() {
     
     try {
       const updatedRider = await updateAvailabilityStatus(newStatus);
-      if (updatedRider) setRider(updatedRider);
+      if (updatedRider) {
+        setRider((prev: any) => ({ ...prev, ...updatedRider }));
+        await loadDashboardData(true);
+      }
     } catch (error) {
       console.error(error);
     }
@@ -611,7 +642,7 @@ export default function DashboardScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      {/* GREETING HEADER */}
+      {/* HEADER */}
       <View style={[styles.headerContainer, { backgroundColor: theme.headerBg, borderColor: theme.border }]}>
         <View style={styles.headerTopRow}>
           <View style={{ flex: 1 }}>
@@ -621,14 +652,12 @@ export default function DashboardScreen() {
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-            {/* Sliding Pill Custom Theme Switch */}
             <TouchableOpacity activeOpacity={0.9} onPress={toggleTheme} style={[styles.switchTrack, { backgroundColor: isDarkMode ? '#374151' : '#E5E7EB' }]}>
               <Animated.View style={[styles.switchThumb, { transform: [{ translateX }] }]}>
                 <Text style={{ fontSize: 11, textAlign: 'center' }}>{isDarkMode ? '🌙' : '☀️'}</Text>
               </Animated.View>
             </TouchableOpacity>
 
-            {/* Notification Bell Icon */}
             <TouchableOpacity
               activeOpacity={0.8}
               onPress={() => {
@@ -648,7 +677,6 @@ export default function DashboardScreen() {
               </Animated.View>
             </TouchableOpacity>
 
-            {/* Interactive Tappable Profile Avatar */}
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={() => {
@@ -750,46 +778,28 @@ export default function DashboardScreen() {
               </TouchableOpacity>
             </Animated.View>
 
-            {/* 2. TODAY'S STATS */}
+            {/* 2. STATS GRID */}
             <View style={styles.gridContainer}>
               <View style={[styles.gridItem, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
                 <Text style={[styles.metricLabel, { color: theme.textMuted }]}>💰 Today's Earnings</Text>
-                <Text style={[styles.metricValue, { color: COLORS.emeraldGreen }]}>₹{rider.earnings_today || 0}</Text>
+                <Text style={[styles.metricValue, { color: COLORS.emeraldGreen }]}>₹{rider?.earnings_today || 0}</Text>
               </View>
               <View style={[styles.gridItem, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
                 <Text style={[styles.metricLabel, { color: theme.textMuted }]}>📦 Today's Deliveries</Text>
-                <Text style={[styles.metricValue, { color: theme.text }]}>{rider.orders_completed || 0}</Text>
+                <Text style={[styles.metricValue, { color: theme.text }]}>{rider?.orders_completed || 0}</Text>
               </View>
             </View>
 
             <View style={styles.gridContainer}>
               <View style={[styles.gridItem, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
                 <Text style={[styles.metricLabel, { color: theme.textMuted }]}>💼 Lifetime Earnings</Text>
-                <Text style={[styles.metricValue, { color: theme.text }]}>₹{rider.total_earnings || 0}</Text>
+                <Text style={[styles.metricValue, { color: theme.text }]}>₹{rider?.total_earnings || 0}</Text>
               </View>
               <View style={[styles.gridItem, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
                 <Text style={[styles.metricLabel, { color: theme.textMuted }]}>⭐ Rating</Text>
                 <Text style={[styles.metricValue, { color: '#F59E0B' }]}>{averageRating} / 5.0</Text>
               </View>
             </View>
-
-            {/* Premium Extension Reminder Block Component */}
-            {showExtensionReminder && (
-              <View style={[styles.extensionReminderCard, { backgroundColor: isDarkMode ? '#232D24' : '#F0FDF4', borderColor: isDarkMode ? '#14532D' : '#DCFCE7' }]}>
-                <Text style={[styles.extensionTitleText, { color: theme.text }]}>⏰ Shift Ending Soon</Text>
-                <Text style={[styles.extensionBodyText, { color: theme.textMuted }]}>
-                  Your current shift will end in less than 30 minutes. Would you like to continue working or end your shift?
-                </Text>
-                <View style={styles.extensionActionRow}>
-                  <TouchableOpacity onPress={handleContinueShift} style={[styles.extensionActionBtn, { backgroundColor: COLORS.emeraldGreen }]}>
-                    <Text style={styles.extensionBtnTextWhite}>Continue Shift</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={handleEndShiftEarly} style={[styles.extensionActionBtn, { backgroundColor: COLORS.danger }]}>
-                    <Text style={styles.extensionBtnTextWhite}>Close Shift</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
 
             {/* 3. CURRENT SHIFT CARD */}
             <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
@@ -811,11 +821,13 @@ export default function DashboardScreen() {
                     onPress={() => {
                       if (rider?.kyc_status !== 'verified') {
                         alert('Complete your KYC verification first.');
+                      } else if (!isAvailable) {
+                        alert('You must be Online to select a shift. Turn your status to Online first.');
                       } else {
                         setShiftModalVisible(true);
                       }
                     }} 
-                    style={[styles.actionBtn, { backgroundColor: COLORS.emeraldGreen }]}
+                    style={[styles.actionBtn, { backgroundColor: isAvailable ? COLORS.emeraldGreen : '#9CA3AF' }]}
                   >
                     <Text style={styles.actionBtnText}>Select Shift</Text>
                   </TouchableOpacity>
@@ -913,6 +925,66 @@ export default function DashboardScreen() {
         </ScrollView>
       )}
 
+      {/* 10-MINUTE SHIFT EXTENSION POPUP MODAL */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={showExtensionModal}
+        onRequestClose={() => setShowExtensionModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.cardBg, borderRadius: 24, padding: 24 }]}>
+            <Text style={{ fontSize: 40, textAlign: 'center', marginBottom: 8 }}>⏰</Text>
+            
+            <Text style={[styles.modalTitle, { color: theme.text, textAlign: 'center' }]}>
+              Shift Ending Soon!
+            </Text>
+            
+            <Text style={[styles.modalSubtitle, { color: theme.textMuted, textAlign: 'center', marginVertical: 12, lineHeight: 20 }]}>
+              Your current shift ends in <Text style={{ fontWeight: '800', color: COLORS.emeraldGreen }}>{formatTimer(shiftTimeRemaining)}</Text>. 
+              Would you like to extend your shift by 2 hours to keep receiving deliveries?
+            </Text>
+
+            <View style={{ gap: 10, marginTop: 16 }}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={async () => {
+                  await handleContinueShift();
+                }}
+                style={{
+                  backgroundColor: COLORS.emeraldGreen,
+                  paddingVertical: 14,
+                  borderRadius: 14,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: COLORS.white, fontWeight: '700', fontSize: 16 }}>
+                  Yes, Extend Shift
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={async () => {
+                  setShowExtensionModal(false);
+                  await handleEndShiftEarly(); // 👈 Instantly completes the active shift in DB
+                }}
+                style={{
+                  backgroundColor: theme.border,
+                  paddingVertical: 14,
+                  borderRadius: 14,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: theme.text, fontWeight: '600', fontSize: 15 }}>
+                  No, End Shift Now
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* SHIFT SELECT MODAL */}
       <Modal animationType="slide" transparent={true} visible={shiftModalVisible} onRequestClose={() => setShiftModalVisible(false)}>
         <View style={styles.modalOverlay}>
@@ -940,7 +1012,7 @@ export default function DashboardScreen() {
         </View>
       </Modal>
 
-      {/* EMERGENCY SOS MANAGEMENT PANEL MODAL */}
+      {/* SOS MODAL */}
       <Modal animationType="slide" transparent={true} visible={sosModalVisible} onRequestClose={() => resetSosModalState()}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.cardBg }]}>
@@ -1026,7 +1098,7 @@ export default function DashboardScreen() {
         </View>
       </Modal>
 
-      {/* TUTORIAL OVERLAY FLOW REGISTRY */}
+      {/* TUTORIAL OVERLAY */}
       {showTutorial && (
         <View style={styles.tutorialOverlay}>
           <View style={[styles.tutorialCard, { backgroundColor: theme.cardBg, borderRadius: 24 }]}>
@@ -1195,44 +1267,6 @@ const styles = StyleSheet.create({
   },
   kycActionBtnText: {
     color: COLORS.white,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  extensionReminderCard: {
-    padding: 20,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  extensionTitleText: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  extensionBodyText: {
-    fontSize: 13,
-    lineHeight: 19,
-    marginBottom: 14,
-  },
-  extensionActionRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  extensionActionBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    minWidth: 120,
-  },
-  extensionBtnTextWhite: {
-    color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
   },

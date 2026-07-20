@@ -1,5 +1,4 @@
-// src/app/(tabs)/profile.tsx
-import { FontAwesome, Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -9,9 +8,7 @@ import {
   Animated,
   Dimensions,
   Image,
-  KeyboardAvoidingView,
   Linking,
-  Modal,
   Platform,
   ScrollView,
   StatusBar,
@@ -19,7 +16,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 
@@ -36,7 +33,6 @@ const COLORS = {
   danger: '#EF4444',
   cardBg: '#FFFFFF',
   border: '#E5E7EB',
-  // Dark mode specialized values
   darkCard: '#1F2937',
   darkBorder: '#374151',
   darkMuted: '#9CA3AF',
@@ -50,6 +46,7 @@ interface Rider {
   phone: string;
   rating: number;
   kyc_status: 'not_submitted' | 'pending' | 'verified' | 'rejected' | null;
+  status?: 'active' | 'inactive';
   profile_photo_url?: string;
   vehicle_type?: string;
   vehicle_number?: string;
@@ -58,14 +55,24 @@ interface Rider {
   account_number?: string;
   ifsc_code?: string;
   upi_id?: string;
-  verification_notes?: string;
-  documents_updated_at?: string;
   created_at?: string;
 }
 
 interface RiderProfile {
   id: string;
   rider_id: string;
+  aadhaar_number?: string;
+  aadhaar_front_url?: string;
+  pan_number?: string;
+  pan_card_url?: string;
+  driving_license_number?: string;
+  driving_license_url?: string;
+  account_holder_name?: string;
+  bank_name?: string;
+  account_number?: string;
+  ifsc_code?: string;
+  upi_id?: string;
+  rejection_reason?: string;
   address?: string;
   city?: string;
   state?: string;
@@ -78,12 +85,12 @@ export default function ProfileScreen() {
   const navigation = useNavigation();
 
   const [loading, setLoading] = useState(true);
-  const [updating, setUpdating] = useState(false);
+  const [submittingKyc, setSubmittingKyc] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rider, setRider] = useState<Rider | null>(null);
   const [profile, setProfile] = useState<RiderProfile | null>(null);
-  const [editModalVisible, setEditModalVisible] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
 
   // Theme Sync System
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
@@ -92,22 +99,23 @@ export default function ProfileScreen() {
   // Animated values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideUpAnim = useRef(new Animated.Value(20)).current;
-  const editBtnScale = useRef(new Animated.Value(1)).current;
   const logoutBtnScale = useRef(new Animated.Value(1)).current;
 
-  // Form states for editing
-  const [formPhone, setFormPhone] = useState('');
-  const [formVehicleNumber, setFormVehicleNumber] = useState('');
-  const [formAccountHolder, setFormAccountHolder] = useState('');
-  const [formBankName, setFormBankName] = useState('');
-  const [formAccountNumber, setFormAccountNumber] = useState('');
-  const [formIfsc, setFormIfsc] = useState('');
-  const [formUpi, setFormUpi] = useState('');
-  const [formAddress, setFormAddress] = useState('');
-  const [formCity, setFormCity] = useState('');
-  const [formStateName, setFormStateName] = useState('');
-  const [formPinCode, setFormPinCode] = useState('');
-  const [formEmergencyContact, setFormEmergencyContact] = useState('');
+  // KYC Form State
+  const [selfieUrl, setSelfieUrl] = useState('');
+  const [aadhaarNumber, setAadhaarNumber] = useState('');
+  const [aadhaarUrl, setAadhaarUrl] = useState('');
+  const [panNumber, setPanNumber] = useState('');
+  const [panUrl, setPanUrl] = useState('');
+  const [dlNumber, setDlNumber] = useState('');
+  const [dlUrl, setDlUrl] = useState('');
+
+  // Bank Form State
+  const [accountHolder, setAccountHolder] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [ifsc, setIfsc] = useState('');
+  const [upi, setUpi] = useState('');
 
   const theme = {
     bg: isDarkMode ? COLORS.jetBlack : COLORS.offWhite,
@@ -164,19 +172,21 @@ export default function ProfileScreen() {
     }).start();
   };
 
-  const populateFormFields = (riderData: Rider, profileData: RiderProfile | null) => {
-    setFormPhone(riderData.phone || '');
-    setFormVehicleNumber(riderData.vehicle_number || '');
-    setFormAccountHolder(riderData.account_holder_name || '');
-    setFormBankName(riderData.bank_name || '');
-    setFormAccountNumber(riderData.account_number || '');
-    setFormIfsc(riderData.ifsc_code || '');
-    setFormUpi(riderData.upi_id || '');
-    setFormAddress(profileData?.address || '');
-    setFormCity(profileData?.city || '');
-    setFormStateName(profileData?.state || '');
-    setFormPinCode(profileData?.pin_code || '');
-    setFormEmergencyContact(profileData?.emergency_contact || '');
+  const populateFields = (riderData: Rider, profileData: RiderProfile | null) => {
+    setSelfieUrl(riderData.profile_photo_url || '');
+    if (profileData) {
+      setAadhaarNumber(profileData.aadhaar_number || '');
+      setAadhaarUrl(profileData.aadhaar_front_url || '');
+      setPanNumber(profileData.pan_number || '');
+      setPanUrl(profileData.pan_card_url || '');
+      setDlNumber(profileData.driving_license_number || '');
+      setDlUrl(profileData.driving_license_url || '');
+      setAccountHolder(profileData.account_holder_name || riderData.account_holder_name || '');
+      setBankName(profileData.bank_name || riderData.bank_name || '');
+      setAccountNumber(profileData.account_number || riderData.account_number || '');
+      setIfsc(profileData.ifsc_code || riderData.ifsc_code || '');
+      setUpi(profileData.upi_id || riderData.upi_id || '');
+    }
   };
 
   const fetchProfileData = async () => {
@@ -206,18 +216,8 @@ export default function ProfileScreen() {
         throw profileError;
       }
 
-      if (profileData) {
-        setProfile(profileData);
-        populateFormFields(riderData, profileData);
-      } else {
-        const defaultProfile: RiderProfile = {
-          id: '',
-          rider_id: riderData.id,
-        };
-        setProfile(defaultProfile);
-        populateFormFields(riderData, defaultProfile);
-      }
-
+      setProfile(profileData || null);
+      populateFields(riderData, profileData);
       startAnimations();
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred while loading profile data.');
@@ -226,142 +226,57 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleOpenEditModal = () => {
-    if (rider) {
-      populateFormFields(rider, profile);
-    }
-    setEditModalVisible(true);
-  };
-
-  const handleUpdateProfile = async () => {
-    if (!rider || !profile) return;
+  // Profile Selfie Capture
+  const handleCaptureSelfie = async () => {
     try {
-      setUpdating(true);
-
-      const { error: riderUpdateError } = await supabase
-        .from('riders')
-        .update({
-          phone: formPhone,
-          vehicle_number: formVehicleNumber,
-          account_holder_name: formAccountHolder,
-          bank_name: formBankName,
-          account_number: formAccountNumber,
-          ifsc_code: formIfsc,
-          upi_id: formUpi,
-        })
-        .eq('id', rider.id);
-
-      if (riderUpdateError) throw riderUpdateError;
-
-      const profileUpdates = {
-        address: formAddress,
-        city: formCity,
-        state: formStateName,
-        pin_code: formPinCode,
-        emergency_contact: formEmergencyContact,
-      };
-
-      const { error: profileUpdateError } = await supabase
-        .from('rider_profiles')
-        .upsert({
-          rider_id: rider.id,
-          ...profileUpdates,
-        }, { onConflict: 'rider_id' });
-
-      if (profileUpdateError) throw profileUpdateError;
-
-      const updatedRider = {
-        ...rider,
-        phone: formPhone,
-        vehicle_number: formVehicleNumber,
-        account_holder_name: formAccountHolder,
-        bank_name: formBankName,
-        account_number: formAccountNumber,
-        ifsc_code: formIfsc,
-        upi_id: formUpi,
-      };
-      const updatedProfile = { ...profile, ...profileUpdates };
-      
-      setRider(updatedRider);
-      setProfile(updatedProfile);
-      populateFormFields(updatedRider, updatedProfile);
-      setEditModalVisible(false);
-      Alert.alert('Success', 'Profile updated successfully.');
-    } catch (err: any) {
-      Alert.alert('Update Failed', err.message || 'Could not update details.');
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const handleAvatarPress = async () => {
-    Alert.alert(
-      'Profile Photo',
-      'Choose an option to update profile picture',
-      [
-        { text: 'Take Photo', onPress: () => pickImage(ImagePicker.launchCameraAsync) },
-        { text: 'Choose From Gallery', onPress: () => pickImage(ImagePicker.launchImageLibraryAsync) },
-        { text: 'Cancel', style: 'cancel' }
-      ]
-    );
-  };
-
-  const pickImage = async (launchFunction: Function) => {
-    try {
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      const cameraPermissionResult = await ImagePicker.requestCameraPermissionsAsync();
-      
-      if (!permissionResult.granted || !cameraPermissionResult.granted) {
-        Alert.alert('Permission Denied', 'Permissions are required to access library or camera.');
+      const cameraPerm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!cameraPerm.granted) {
+        Alert.alert('Permission Denied', 'Camera permission is required to capture a selfie.');
         return;
       }
 
-      const result = await launchFunction({
-        mediaTypes: 'images',
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.5,
+        quality: 0.6,
+        cameraType: ImagePicker.CameraType.front,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        await uploadImage(result.assets[0].uri);
+        await uploadSelfie(result.assets[0].uri);
       }
     } catch (error) {
-      Alert.alert('Error', 'An error occurred during image sourcing selection.');
+      Alert.alert('Error', 'Failed to capture camera photo.');
     }
   };
 
-  const uploadImage = async (uri: string) => {
+  const uploadSelfie = async (uri: string) => {
     if (!rider) return;
     try {
       setUploadingPhoto(true);
 
       const blob: Blob = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.onload = function () {
-          resolve(xhr.response);
-        };
-        xhr.onerror = function (e) {
-          reject(new TypeError('Network request failed'));
-        };
+        xhr.onload = () => resolve(xhr.response);
+        xhr.onerror = () => reject(new TypeError('Network request failed'));
         xhr.responseType = 'blob';
         xhr.open('GET', uri, true);
         xhr.send(null);
       });
 
       const fileExt = uri.split('.').pop() || 'jpg';
-      const fileName = `${rider.id}-${Date.now()}.${fileExt}`;
-      const filePath = `avatars/${fileName}`;
+      const fileName = `selfie-${rider.id}-${Date.now()}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('rider-profiles')
-        .upload(filePath, blob, { contentType: 'image/' + fileExt });
+        .from('avatars')
+        .upload(fileName, blob, { contentType: `image/${fileExt}` });
 
       if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage
-        .from('rider-profiles')
-        .getPublicUrl(filePath);
+        .from('avatars')
+        .getPublicUrl(fileName);
 
       const { error: updateError } = await supabase
         .from('riders')
@@ -370,86 +285,182 @@ export default function ProfileScreen() {
 
       if (updateError) throw updateError;
 
+      setSelfieUrl(publicUrl);
       setRider({ ...rider, profile_photo_url: publicUrl });
-      Alert.alert('Success', 'Profile photo updated successfully.');
+      Alert.alert('Success', 'Selfie captured and updated successfully.');
     } catch (err: any) {
-      Alert.alert('Upload Failed', err.message || 'Could not upload photo image.');
+      Alert.alert('Upload Failed', err.message || 'Could not upload selfie image.');
     } finally {
       setUploadingPhoto(false);
     }
   };
 
-  const handleLogout = async () => {
+  // General Document Photo Pick/Capture
+  const handleUploadDocument = (type: 'aadhaar' | 'pan' | 'dl') => {
     Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
+      'Upload Document',
+      'Select camera or library to capture document',
       [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await supabase.auth.signOut();
-            } catch (err) {
-              Alert.alert('Error', 'Failed to sign out properly.');
-            }
-          },
-        },
-      ],
-      { cancelable: true }
+        { text: 'Take Photo', onPress: () => captureDocumentPhoto(type, ImagePicker.launchCameraAsync) },
+        { text: 'Choose From Gallery', onPress: () => captureDocumentPhoto(type, ImagePicker.launchImageLibraryAsync) },
+        { text: 'Cancel', style: 'cancel' }
+      ]
     );
   };
 
-  const maskAccount = (num?: string) => {
-    if (!num) return 'Not Added';
-    if (num.length < 4) return 'XXXX' + num;
-    return `XXXX XXXX ${num.slice(-4)}`;
-  };
-
-  const getKycBadge = (status: string | null) => {
-    switch (status) {
-      case 'verified':
-        return { label: 'Verified', color: '#10B981', icon: 'checkmark-circle' };
-      case 'pending':
-        return { label: 'Verification in Progress', color: '#F59E0B', icon: 'time' };
-      case 'rejected':
-        return { label: 'Rejected', color: '#EF4444', icon: 'close-circle' };
-      default:
-        return { label: 'Not Submitted', color: '#6B7280', icon: 'alert-circle' };
-    }
-  };
-
-  const handleOpenEmail = () => {
-    Linking.openURL('mailto:rivo.city1@gmail.com');
-  };
-
-  const handleOpenWhatsApp = () => {
-    Alert.alert('Support', 'Redirecting to Rivo WhatsApp Support workspace...');
-  };
-
-  const formatJoinedDate = (dateString?: string) => {
-    if (!dateString) return '';
+  const captureDocumentPhoto = async (type: 'aadhaar' | 'pan' | 'dl', launchFunc: Function) => {
     try {
-      const dateObj = new Date(dateString);
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      return `Joined Rivo • ${months[dateObj.getMonth()]} ${dateObj.getFullYear()}`;
-    } catch (e) {
-      return '';
-    }
-  };
+      const camPerm = await ImagePicker.requestCameraPermissionsAsync();
+      const libPerm = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-  const formatTimestamp = (dateString?: string) => {
-    if (!dateString) return '—';
-    try {
-      return new Date(dateString).toLocaleString('en-IN', {
-        dateStyle: 'medium',
-        timeStyle: 'short'
+      if (!camPerm.granted || !libPerm.granted) {
+        Alert.alert('Permission Denied', 'Camera and gallery permissions are required.');
+        return;
+      }
+
+      const result = await launchFunc({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.6,
       });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        await uploadDocumentFile(type, result.assets[0].uri);
+      }
     } catch (e) {
-      return dateString;
+      Alert.alert('Error', 'An error occurred while picking document photo.');
     }
   };
+
+  const uploadDocumentFile = async (type: 'aadhaar' | 'pan' | 'dl', uri: string) => {
+    if (!rider) return;
+    try {
+      setUploadingDoc(type);
+
+      const blob: Blob = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.onload = () => resolve(xhr.response);
+        xhr.onerror = () => reject(new TypeError('Network request failed'));
+        xhr.responseType = 'blob';
+        xhr.open('GET', uri, true);
+        xhr.send(null);
+      });
+
+      const fileExt = uri.split('.').pop() || 'jpg';
+      const fileName = `${type}-${rider.id}-${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('rider-documents')
+        .upload(fileName, blob, { contentType: `image/${fileExt}` });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('rider-documents')
+        .getPublicUrl(fileName);
+
+      if (type === 'aadhaar') setAadhaarUrl(publicUrl);
+      if (type === 'pan') setPanUrl(publicUrl);
+      if (type === 'dl') setDlUrl(publicUrl);
+
+      Alert.alert('Success', 'Document photo uploaded successfully.');
+    } catch (err: any) {
+      Alert.alert('Upload Failed', err.message || 'Could not upload document.');
+    } finally {
+      setUploadingDoc(null);
+    }
+  };
+
+  // Determine if EV / Bicycle (makes DL optional)
+  const isEvOrNonMotorized = ['ev', 'electric', 'bicycle', 'cycle', 'ev gearbike']
+    .some(type => (rider?.vehicle_type || '').toLowerCase().includes(type));
+
+  // Submit Verification Data
+  const handleSubmitKYC = async () => {
+    if (!rider) return;
+
+    if (!selfieUrl) return Alert.alert('Missing Selfie', 'Please capture a live profile selfie first.');
+    if (!aadhaarNumber.trim()) return Alert.alert('Missing Details', 'Please enter your Aadhaar number.');
+    if (!aadhaarUrl) return Alert.alert('Missing Document', 'Please upload your Aadhaar front photo.');
+    if (!panNumber.trim()) return Alert.alert('Missing Details', 'Please enter your PAN number.');
+    if (!panUrl) return Alert.alert('Missing Document', 'Please upload your PAN card photo.');
+    
+    // DL check is skipped if the vehicle type is EV / Bicycle
+    if (!isEvOrNonMotorized) {
+      if (!dlNumber.trim()) return Alert.alert('Missing Details', 'Driving Licence number is required for petrol/fuel vehicles.');
+      if (!dlUrl) return Alert.alert('Missing Document', 'Please upload your Driving Licence photo.');
+    }
+
+    if (!accountHolder.trim()) return Alert.alert('Missing Details', 'Please enter Account Holder Name.');
+    if (!bankName.trim()) return Alert.alert('Missing Details', 'Please enter Bank Name.');
+    if (!accountNumber.trim()) return Alert.alert('Missing Details', 'Please enter Account Number.');
+    if (!ifsc.trim()) return Alert.alert('Missing Details', 'Please enter Bank IFSC Code.');
+
+    try {
+      setSubmittingKyc(true);
+
+      const profilePayload = {
+        rider_id: rider.id,
+        aadhaar_number: aadhaarNumber.trim(),
+        aadhaar_front_url: aadhaarUrl,
+        pan_number: panNumber.trim().toUpperCase(),
+        pan_card_url: panUrl,
+        driving_license_number: dlNumber.trim().toUpperCase(),
+        driving_license_url: dlUrl,
+        account_holder_name: accountHolder.trim(),
+        bank_name: bankName.trim(),
+        account_number: accountNumber.trim(),
+        ifsc_code: ifsc.trim().toUpperCase(),
+        upi_id: upi.trim(),
+      };
+
+      const { error: profileError } = await supabase
+        .from('rider_profiles')
+        .upsert(profilePayload, { onConflict: 'rider_id' });
+
+      if (profileError) throw profileError;
+
+      const { error: riderError } = await supabase
+        .from('riders')
+        .update({
+          kyc_status: 'pending',
+          status: 'inactive',
+        })
+        .eq('id', rider.id);
+
+      if (riderError) throw riderError;
+
+      setRider({ ...rider, kyc_status: 'pending', status: 'inactive' });
+      Alert.alert(
+        'Submission Successful',
+        'Your KYC has been submitted successfully.\nOur team will review your documents shortly.'
+      );
+    } catch (err: any) {
+      Alert.alert('Submission Failed', err.message || 'Could not submit verification documents.');
+    } finally {
+      setSubmittingKyc(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    Alert.alert('Logout', 'Are you sure you want to logout?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Logout',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await supabase.auth.signOut();
+          } catch (err) {
+            Alert.alert('Error', 'Failed to sign out properly.');
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleOpenEmail = () => Linking.openURL('mailto:rivo.city1@gmail.com');
+  const handleOpenWhatsApp = () => Alert.alert('Support', 'Redirecting to Rivo WhatsApp Support workspace...');
 
   if (loading) {
     return (
@@ -457,7 +468,6 @@ export default function ProfileScreen() {
         <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={theme.headerBg} />
         <View style={[styles.skeletonHeader, { backgroundColor: theme.cardBg, borderColor: theme.border }]} />
         <ScrollView style={styles.skeletonBody} showsVerticalScrollIndicator={false}>
-          <View style={[styles.skeletonCard, { backgroundColor: theme.cardBg }]} />
           <View style={[styles.skeletonCard, { backgroundColor: theme.cardBg }]} />
           <View style={[styles.skeletonCard, { backgroundColor: theme.cardBg }]} />
         </ScrollView>
@@ -479,8 +489,8 @@ export default function ProfileScreen() {
     );
   }
 
-  const kyc = getKycBadge(rider.kyc_status);
-  const currentStatus = rider.kyc_status || 'not_submitted';
+  const kycStatus = rider.kyc_status || 'not_submitted';
+  const isEditable = kycStatus === 'not_submitted' || kycStatus === 'rejected';
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -489,9 +499,7 @@ export default function ProfileScreen() {
       {/* HEADER SECTION */}
       <View style={[styles.header, { backgroundColor: theme.headerBg, borderColor: theme.border }]}>
         <View style={styles.headerTopRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.headerTitle, { color: theme.text }]}>Profile</Text>
-          </View>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>Profile & KYC</Text>
           <TouchableOpacity activeOpacity={0.9} onPress={toggleTheme} style={[styles.switchTrack, { backgroundColor: isDarkMode ? '#374151' : '#E5E7EB' }]}>
             <Animated.View style={[styles.switchThumb, { transform: [{ translateX }] }]}>
               <Text style={{ fontSize: 11, textAlign: 'center' }}>{isDarkMode ? '🌙' : '☀️'}</Text>
@@ -503,15 +511,15 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <Animated.View style={[styles.body, { opacity: fadeAnim, transform: [{ translateY: slideUpAnim }] }]}>
           
-          {/* PROFILE HERO CARD */}
+          {/* 1. PROFILE PHOTO (SELFIE HERO) */}
           <View style={[styles.profileHeroCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <TouchableOpacity style={styles.avatarContainer} onPress={handleAvatarPress} activeOpacity={0.8}>
-                {rider.profile_photo_url ? (
-                  <Image source={{ uri: rider.profile_photo_url }} style={styles.avatar} />
+            <View style={{ alignItems: 'center' }}>
+              <TouchableOpacity style={styles.largeAvatarContainer} onPress={handleCaptureSelfie} disabled={!isEditable} activeOpacity={0.8}>
+                {selfieUrl ? (
+                  <Image source={{ uri: selfieUrl }} style={styles.largeAvatar} />
                 ) : (
-                  <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: theme.bg }]}>
-                    <Ionicons name="person" size={32} color={theme.textMuted} />
+                  <View style={[styles.largeAvatar, styles.avatarPlaceholder, { backgroundColor: theme.bg }]}>
+                    <Ionicons name="camera" size={40} color={theme.textMuted} />
                   </View>
                 )}
                 {uploadingPhoto && (
@@ -519,231 +527,281 @@ export default function ProfileScreen() {
                     <ActivityIndicator size="small" color="#ffffff" />
                   </View>
                 )}
-                <View style={styles.cameraIconBadge}>
-                  <Ionicons name="camera" size={12} color="#ffffff" />
-                </View>
+                {isEditable && (
+                  <View style={styles.cameraIconBadge}>
+                    <Ionicons name="camera" size={14} color="#ffffff" />
+                  </View>
+                )}
               </TouchableOpacity>
 
-              <View style={{ marginLeft: 16, flex: 1 }}>
-                <Text style={[styles.riderNameText, { color: theme.text }]}>{rider.rider_name || 'Rivo Rider'}</Text>
-                <Text style={[styles.riderIdText, { color: theme.textMuted }]}>ID: {rider.id ? `RDR-${rider.id.substring(0, 6).toUpperCase()}` : 'Not Available'}</Text>
-                {rider.created_at ? (
-                  <Text style={[styles.joinedText, { color: theme.textMuted }]}>{formatJoinedDate(rider.created_at)}</Text>
-                ) : null}
-
-                <View style={styles.metaRow}>
-                  <View style={[styles.ratingBadge, { backgroundColor: isDarkMode ? '#374151' : '#F3F4F6' }]}>
-                    <FontAwesome name="star" size={12} color="#F59E0B" style={{ marginRight: 4 }} />
-                    <Text style={[styles.ratingText, { color: theme.text }]}>
-                      {rider.rating && rider.rating > 0 ? rider.rating.toFixed(1) : '5.0'}
-                    </Text>
-                  </View>
-                  <View style={[styles.kycBadge, { backgroundColor: kyc.color + '15', borderColor: kyc.color }]}>
-                    <Ionicons name={kyc.icon as any} size={12} color={kyc.color} style={{ marginRight: 4 }} />
-                    <Text style={[styles.kycText, { color: kyc.color }]}>{kyc.label}</Text>
-                  </View>
+              <Text style={[styles.riderNameText, { color: theme.text, marginTop: 12 }]}>{rider.rider_name || 'Rivo Rider'}</Text>
+              <Text style={[styles.riderIdText, { color: theme.textMuted }]}>ID: {rider.id ? `RDR-${rider.id.substring(0, 6).toUpperCase()}` : 'N/A'}</Text>
+              
+              {rider.vehicle_type ? (
+                <View style={[styles.vehicleTypeBadge, { backgroundColor: COLORS.emeraldGreen + '15', borderColor: COLORS.emeraldGreen }]}>
+                  <Ionicons name="bicycle-outline" size={12} color={COLORS.emeraldGreen} style={{ marginRight: 4 }} />
+                  <Text style={[styles.vehicleTypeText, { color: COLORS.emeraldGreen }]}>{rider.vehicle_type}</Text>
                 </View>
-              </View>
+              ) : null}
             </View>
           </View>
 
-          {/* EDIT BUTTON */}
-          <Animated.View style={{ transform: [{ scale: editBtnScale }] }}>
-            <TouchableOpacity 
-              style={[styles.editButton, { backgroundColor: theme.cardBg, borderColor: theme.border }]} 
-              onPress={handleOpenEditModal} 
-              onPressIn={() => animateButton(editBtnScale, 0.96)}
-              onPressOut={() => animateButton(editBtnScale, 1)}
-              activeOpacity={0.9}
-            >
-              <Ionicons name="create-outline" size={18} color={COLORS.emeraldGreen} style={{ marginRight: 6 }} />
-              <Text style={[styles.editButtonText, { color: COLORS.emeraldGreen }]}>Edit Profile</Text>
-            </TouchableOpacity>
-          </Animated.View>
-
-          {/* DYNAMIC KYC STATUS CARD SYSTEM */}
-          {currentStatus === 'not_submitted' && (
-            <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
-              <View style={styles.cardHeader}>
-                <Ionicons name="shield-outline" size={20} color={COLORS.emeraldGreen} style={{ marginRight: 8 }} />
-                <Text style={[styles.cardTitle, { fontSize: 16, fontWeight: '800', color: theme.text }]}>🛡 KYC Not Submitted</Text>
-              </View>
-              <Text style={[styles.infoLabel, { color: theme.textMuted, lineHeight: 20, marginBottom: 16 }]}>
-                Complete your KYC verification before you can receive delivery requests.
-              </Text>
-              <TouchableOpacity 
-                style={[styles.retryButton, { backgroundColor: COLORS.emeraldGreen, borderRadius: 12, alignItems: 'center', paddingVertical: 12 }]} 
-                onPress={() => router.push("/complete-kyc")}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.retryText, { fontWeight: '700' }]}>Complete KYC</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {currentStatus === 'pending' && (
+          {/* 6. KYC STATUS CARDS */}
+          {kycStatus === 'pending' && (
             <View style={[styles.card, { backgroundColor: isDarkMode ? '#272314' : '#FEF3C7', borderColor: isDarkMode ? '#453507' : '#FDE68A' }]}>
               <View style={styles.cardHeader}>
-                <Ionicons name="time" size={20} color="#D97706" style={{ marginRight: 8 }} />
-                <Text style={[styles.cardTitle, { fontSize: 16, fontWeight: '800', color: '#B45309' }]}>Your KYC is under review.</Text>
+                <Ionicons name="time" size={22} color="#D97706" style={{ marginRight: 8 }} />
+                <Text style={[styles.cardTitle, { fontSize: 16, color: '#B45309' }]}>Documents Under Review</Text>
               </View>
-              <Text style={[styles.infoLabel, { color: isDarkMode ? '#FCD34D' : '#92400E', lineHeight: 20, marginBottom: 12 }]}>
-                Your KYC documents have been submitted. Our team will review them within 24–48 hours.
+              <Text style={[styles.infoLabel, { color: isDarkMode ? '#FCD34D' : '#92400E', lineHeight: 20 }]}>
+                Your documents are under review. You cannot receive deliveries until verification is complete.
               </Text>
-              <View style={[styles.infoDivider, { backgroundColor: isDarkMode ? '#453507' : '#FCD34D' }]} />
-              <View style={[styles.infoRow, { paddingTop: 6 }]}>
-                <Text style={[styles.infoLabel, { color: isDarkMode ? '#FCD34D' : '#92400E' }]}>Submitted On</Text>
-                <Text style={[styles.infoValue, { color: isDarkMode ? '#FFF' : '#78350F' }]}>{formatTimestamp(rider.documents_updated_at)}</Text>
-              </View>
             </View>
           )}
 
-          {currentStatus === 'verified' && (
-            <View style={[styles.card, { backgroundColor: isDarkMode ? '#062E20' : '#E6F4EA', borderColor: isDarkMode ? '#044E34' : '#A7F3D0' }]}>
-              <View style={styles.cardHeader}>
-                <Ionicons name="checkmark-circle" size={20} color="#10B981" style={{ marginRight: 8 }} />
-                <Text style={[styles.cardTitle, { fontSize: 16, fontWeight: '800', color: '#047857' }]}>Your account is verified.</Text>
-              </View>
-              <Text style={[styles.infoLabel, { color: isDarkMode ? '#A7F3D0' : '#065F46', lineHeight: 20, marginBottom: 12 }]}>
-                Your account has been verified successfully. You can now receive delivery requests.
-              </Text>
-              <View style={[styles.infoDivider, { backgroundColor: isDarkMode ? '#044E34' : '#A7F3D0' }]} />
-              <View style={[styles.infoRow, { paddingTop: 6 }]}>
-                <Text style={[styles.infoLabel, { color: isDarkMode ? '#A7F3D0' : '#065F46' }]}>Verified On</Text>
-                <Text style={[styles.infoValue, { color: isDarkMode ? '#FFF' : '#044E34' }]}>{formatTimestamp(rider.documents_updated_at)}</Text>
-              </View>
-            </View>
-          )}
-
-          {currentStatus === 'rejected' && (
+          {kycStatus === 'rejected' && (
             <View style={[styles.card, { backgroundColor: isDarkMode ? '#3B1212' : '#FEE2E2', borderColor: isDarkMode ? '#6B1D1D' : '#FCA5A5' }]}>
               <View style={styles.cardHeader}>
-                <Ionicons name="close-circle" size={20} color={COLORS.danger} style={{ marginRight: 8 }} />
-                <Text style={[styles.cardTitle, { fontSize: 16, fontWeight: '800', color: '#B91C1C' }]}>KYC Rejected</Text>
+                <Ionicons name="close-circle" size={22} color={COLORS.danger} style={{ marginRight: 8 }} />
+                <Text style={[styles.cardTitle, { fontSize: 16, color: '#B91C1C' }]}>Verification Rejected</Text>
               </View>
-              <View style={[styles.immutableWarningBox, { backgroundColor: 'transparent', borderColor: isDarkMode ? '#6B1D1D' : '#FCA5A5', marginBottom: 16 }]}>
-                <Ionicons name="alert-circle" size={16} color="#B91C1C" style={{ marginTop: 2, marginRight: 6 }} />
-                <Text style={[styles.immutableWarningText, { flex: 1, fontWeight: '600', color: '#B91C1C' }]}>
-                  {rider.verification_notes || 'The submitted proof files are blurry or mismatched validation configuration properties.'}
-                </Text>
-              </View>
-              <TouchableOpacity 
-                style={[styles.retryButton, { backgroundColor: COLORS.danger, borderRadius: 12, alignItems: 'center', paddingVertical: 12 }]} 
-                onPress={() => router.push("/complete-kyc")}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.retryText, { fontWeight: '700' }]}>Resubmit KYC</Text>
-              </TouchableOpacity>
+              <Text style={[styles.infoLabel, { color: '#B91C1C', lineHeight: 20, marginBottom: 8 }]}>
+                Reason: {profile?.rejection_reason || 'Document proofs were unreadable or mismatched.'}
+              </Text>
+              <Text style={[styles.infoLabel, { color: '#7F1D1D', fontSize: 12 }]}>
+                Please update the details below and resubmit for verification.
+              </Text>
             </View>
           )}
 
-          {/* SECTION 1: PERSONAL DETAILS */}
-          <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="person" size={16} color={COLORS.emeraldGreen} style={{ marginRight: 8 }} />
-              <Text style={[styles.cardTitle, { color: theme.text }]}>Personal Details</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: theme.textMuted }]}>Full Name</Text>
-              <Text style={[styles.infoValue, { color: theme.text }]}>{rider.rider_name || 'Not Added'}</Text>
-            </View>
-            <View style={[styles.infoDivider, { backgroundColor: theme.border }]} />
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: theme.textMuted }]}>Email Address</Text>
-              <Text style={[styles.infoValue, { color: theme.text }]}>{rider.email || 'Not Added'}</Text>
-            </View>
-            <View style={[styles.infoDivider, { backgroundColor: theme.border }]} />
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: theme.textMuted }]}>Mobile Number</Text>
-              <Text style={[styles.infoValue, { color: theme.text }]}>{rider.phone || 'Not Added'}</Text>
-            </View>
-          </View>
-
-          {/* SECTION 2: VEHICLE DETAILS */}
-          <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="bicycle" size={16} color={COLORS.emeraldGreen} style={{ marginRight: 8 }} />
-              <Text style={[styles.cardTitle, { color: theme.text }]}>Vehicle Details</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: theme.textMuted }]}>Vehicle Type</Text>
-              <Text style={[styles.infoValue, { color: theme.text }]}>{rider.vehicle_type || 'Not Available'}</Text>
-            </View>
-            <View style={[styles.infoDivider, { backgroundColor: theme.border }]} />
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: theme.textMuted }]}>Vehicle Number</Text>
-              <Text style={[styles.infoValue, styles.uppercaseText, { color: theme.text }]}>{rider.vehicle_number || 'Not Added'}</Text>
-            </View>
-          </View>
-
-          {/* SECTION 4: BANK DETAILS */}
-          <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="wallet" size={16} color={COLORS.emeraldGreen} style={{ marginRight: 8 }} />
-              <Text style={[styles.cardTitle, { color: theme.text }]}>Bank Details</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: theme.textMuted }]}>Bank Name</Text>
-              <Text style={[styles.infoValue, { color: theme.text }]}>{rider.bank_name || 'Not Added'}</Text>
-            </View>
-            <View style={[styles.infoDivider, { backgroundColor: theme.border }]} />
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: theme.textMuted }]}>Account Holder</Text>
-              <Text style={[styles.infoValue, { color: theme.text }]}>{rider.account_holder_name || 'Not Added'}</Text>
-            </View>
-            <View style={[styles.infoDivider, { backgroundColor: theme.border }]} />
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: theme.textMuted }]}>Account Number</Text>
-              <Text style={[styles.infoValue, { color: theme.text }]}>{maskAccount(rider.account_number)}</Text>
-            </View>
-            <View style={[styles.infoDivider, { backgroundColor: theme.border }]} />
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: theme.textMuted }]}>IFSC Code</Text>
-              <Text style={[styles.infoValue, styles.uppercaseText, { color: theme.text }]}>{rider.ifsc_code || 'Not Added'}</Text>
-            </View>
-            <View style={[styles.infoDivider, { backgroundColor: theme.border }]} />
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: theme.textMuted }]}>UPI ID</Text>
-              <Text style={[styles.infoValue, { color: theme.text }]}>{rider.upi_id || 'Not Added'}</Text>
-            </View>
-          </View>
-
-          {/* SECTION 5: ADDRESS */}
-          <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="location" size={16} color={COLORS.emeraldGreen} style={{ marginRight: 8 }} />
-              <Text style={[styles.cardTitle, { color: theme.text }]}>Address</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: theme.textMuted }]}>Address</Text>
-              <Text style={[styles.infoValue, { textAlign: 'right', maxWidth: '60%' }]} numberOfLines={2}>
-                {profile?.address || 'Not Added'}
+          {kycStatus === 'verified' && (
+            <View style={[styles.card, { backgroundColor: isDarkMode ? '#062E20' : '#E6F4EA', borderColor: isDarkMode ? '#044E34' : '#A7F3D0' }]}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="checkmark-circle" size={22} color="#10B981" style={{ marginRight: 8 }} />
+                <Text style={[styles.cardTitle, { fontSize: 16, color: '#047857' }]}>Account Verified</Text>
+              </View>
+              <Text style={[styles.infoLabel, { color: isDarkMode ? '#A7F3D0' : '#065F46', lineHeight: 20 }]}>
+                Your account has been verified successfully.
               </Text>
             </View>
-            <View style={[styles.infoDivider, { backgroundColor: theme.border }]} />
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: theme.textMuted }]}>City / Town</Text>
-              <Text style={[styles.infoValue, { color: theme.text }]}>{profile?.city || 'Not Added'}</Text>
+          )}
+
+          {/* 2. IDENTITY VERIFICATION CARD */}
+          <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="shield-checkmark" size={18} color={COLORS.emeraldGreen} style={{ marginRight: 8 }} />
+              <Text style={[styles.cardTitle, { color: theme.text }]}>Identity Verification</Text>
             </View>
-            <View style={[styles.infoDivider, { backgroundColor: theme.border }]} />
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: theme.textMuted }]}>State</Text>
-              <Text style={[styles.infoValue, { color: theme.text }]}>{profile?.state || 'Not Added'}</Text>
+
+            {/* Aadhaar */}
+            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>Aadhaar Card</Text>
+            <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+              <Ionicons name="card-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, { color: theme.text }]}
+                placeholder="Enter 12-digit Aadhaar Number"
+                placeholderTextColor={theme.textMuted}
+                keyboardType="number-pad"
+                maxLength={12}
+                value={aadhaarNumber}
+                onChangeText={setAadhaarNumber}
+                editable={isEditable}
+              />
             </View>
-            <View style={[styles.infoDivider, { backgroundColor: theme.border }]} />
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: theme.textMuted }]}>PIN Code</Text>
-              <Text style={[styles.infoValue, { color: theme.text }]}>{profile?.pin_code || 'Not Added'}</Text>
+            <View style={styles.docUploadRow}>
+              <TouchableOpacity
+                style={[styles.docUploadBtn, { backgroundColor: theme.bg, borderColor: theme.border }]}
+                onPress={() => handleUploadDocument('aadhaar')}
+                disabled={!isEditable || uploadingDoc === 'aadhaar'}
+              >
+                {uploadingDoc === 'aadhaar' ? (
+                  <ActivityIndicator size="small" color={COLORS.emeraldGreen} />
+                ) : (
+                  <>
+                    <Ionicons name="camera-outline" size={18} color={COLORS.emeraldGreen} style={{ marginRight: 6 }} />
+                    <Text style={[styles.docUploadBtnText, { color: COLORS.emeraldGreen }]}>
+                      {aadhaarUrl ? 'Re-upload Aadhaar Front' : 'Upload Aadhaar Front'}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              {aadhaarUrl ? <Ionicons name="checkmark-circle" size={20} color={COLORS.emeraldGreen} style={{ marginLeft: 8 }} /> : null}
             </View>
-            <View style={[styles.infoDivider, { backgroundColor: theme.border }]} />
-            <View style={styles.infoRow}>
-              <Text style={[styles.infoLabel, { color: theme.textMuted }]}>Emergency Contact</Text>
-              <Text style={[styles.infoValue, { color: theme.text }]}>{profile?.emergency_contact || 'Not Added'}</Text>
+            {aadhaarUrl ? <Image source={{ uri: aadhaarUrl }} style={styles.docPreviewImage} /> : null}
+
+            <View style={[styles.infoDivider, { backgroundColor: theme.border, marginVertical: 16 }]} />
+
+            {/* PAN Card */}
+            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>PAN Card</Text>
+            <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+              <Ionicons name="document-text-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, styles.uppercaseText, { color: theme.text }]}
+                placeholder="Enter 10-digit PAN Number"
+                placeholderTextColor={theme.textMuted}
+                maxLength={10}
+                autoCapitalize="characters"
+                value={panNumber}
+                onChangeText={setPanNumber}
+                editable={isEditable}
+              />
+            </View>
+            <View style={styles.docUploadRow}>
+              <TouchableOpacity
+                style={[styles.docUploadBtn, { backgroundColor: theme.bg, borderColor: theme.border }]}
+                onPress={() => handleUploadDocument('pan')}
+                disabled={!isEditable || uploadingDoc === 'pan'}
+              >
+                {uploadingDoc === 'pan' ? (
+                  <ActivityIndicator size="small" color={COLORS.emeraldGreen} />
+                ) : (
+                  <>
+                    <Ionicons name="camera-outline" size={18} color={COLORS.emeraldGreen} style={{ marginRight: 6 }} />
+                    <Text style={[styles.docUploadBtnText, { color: COLORS.emeraldGreen }]}>
+                      {panUrl ? 'Re-upload PAN Card' : 'Upload PAN Card'}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              {panUrl ? <Ionicons name="checkmark-circle" size={20} color={COLORS.emeraldGreen} style={{ marginLeft: 8 }} /> : null}
+            </View>
+            {panUrl ? <Image source={{ uri: panUrl }} style={styles.docPreviewImage} /> : null}
+
+            <View style={[styles.infoDivider, { backgroundColor: theme.border, marginVertical: 16 }]} />
+
+            {/* Driving License - Conditional (Optional for EV/Cycle) */}
+            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>
+              Driving Licence {isEvOrNonMotorized ? '(Optional for EV / Cycle)' : '(Required)'}
+            </Text>
+            <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+              <Ionicons name="car-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, styles.uppercaseText, { color: theme.text }]}
+                placeholder={isEvOrNonMotorized ? "Driving Licence Number (Optional)" : "Enter Driving Licence Number"}
+                placeholderTextColor={theme.textMuted}
+                autoCapitalize="characters"
+                value={dlNumber}
+                onChangeText={setDlNumber}
+                editable={isEditable}
+              />
+            </View>
+            <View style={styles.docUploadRow}>
+              <TouchableOpacity
+                style={[styles.docUploadBtn, { backgroundColor: theme.bg, borderColor: theme.border }]}
+                onPress={() => handleUploadDocument('dl')}
+                disabled={!isEditable || uploadingDoc === 'dl'}
+              >
+                {uploadingDoc === 'dl' ? (
+                  <ActivityIndicator size="small" color={COLORS.emeraldGreen} />
+                ) : (
+                  <>
+                    <Ionicons name="camera-outline" size={18} color={COLORS.emeraldGreen} style={{ marginRight: 6 }} />
+                    <Text style={[styles.docUploadBtnText, { color: COLORS.emeraldGreen }]}>
+                      {dlUrl ? 'Re-upload Driving Licence' : isEvOrNonMotorized ? 'Upload Driving Licence (Optional)' : 'Upload Driving Licence'}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              {dlUrl ? <Ionicons name="checkmark-circle" size={20} color={COLORS.emeraldGreen} style={{ marginLeft: 8 }} /> : null}
+            </View>
+            {dlUrl ? <Image source={{ uri: dlUrl }} style={styles.docPreviewImage} /> : null}
+          </View>
+
+          {/* 3. BANK DETAILS CARD */}
+          <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="wallet-outline" size={18} color={COLORS.emeraldGreen} style={{ marginRight: 8 }} />
+              <Text style={[styles.cardTitle, { color: theme.text }]}>Bank Details</Text>
+            </View>
+
+            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>Account Holder Name</Text>
+            <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+              <Ionicons name="person-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, { color: theme.text }]}
+                placeholder="Name as per bank records"
+                placeholderTextColor={theme.textMuted}
+                value={accountHolder}
+                onChangeText={setAccountHolder}
+                editable={isEditable}
+              />
+            </View>
+
+            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>Bank Name</Text>
+            <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+              <Ionicons name="business-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, { color: theme.text }]}
+                placeholder="e.g. HDFC Bank"
+                placeholderTextColor={theme.textMuted}
+                value={bankName}
+                onChangeText={setBankName}
+                editable={isEditable}
+              />
+            </View>
+
+            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>Account Number</Text>
+            <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+              <Ionicons name="card-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, { color: theme.text }]}
+                placeholder="Bank Account Number"
+                placeholderTextColor={theme.textMuted}
+                keyboardType="number-pad"
+                value={accountNumber}
+                onChangeText={setAccountNumber}
+                editable={isEditable}
+              />
+            </View>
+
+            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>IFSC Code</Text>
+            <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+              <Ionicons name="git-branch-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, styles.uppercaseText, { color: theme.text }]}
+                placeholder="11-character IFSC Code"
+                placeholderTextColor={theme.textMuted}
+                autoCapitalize="characters"
+                maxLength={11}
+                value={ifsc}
+                onChangeText={setIfsc}
+                editable={isEditable}
+              />
+            </View>
+
+            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>UPI ID (Optional)</Text>
+            <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+              <Ionicons name="qr-code-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, { color: theme.text }]}
+                placeholder="e.g. mobile@upi"
+                placeholderTextColor={theme.textMuted}
+                autoCapitalize="none"
+                value={upi}
+                onChangeText={setUpi}
+                editable={isEditable}
+              />
             </View>
           </View>
 
-          {/* SECTION 6: SUPPORT */}
-          <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+          {/* 5. SUBMIT KYC ACTION BUTTON */}
+          {isEditable && (
+            <TouchableOpacity
+              style={[styles.submitButton, { backgroundColor: COLORS.emeraldGreen }]}
+              onPress={handleSubmitKYC}
+              disabled={submittingKyc}
+              activeOpacity={0.8}
+            >
+              {submittingKyc ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Text style={styles.submitButtonText}>Submit for Verification</Text>
+              )}
+            </TouchableOpacity>
+          )}
+
+          {/* SUPPORT CARD */}
+          <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border, marginTop: 12 }]}>
             <View style={styles.cardHeader}>
               <Ionicons name="help-circle" size={17} color={COLORS.emeraldGreen} style={{ marginRight: 8 }} />
               <Text style={[styles.cardTitle, { color: theme.text }]}>Support</Text>
@@ -754,10 +812,7 @@ export default function ProfileScreen() {
                 <Ionicons name="mail" size={16} color={theme.textMuted} style={{ marginRight: 10 }} />
                 <Text style={[styles.supportText, { color: theme.text }]}>Email Support</Text>
               </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={[styles.supportSubText, { color: theme.textMuted }]}>rivo.city1@gmail.com</Text>
-                <Ionicons name="chevron-forward" size={14} color={theme.textMuted} style={{ marginLeft: 4 }} />
-              </View>
+              <Text style={[styles.supportSubText, { color: theme.textMuted }]}>rivo.city1@gmail.com</Text>
             </TouchableOpacity>
             
             <View style={[styles.infoDivider, { backgroundColor: theme.border }]} />
@@ -766,36 +821,6 @@ export default function ProfileScreen() {
               <View style={styles.supportLeft}>
                 <Ionicons name="logo-whatsapp" size={16} color="#10B981" style={{ marginRight: 10 }} />
                 <Text style={[styles.supportText, { color: theme.text }]}>WhatsApp Support</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={14} color={theme.textMuted} />
-            </TouchableOpacity>
-
-            <View style={[styles.infoDivider, { backgroundColor: theme.border }]} />
-            
-            <TouchableOpacity style={styles.supportAction} onPress={() => {}} activeOpacity={0.7}>
-              <View style={styles.supportLeft}>
-                <Ionicons name="document-text" size={16} color={theme.textMuted} style={{ marginRight: 10 }} />
-                <Text style={[styles.supportText, { color: theme.text }]}>Terms & Conditions</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={14} color={theme.textMuted} />
-            </TouchableOpacity>
-
-            <View style={[styles.infoDivider, { backgroundColor: theme.border }]} />
-            
-            <TouchableOpacity style={styles.supportAction} onPress={() => {}} activeOpacity={0.7}>
-              <View style={styles.supportLeft}>
-                <Ionicons name="lock-closed" size={16} color={theme.textMuted} style={{ marginRight: 10 }} />
-                <Text style={[styles.supportText, { color: theme.text }]}>Privacy Policy</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={14} color={theme.textMuted} />
-            </TouchableOpacity>
-
-            <View style={[styles.infoDivider, { backgroundColor: theme.border }]} />
-            
-            <TouchableOpacity style={styles.supportAction} onPress={() => {}} activeOpacity={0.7}>
-              <View style={styles.supportLeft}>
-                <Ionicons name="information-circle" size={16} color={theme.textMuted} style={{ marginRight: 10 }} />
-                <Text style={[styles.supportText, { color: theme.text }]}>About Rivo</Text>
               </View>
               <Ionicons name="chevron-forward" size={14} color={theme.textMuted} />
             </TouchableOpacity>
@@ -815,114 +840,11 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </Animated.View>
           
-          {/* APP INFORMATION */}
           <View style={styles.appVersionContainer}>
             <Text style={[styles.appVersionText, { color: theme.textMuted }]}>Version 2.4.0</Text>
-            <View style={styles.footerLinksRow}>
-              <Text style={[styles.footerLinkItem, { color: theme.textMuted }]}>Privacy Policy</Text>
-              <Text style={[styles.footerLinkDivider, { color: theme.textMuted }]}>•</Text>
-              <Text style={[styles.footerLinkItem, { color: theme.textMuted }]}>Terms</Text>
-            </View>
           </View>
         </Animated.View>
       </ScrollView>
-
-      {/* EDIT MODAL / SHEET */}
-      <Modal visible={editModalVisible} animationType="slide" transparent={true} onRequestClose={() => setEditModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.modalContent, { backgroundColor: theme.cardBg }]}>
-            <View style={[styles.modalHeader, { borderColor: theme.border }]}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>Update Profile Information</Text>
-              <TouchableOpacity onPress={() => setEditModalVisible(false)}>
-                <Ionicons name="close-circle" size={24} color={theme.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalForm} showsVerticalScrollIndicator={false}>
-              
-              {/* KYC WARNING CARD */}
-              <View style={[styles.immutableWarningBox, { backgroundColor: theme.bg, borderColor: theme.border }]}>
-                <Ionicons name="shield-checkmark" size={18} color={COLORS.emeraldGreen} style={{ marginTop: 2 }} />
-                <View style={{ marginLeft: 10, flex: 1 }}>
-                  <Text style={[styles.immutableWarningTitle, { color: theme.text }]}>KYC Verification</Text>
-                  <Text style={[styles.immutableWarningText, { color: theme.textMuted }]}>
-                    To modify core system identity attributes or official identification details, navigate to the dedicated KYC status dashboard page flow.
-                  </Text>
-                </View>
-              </View>
-
-              <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>Contact Info</Text>
-              <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
-                <Ionicons name="call-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
-                <TextInput style={[styles.input, { color: theme.text }]} value={formPhone} onChangeText={setFormPhone} placeholder="Phone number" placeholderTextColor={theme.textMuted} keyboardType="phone-pad" />
-              </View>
-
-              <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>Vehicle Particulars</Text>
-              <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
-                <Ionicons name="card-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
-                <TextInput style={[styles.input, styles.uppercaseText, { color: theme.text }]} value={formVehicleNumber} onChangeText={setFormVehicleNumber} placeholder="Vehicle Number" placeholderTextColor={theme.textMuted} autoCapitalize="characters" />
-              </View>
-
-              <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>Banking Infrastructure</Text>
-              <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
-                <Ionicons name="person-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
-                <TextInput style={[styles.input, { color: theme.text }]} value={formAccountHolder} onChangeText={setFormAccountHolder} placeholder="Account Holder Name" placeholderTextColor={theme.textMuted} />
-              </View>
-              <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
-                <Ionicons name="business-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
-                <TextInput style={[styles.input, { color: theme.text }]} value={formBankName} onChangeText={setFormBankName} placeholder="Bank Name" placeholderTextColor={theme.textMuted} />
-              </View>
-              <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
-                <Ionicons name="wallet-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
-                <TextInput style={[styles.input, { color: theme.text }]} value={formAccountNumber} onChangeText={setFormAccountNumber} placeholder="Account Number" placeholderTextColor={theme.textMuted} keyboardType="number-pad" />
-              </View>
-              <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
-                <Ionicons name="git-branch-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
-                <TextInput style={[styles.input, styles.uppercaseText, { color: theme.text }]} value={formIfsc} onChangeText={setFormIfsc} placeholder="IFSC Code" placeholderTextColor={theme.textMuted} autoCapitalize="characters" />
-              </View>
-              <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
-                <Ionicons name="qr-code-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
-                <TextInput style={[styles.input, { color: theme.text }]} value={formUpi} onChangeText={setFormUpi} placeholder="UPI ID" placeholderTextColor={theme.textMuted} autoCapitalize="none" />
-              </View>
-
-              <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>Location Mapping</Text>
-              <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
-                <Ionicons name="home-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
-                <TextInput style={[styles.input, { color: theme.text }]} value={formAddress} onChangeText={setFormAddress} placeholder="Address" placeholderTextColor={theme.textMuted} />
-              </View>
-              <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
-                <Ionicons name="map-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
-                <TextInput style={[styles.input, { color: theme.text }]} value={formCity} onChangeText={setFormCity} placeholder="City" placeholderTextColor={theme.textMuted} />
-              </View>
-              <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
-                <Ionicons name="location-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
-                <TextInput style={[styles.input, { color: theme.text }]} value={formStateName} onChangeText={setFormStateName} placeholder="State" placeholderTextColor={theme.textMuted} />
-              </View>
-              <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
-                <Ionicons name="pin-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
-                <TextInput style={[styles.input, { color: theme.text }]} value={formPinCode} onChangeText={setFormPinCode} placeholder="PIN Code" placeholderTextColor={theme.textMuted} keyboardType="number-pad" />
-              </View>
-
-              <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>Emergency Protocol</Text>
-              <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
-                <Ionicons name="alert-circle-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
-                <TextInput style={[styles.input, { color: theme.text }]} value={formEmergencyContact} onChangeText={setFormEmergencyContact} placeholder="Emergency Contact" placeholderTextColor={theme.textMuted} keyboardType="phone-pad" />
-              </View>
-
-              <View style={{ height: 40 }} />
-            </ScrollView>
-
-            <View style={[styles.modalActions, { borderColor: theme.border, backgroundColor: theme.cardBg }]}>
-              <TouchableOpacity style={[styles.cancelModalButton, { borderColor: theme.border }]} onPress={() => setEditModalVisible(false)}>
-                <Text style={[styles.cancelModalText, { color: theme.textMuted }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.saveModalButton, { backgroundColor: COLORS.emeraldGreen }]} onPress={handleUpdateProfile} disabled={updating}>
-                {updating ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.saveModalText}>Save Changes</Text>}
-              </TouchableOpacity>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -962,10 +884,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1.5 },
-    shadowOpacity: 0.22,
-    shadowRadius: 2,
   },
   body: {
     padding: 16,
@@ -975,19 +893,14 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 16,
     borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.03,
-    shadowRadius: 10,
-    elevation: 1.5,
   },
-  avatarContainer: {
+  largeAvatarContainer: {
     position: 'relative',
   },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+  largeAvatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     borderWidth: 3,
     borderColor: COLORS.emeraldGreen,
   },
@@ -1002,7 +915,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.4)',
-    borderRadius: 40,
+    borderRadius: 50,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1011,9 +924,9 @@ const styles = StyleSheet.create({
     bottom: 2,
     right: 2,
     backgroundColor: COLORS.emeraldGreen,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
@@ -1029,68 +942,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 2,
   },
-  joinedText: {
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 1,
-  },
-  metaRow: {
+  vehicleTypeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
     marginTop: 8,
-    gap: 8,
   },
-  ratingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  ratingText: {
+  vehicleTypeText: {
     fontSize: 12,
     fontWeight: '700',
-  },
-  kycBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  kycText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  editButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.02,
-    shadowRadius: 6,
-    elevation: 1,
-  },
-  editButtonText: {
-    fontWeight: '700',
-    fontSize: 15,
   },
   card: {
     borderRadius: 20,
     padding: 20,
     marginBottom: 16,
     borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.03,
-    shadowRadius: 10,
-    elevation: 1.5,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -1098,30 +967,80 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   cardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '800',
     letterSpacing: -0.2,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
   },
   infoLabel: {
     fontSize: 14,
     fontWeight: '500',
   },
-  infoValue: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
   infoDivider: {
     height: 1,
-    marginVertical: 4,
+  },
+  inputGroupLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 6,
+    marginTop: 4,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+    height: 48,
+    borderWidth: 1,
+  },
+  inputIcon: {
+    marginRight: 10,
+  },
+  input: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
   },
   uppercaseText: {
     textTransform: 'uppercase',
+  },
+  docUploadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  docUploadBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  docUploadBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  docPreviewImage: {
+    width: '100%',
+    height: 140,
+    borderRadius: 12,
+    marginTop: 10,
+    resizeMode: 'cover',
+  },
+  submitButton: {
+    paddingVertical: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  submitButtonText: {
+    color: COLORS.white,
+    fontWeight: '800',
+    fontSize: 16,
   },
   supportAction: {
     flexDirection: 'row',
@@ -1166,20 +1085,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  footerLinksRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 4,
-    gap: 6,
-  },
-  footerLinkItem: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  footerLinkDivider: {
-    fontSize: 10,
-  },
   skeletonContainer: {
     flex: 1,
   },
@@ -1211,8 +1116,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
     marginBottom: 24,
-    paddingHorizontal: 16,
-    lineHeight: 20,
   },
   retryButton: {
     backgroundColor: COLORS.emeraldGreen,
@@ -1221,102 +1124,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   retryText: {
-    color: COLORS.white,
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    maxHeight: '85%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-  modalForm: {
-    padding: 20,
-  },
-  immutableWarningBox: {
-    flexDirection: 'row',
-    borderWidth: 1,
-    padding: 14,
-    borderRadius: 16,
-    marginBottom: 20,
-  },
-  immutableWarningTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  immutableWarningText: {
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  inputGroupLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    marginBottom: 8,
-    marginTop: 12,
-    letterSpacing: 0.5,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    marginBottom: 12,
-    height: 50,
-    borderWidth: 1,
-  },
-  inputIcon: {
-    marginRight: 10,
-  },
-  input: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  modalActions: {
-    flexDirection: 'row',
-    padding: 16,
-    borderTopWidth: 1,
-  },
-  cancelModalButton: {
-    flex: 1,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderRadius: 14,
-    marginRight: 12,
-  },
-  cancelModalText: {
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  saveModalButton: {
-    flex: 2,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 14,
-  },
-  saveModalText: {
     color: COLORS.white,
     fontWeight: '700',
     fontSize: 15,
