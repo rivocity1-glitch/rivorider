@@ -1,5 +1,6 @@
 // src/app/(tabs)/deliveries.tsx
 import { Ionicons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -156,7 +157,7 @@ export default function DeliveriesScreen() {
     return () => {
       isMounted = false;
       if (soundRef.current) {
-        soundRef.current.unloadAsync().catch((err) => {
+        soundRef.current.unloadAsync().catch((err: unknown) => {
           console.error('[Audio Cleanup] Error unloading sound:', err);
         });
         soundRef.current = null;

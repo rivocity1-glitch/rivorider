@@ -3,6 +3,7 @@
     "name": "rivorider",
     "slug": "rivorider",
     "version": "1.0.0",
+    "owner": "rivo.ved",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "rivorider",
@@ -11,6 +12,7 @@
       "icon": "./assets/expo.icon"
     },
     "android": {
+      "package": "com.rivo.ved.rivorider",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -18,14 +20,11 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.rivo.ved.rivorider",
       "permissions": [
-        "POST_NOTIFICATIONS"
-      ],
-      "notification": {
-        "icon": "./assets/images/icon.png",
-        "color": "#208AEF"
-      }
+        "POST_NOTIFICATIONS",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
     },
     "web": {
       "output": "static",
@@ -40,7 +39,15 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
-      ]
+      ],
+      "expo-audio",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Rivo Rider to access your location."
+        }
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -49,7 +56,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "3bb6439d-417c-4ae7-acb2-9c3c58f5f0a6"
+        "projectId": "b3478d84-0253-4a8a-99de-e2565c97c49e"
       }
     }
   }
