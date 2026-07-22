@@ -18,7 +18,14 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.rivo.ved.rivorider"
+      "package": "com.rivo.ved.rivorider",
+      "permissions": [
+        "POST_NOTIFICATIONS"
+      ],
+      "notification": {
+        "icon": "./assets/images/icon.png",
+        "color": "#208AEF"
+      }
     },
     "web": {
       "output": "static",

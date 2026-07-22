@@ -8,7 +8,7 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
-    ...Ionicons.font, // This loads the exact font file needed for the icons
+    ...Ionicons.font,
   });
 
   useEffect(() => {

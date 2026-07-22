@@ -1,5 +1,6 @@
 // src/app/(tabs)/deliveries.tsx
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -67,6 +68,8 @@ interface Order {
     city: string | null;
     state: string | null;
     pin_code: string | null;
+    latitude: number | null;
+    longitude: number | null;
   } | null;
 }
 
@@ -77,8 +80,13 @@ export default function DeliveriesScreen() {
   const [activeTab, setActiveTab] = useState<'active' | 'completed' | 'cancelled'>('active');
   const [currentRiderId, setCurrentRiderId] = useState<string | null>(null);
 
-  // Use a ref to always have the latest rider ID available in the Realtime callback stream
+  // Use refs to prevent stale closures and duplicate subscriptions
   const currentRiderIdRef = useRef<string | null>(null);
+  const channelRef = useRef<any>(null);
+
+  // Sound and Notification Alert References
+  const soundRef = useRef<Audio.Sound | null>(null);
+  const notifiedOrderIdsRef = useRef<Set<string>>(new Set());
 
   // Theme Sync System
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
@@ -118,6 +126,58 @@ export default function DeliveriesScreen() {
     headerBg: isDarkMode ? COLORS.darkCard : COLORS.white,
   };
 
+  // Load Sound Object Lifecycle Setup
+  useEffect(() => {
+    let isMounted = true;
+
+    async function prepareAudioSound() {
+      try {
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+        });
+
+        const { sound } = await Audio.Sound.createAsync(
+          require('../../../assets/sounds/new-order.mp3')
+        );
+
+        if (isMounted) {
+          soundRef.current = sound;
+        } else {
+          await sound.unloadAsync();
+        }
+      } catch (error) {
+        console.error('[Audio Initialization] Error loading sound asset:', error);
+      }
+    }
+
+    prepareAudioSound();
+
+    return () => {
+      isMounted = false;
+      if (soundRef.current) {
+        soundRef.current.unloadAsync().catch((err) => {
+          console.error('[Audio Cleanup] Error unloading sound:', err);
+        });
+        soundRef.current = null;
+      }
+    };
+  }, []);
+
+  // Helper function to play sound and trigger short vibration
+  const triggerNewOrderNotificationAlert = async (orderId?: string) => {
+    try {
+      // Short vibration feedback (100–200ms feel)
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+
+      if (soundRef.current) {
+        await soundRef.current.replayAsync();
+      }
+    } catch (err) {
+      console.error('[Audio Notification] Failed to play new order sound:', err);
+    }
+  };
+
   useEffect(() => {
     fetchRiderOrders();
   }, []);
@@ -126,26 +186,83 @@ export default function DeliveriesScreen() {
   useEffect(() => {
     if (!currentRiderId) return;
 
+    // Log rider ID transition
+    console.log(
+      `[Deliveries Realtime] Subscribing. Current Rider ID: ${currentRiderId}, Previous Rider ID Ref: ${currentRiderIdRef.current}`
+    );
+
+    // Prevent duplicate subscriptions
+    if (channelRef.current) {
+      console.log('[Deliveries Realtime] Cleaning up previous subscription before subscribing...');
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
+
     const channel = supabase
-      .channel('public:orders:delivery-sync')
+      .channel(`public:orders:rider:${currentRiderId}`)
       .on(
         'postgres_changes',
         {
-          event: '*', // Listen for INSERT and UPDATE (all changes)
+          event: '*', // Listen for INSERT, UPDATE, and DELETE
           schema: 'public',
           table: 'orders',
         },
         (payload) => {
-          const newRiderId = payload.new ? (payload.new as any).rider_id : null;
-          if (newRiderId && newRiderId === currentRiderIdRef.current) {
-            fetchRiderOrders();
+          try {
+            console.log('[Deliveries Realtime] Received payload:', JSON.stringify(payload));
+            const newRiderId = payload.new ? (payload.new as any).rider_id : null;
+            const oldRiderId = payload.old ? (payload.old as any).rider_id : null;
+            const orderId = payload.new ? (payload.new as any).id : (payload.old as any)?.id;
+            const activeRiderId = currentRiderIdRef.current;
+
+            console.log(
+              `[Deliveries Realtime] Event check -> Active Rider: ${activeRiderId}, New Rider: ${newRiderId}, Old Rider: ${oldRiderId}`
+            );
+
+            // Check if this event represents a BRAND NEW assignment to the current rider
+            const isNewlyAssignedToCurrentRider =
+              newRiderId === activeRiderId && oldRiderId !== activeRiderId;
+
+            if (isNewlyAssignedToCurrentRider && orderId) {
+              if (!notifiedOrderIdsRef.current.has(orderId)) {
+                notifiedOrderIdsRef.current.add(orderId);
+                triggerNewOrderNotificationAlert(orderId);
+              }
+            }
+
+            // Trigger refresh if an order was assigned, updated, or removed for this rider
+            if (
+              (newRiderId && newRiderId === activeRiderId) ||
+              (oldRiderId && oldRiderId === activeRiderId)
+            ) {
+              console.log('[Deliveries Realtime] Relevant event detected. Refreshing rider orders...');
+              fetchRiderOrders();
+            }
+          } catch (err) {
+            console.error('[Deliveries Realtime] Error handling realtime payload:', err);
           }
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        console.log(`[Deliveries Realtime] Subscription status: ${status}`);
+        if (err) {
+          console.error('[Deliveries Realtime] Subscription error:', err);
+        }
+        // Automatically refresh on reconnect
+        if (status === 'SUBSCRIBED') {
+          console.log('[Deliveries Realtime] Channel connected/reconnected. Refreshing orders...');
+          fetchRiderOrders();
+        }
+      });
+
+    channelRef.current = channel;
 
     return () => {
-      supabase.removeChannel(channel);
+      console.log('[Deliveries Realtime] Cleaning up subscription on unmount / ID change...');
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
     };
   }, [currentRiderId]);
 
@@ -214,13 +331,14 @@ export default function DeliveriesScreen() {
 
   const fetchRiderOrders = async () => {
     try {
-      setLoading(true);
-
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
-      if (!session) return;
+      if (!session) {
+        setLoading(false);
+        return;
+      }
 
       const user = session.user;
 
@@ -233,10 +351,18 @@ export default function DeliveriesScreen() {
       if (riderError) throw riderError;
       
       if (!rider) {
+        console.log(`[Deliveries] No rider found. Previous rider ID was: ${currentRiderIdRef.current}`);
         setCurrentRiderId(null);
         currentRiderIdRef.current = null;
         setOrders([]);
+        setLoading(false);
         return;
+      }
+
+      if (currentRiderIdRef.current !== rider.id) {
+        console.log(
+          `[Deliveries] Rider ID changed from ${currentRiderIdRef.current} to ${rider.id}`
+        );
       }
 
       setCurrentRiderId(rider.id);
@@ -276,24 +402,15 @@ export default function DeliveriesScreen() {
             address_line2,
             city,
             state,
-            pin_code
+            pin_code,
+            latitude,
+            longitude
           )
         `)
         .eq('rider_id', rider.id)
         .order('created_at', { ascending: false });
 
       if (ordersError) throw ordersError;
-
-      console.log("========== ORDERS FROM DATABASE ==========");
-      console.table(
-        (ordersData || []).map(order => ({
-          id: order.id,
-          order_number: order.order_number,
-          rider_id: order.rider_id,
-          status: order.order_status,
-          created_at: order.created_at,
-        }))
-      );
 
       const parsedOrders = (ordersData || []).map((order: any) => ({
         id: order.id,
@@ -343,7 +460,6 @@ export default function DeliveriesScreen() {
 
       if (orderUpdateError) throw orderUpdateError;
       
-
       const { error: trackingInsertError } = await supabase
         .from('order_tracking')
         .insert({
@@ -357,7 +473,6 @@ export default function DeliveriesScreen() {
         console.warn('Tracking append failed, proceeding:', trackingInsertError);
       }
 
-      // Dynamic friendly toast messages assigned here contextually
       if (nextStatus === 'picked_up') {
         showSuccessToast('Pickup Accepted Successfully');
       } else if (nextStatus === 'out_for_delivery') {
@@ -375,7 +490,6 @@ export default function DeliveriesScreen() {
     }
   };
 
-  // Intermediate OTP verification trigger workflow sequence
   const startOtpVerificationWorkflow = async (order: Order) => {
     try {
       setSelectedOrder(order);
@@ -404,7 +518,6 @@ export default function DeliveriesScreen() {
   };
 
   const handleOtpInputChange = (text: string, index: number) => {
-    // Handle paste operation support contextually
     if (text.length > 1) {
       const cleanDigits = text.replace(/[^0-9]/g, '').slice(0, 6);
       const updatedOtp = [...otpValues];
@@ -450,7 +563,6 @@ export default function DeliveriesScreen() {
       setOtpError('');
       setTimeout(() => {
         setOtpModalVisible(false);
-        // Continue instantly to standard flow payment verification setup
         if (selectedOrder) {
           openCompletionModal(selectedOrder);
         }
@@ -477,15 +589,6 @@ export default function DeliveriesScreen() {
   const handleCompleteDelivery = async () => {
     if (!selectedOrder || !currentRiderId) return;
 
-    console.log("========== SELECTED ORDER ==========");
-    console.log({
-        id: selectedOrder.id,
-        order_number: selectedOrder.order_number,
-        rider_id: selectedOrder.rider_id,
-        status: selectedOrder.order_status,
-    });
-    console.log("====================================");
-
     const totalAmount = selectedOrder.total_amount;
     const nowIso = new Date().toISOString();
     let cashReceivedNum = 0;
@@ -503,9 +606,6 @@ export default function DeliveriesScreen() {
     try {
       setSubmitting(true);
 
-      // STEP 1: Update orders table structure
-      console.log("STEP 1 - Initiating orders update for order ID:", selectedOrder.id);
-
       const { error: orderUpdateError } = await supabase
         .from("orders")
         .update({
@@ -519,29 +619,16 @@ export default function DeliveriesScreen() {
         })
         .eq("id", selectedOrder.id);
 
-      if (orderUpdateError) {
-        console.error("STEP 1 ERROR - Order update failed:", orderUpdateError);
-        throw orderUpdateError;
-      }
-      console.log("STEP 1 SUCCESS - Order marked as delivered successfully.");
+      if (orderUpdateError) throw orderUpdateError;
 
-      // STEP 1.25 - Generate Invoice[cite: 4]
       try {
-        console.log("========== INVOICE FLOW START ==========");
-        console.log("Selected Order:", selectedOrder);
-
         const { data: existingInvoice, error: invoiceCheckError } = await supabase
           .from('invoices')
           .select('id')
           .eq('order_id', selectedOrder.id)
           .maybeSingle();
 
-        if (invoiceCheckError) {
-          console.error("INVOICE QUERY ERROR - Checking existing invoice failed:", invoiceCheckError);
-        } else if (existingInvoice) {
-          console.log("INVOICE FLOW - Invoice already exists for order_id. Skipping generation.");
-        } else {
-          // Generate an exact unique human-readable invoice string format matching target date constraint
+        if (!invoiceCheckError && !existingInvoice) {
           const now = new Date();
           const yearStr = now.getFullYear().toString();
           const monthStr = (now.getMonth() + 1).toString().padStart(2, '0');
@@ -549,16 +636,7 @@ export default function DeliveriesScreen() {
           const suffixRand = Math.floor(100000 + Math.random() * 900000).toString();
           const uniqueInvoiceNo = `RIVO-${yearStr}${monthStr}${dayStr}-${suffixRand}`;
 
-          console.log("Invoice Payload", {
-            order_id: selectedOrder.id,
-            vendor_id: selectedOrder.vendor_id,
-            customer_id: selectedOrder.customer_id,
-            invoice_number: uniqueInvoiceNo,
-            status: "generated",
-            created_at: nowIso
-          });
-
-          const { data: insertedInvoice, error: invoiceInsertError } = await supabase
+          await supabase
             .from("invoices")
             .insert({
               order_id: selectedOrder.id,
@@ -568,49 +646,19 @@ export default function DeliveriesScreen() {
               status: "generated",
               created_at: nowIso,
               invoice_url: null
-            })
-            .select();
-
-          console.log("Inserted Invoice:", insertedInvoice);
-          console.log("Invoice Insert Error:", invoiceInsertError);
-
-          if (invoiceInsertError) {
-            console.log(JSON.stringify(invoiceInsertError, null, 2));
-            console.error("INVOICE GENERATION ERROR - Failed to insert invoice record:", invoiceInsertError);
-          } else {
-            console.log("Invoice generated successfully.");
-          }
+            });
         }
       } catch (invoiceWorkflowError) {
-        console.error("INVOICE FLOW EXCEPTION - Background operation intercepted:", invoiceWorkflowError);
+        console.error("INVOICE FLOW EXCEPTION:", invoiceWorkflowError);
       }
 
-      // STEP 1.5: Update payments table status directly following order success
-      const { error: paymentUpdateError } = await supabase
+      await supabase
         .from("payments")
         .update({
           payment_status: "paid",
           paid_at: nowIso,
         })
         .eq("order_id", selectedOrder.id);
-
-      if (paymentUpdateError) {
-        console.error("PAYMENT UPDATE ERROR - Payment record update failed:", paymentUpdateError);
-        throw paymentUpdateError;
-      }
-
-      // STEP 2 - rider_collections
-      console.log("STEP 2 - Pre-insert logging payload verification:");
-      console.log({
-        order_id: selectedOrder.id,
-        rider_id: currentRiderId,
-        collection_method: paymentMethod,
-        order_amount: totalAmount,
-        amount_received: paymentMethod === 'cash' ? cashReceivedNum : totalAmount,
-        change_returned: paymentMethod === 'cash' ? changeReturnedNum : 0,
-        transaction_reference: paymentMethod === 'upi' ? transactionRef : null,
-        status: 'waiting_return'
-      });
 
       const collectionPayload = {
         order_id: selectedOrder.id,
@@ -624,48 +672,24 @@ export default function DeliveriesScreen() {
         created_at: new Date().toISOString(),
       };
 
-      console.log('Inserting rider collection:', collectionPayload);
-
-      const { data: insertedCollection, error: collectionInsertError } = await supabase
+      await supabase
         .from('rider_collections')
-        .insert(collectionPayload)
-        .select();
+        .insert(collectionPayload);
 
-      if (collectionInsertError) {
-        console.error('Rider collection insert failed:', collectionInsertError);
-        throw collectionInsertError;
-      }
-
-      console.log('Rider collection inserted:', insertedCollection);
-
-      // STEP 3 - FINANCE WORKFLOW IMPLEMENTATION
       try {
-        console.log("Finance Started");
-
-        // Fetch fresh order details to check settlement flags safely
         const { data: freshOrder, error: fetchOrderError } = await supabase
           .from('orders')
           .select('settled_vendor, settled_rider, vendor_id, rider_id, vendor_earning, rider_earning, rivo_delivery_margin, order_number')
           .eq('id', selectedOrder.id)
           .single();
 
-        if (fetchOrderError) throw fetchOrderError;
-
-        // 1. DUPLICATE PROTECTION
-        if (freshOrder.settled_vendor || freshOrder.settled_rider) {
-          console.log("Finance skipped: Order already marked as settled.");
-        } else {
-          const { data: existingLedger, error: ledgerCheckError } = await supabase
+        if (!fetchOrderError && freshOrder && !freshOrder.settled_vendor && !freshOrder.settled_rider) {
+          const { data: existingLedger } = await supabase
             .from('financial_ledger')
             .select('id')
             .eq('reference_id', selectedOrder.id);
 
-          if (ledgerCheckError) throw ledgerCheckError;
-
-          if (existingLedger && existingLedger.length > 0) {
-            console.log("Finance skipped: Ledger entries already exist for reference_id.");
-          } else {
-            // 2. CREATE LEDGER
+          if (!existingLedger || existingLedger.length === 0) {
             const ledgerEntries = [
               {
                 entity_type: 'vendor',
@@ -708,20 +732,13 @@ export default function DeliveriesScreen() {
               });
             }
 
-            const { error: ledgerInsertError } = await supabase
+            await supabase
               .from('financial_ledger')
               .insert(ledgerEntries);
-
-            if (ledgerInsertError) throw ledgerInsertError;
-            console.log("Ledger Created");
-
-            // 5. UPDATE ORDER FLAGS (Explicitly keeping settled flags false as requested)
-            console.log("Finance Complete");
           }
         }
       } catch (financeError) {
-        console.error("Finance Workflow Error Intercepted:", financeError);
-        Alert.alert('Finance Error', 'Delivery confirmed but background finance processing failed.');
+        console.error("Finance Workflow Error:", financeError);
       }
 
       setModalVisible(false);
@@ -729,7 +746,7 @@ export default function DeliveriesScreen() {
       fetchRiderOrders();
       Alert.alert('Success', 'Delivery Completed Successfully');
     } catch (error) {
-      console.error('Error completing delivery processing loop:', error);
+      console.error('Error completing delivery:', error);
       Alert.alert('Error', 'Failed to complete delivery. Please try again.');
     } finally {
       setSubmitting(false);
@@ -805,7 +822,7 @@ export default function DeliveriesScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      {/* Rounded Header Configuration Layout */}
+      {/* Header Layout */}
       <View style={[styles.header, { backgroundColor: theme.headerBg, borderColor: theme.border }]}>
         <View style={styles.headerTopRow}>
           <Text style={[styles.headerTitle, { color: theme.text }]}>Deliveries</Text>
@@ -911,11 +928,9 @@ export default function DeliveriesScreen() {
                       <Text style={[styles.bodyValue, { color: theme.text, flex: 1 }]} numberOfLines={2}>{formatAddress(item.customer_addresses)}</Text>
                     </View>
 
-                    {/* Separate Payment Section Badges */}
                     <View style={{ marginTop: 4, gap: 8 }}>
                       <Text style={{ fontSize: 12, fontWeight: '700', color: theme.textMuted }}>PAYMENT INFO</Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                        {/* Badge 1 — Order Type */}
                         {item.payment_method?.toLowerCase() === 'cash' ? (
                           <View style={[styles.premiumBadge, { backgroundColor: '#FFEFE6' }]}>
                             <Text style={[styles.premiumBadgeText, { color: '#FF7A00' }]}>🟧 COD</Text>
@@ -930,7 +945,6 @@ export default function DeliveriesScreen() {
                           </View>
                         )}
 
-                        {/* Badge 2 — Collection Method */}
                         {isDelivered && item.collection_method && item.payment_method?.toLowerCase() !== 'upi' && (
                           item.collection_method.toLowerCase() === 'cash' ? (
                             <View style={[styles.premiumBadge, { backgroundColor: '#E6F4EA' }]}>
@@ -943,7 +957,6 @@ export default function DeliveriesScreen() {
                           ) : null
                         )}
 
-                        {/* Badge 3 — Payment Status */}
                         {item.payment_status?.toLowerCase() === 'paid' ? (
                           <View style={[styles.premiumBadge, { backgroundColor: '#E6F4EA' }]}>
                             <Text style={[styles.premiumBadgeText, { color: '#137333' }]}>🟢 Paid</Text>
@@ -956,7 +969,6 @@ export default function DeliveriesScreen() {
                       </View>
                     </View>
 
-                    {/* Delivered At Timestamp Section section */}
                     {isDelivered && deliveredTimestamp && (
                       <View style={{ backgroundColor: theme.bg, padding: 12, borderRadius: 16, marginTop: 4, borderWidth: 1, borderColor: theme.border }}>
                         <Text style={{ fontSize: 12, color: theme.textMuted, fontWeight: '700', marginBottom: 4 }}>DELIVERED TIMELOG</Text>
@@ -967,7 +979,6 @@ export default function DeliveriesScreen() {
                       </View>
                     )}
 
-                    {/* Show cash collection breakdown values if applicable */}
                     {isDelivered && item.collection_method === 'cash' && item.cash_received !== null && (
                       <View style={{ backgroundColor: theme.bg, padding: 12, borderRadius: 16, gap: 4, borderWidth: 1, borderColor: theme.border }}>
                         <Text style={{ fontSize: 12, color: theme.textMuted, fontWeight: '700' }}>💰 CASH BREAKDOWN</Text>
@@ -1039,7 +1050,7 @@ export default function DeliveriesScreen() {
         </ScrollView>
       )}
 
-      {/* Modern Clean OTP Verification Modal Component Pane */}
+      {/* OTP Verification Modal */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -1114,7 +1125,7 @@ export default function DeliveriesScreen() {
         </View>
       </Modal>
 
-      {/* Enhanced Bottom Sheet Modal Framework */}
+      {/* Completion Bottom Sheet Modal */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -1165,7 +1176,6 @@ export default function DeliveriesScreen() {
 
             {paymentMethod === 'cash' ? (
               <View style={styles.formContainer}>
-                {/* Real-time Summary Card Component Matrix */}
                 <View style={[styles.summaryMetricCard, { backgroundColor: theme.bg, borderColor: theme.border }]}>
                   <View style={styles.summaryMetricItem}>
                     <Text style={[styles.summaryMetricLabelText, { color: theme.textMuted }]}>Order Total</Text>
@@ -1183,7 +1193,6 @@ export default function DeliveriesScreen() {
                   </View>
                 </View>
 
-                {/* Instant Input Setup Field */}
                 <Text style={[styles.fieldLabel, { color: theme.text }]}>Amount Received (₹)</Text>
                 <TextInput
                   style={[styles.modalInput, { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text }]}
@@ -1194,14 +1203,12 @@ export default function DeliveriesScreen() {
                   onChangeText={(val) => setAmountReceived(val)}
                 />
 
-                {/* Amount validation friendly dynamic banner warning */}
                 {amountReceived !== '' && !receivedInputValid() && (
                   <Text style={styles.validationErrorBannerText}>
                     ⚠️ Received cash amount cannot be less than the total order billing rate.
                   </Text>
                 )}
 
-                {/* Quick cash selection chip nodes */}
                 <View style={styles.actionChipRowContainer}>
                   <TouchableOpacity 
                     activeOpacity={0.8} 
@@ -1260,7 +1267,7 @@ export default function DeliveriesScreen() {
         </View>
       </Modal>
 
-      {/* Success Toast System Registry */}
+      {/* Toast Notification */}
       {toastVisible && (
         <Animated.View style={[styles.toastContainer, { opacity: toastFadeAnim }]}>
           <View style={styles.toastContent}>
@@ -1612,19 +1619,6 @@ const styles = StyleSheet.create({
   denomChipSelectorText: {
     fontSize: 13,
     fontWeight: '700',
-  },
-  changeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 14,
-  },
-  changeLabel: {
-    fontSize: 14,
-  },
-  changeValue: {
-    fontSize: 18,
-    fontWeight: '800',
   },
   submitButton: {
     height: 52,
