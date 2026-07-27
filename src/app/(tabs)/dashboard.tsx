@@ -1,4 +1,4 @@
-// app/(tabs)/dashboard.tsx
+// src/app/(tabs)/dashboard.tsx
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -10,6 +10,7 @@ import {
   Animated,
   Dimensions,
   Image,
+  Linking,
   Modal,
   Platform,
   RefreshControl,
@@ -54,15 +55,34 @@ const COLORS = {
   redTextDark: '#FCA5A5',
 };
 
-const AVAILABLE_SHIFTS = [
-  { id: '1', name: 'Morning Shift (06:00 AM - 10:00 AM)', durationHours: 4 },
-  { id: '2', name: 'Midday Shift (10:00 AM - 02:00 PM)', durationHours: 4 },
-  { id: '3', name: 'Evening Shift (02:00 PM - 06:00 PM)', durationHours: 4 },
-  { id: '4', name: 'Prime Shift (06:00 PM - 11:00 PM)', durationHours: 5 }
+// Shift Schedule Definitions
+interface ScheduleShift {
+  id: string;
+  name: string;
+  timeLabel: string;
+  startHour: number;
+  endHour: number;
+  durationHours: number;
+}
+
+const SHIFT_SCHEDULE: ScheduleShift[] = [
+  { id: '1', name: 'Morning', timeLabel: '06:00 AM - 12:00 PM', startHour: 6, endHour: 12, durationHours: 6 },
+  { id: '2', name: 'Afternoon', timeLabel: '12:00 PM - 06:00 PM', startHour: 12, endHour: 18, durationHours: 6 },
+  { id: '3', name: 'Evening', timeLabel: '06:00 PM - 12:00 AM', startHour: 18, endHour: 24, durationHours: 6 },
 ];
 
+type ShiftStatus = 'Upcoming' | 'Available Now' | 'Completed';
+
+type IncidentTypeKey =
+  | 'Accident'
+  | 'Road Block'
+  | 'Out of Fuel'
+  | 'Vehicle Breakdown'
+  | 'Need Assistance'
+  | 'Other';
+
 interface IncidentCard {
-  type: string;
+  type: IncidentTypeKey;
   title: string;
   desc: string;
   icon: string;
@@ -77,6 +97,43 @@ const INCIDENT_TYPES: IncidentCard[] = [
   { type: 'Other', title: 'Other Issue', desc: 'Describe another issue', icon: '❓' },
 ];
 
+// Essential Emergency Helplines for Direct Calling
+const EMERGENCY_HELPLINES = [
+  { label: 'National Emergency', number: '112', icon: '🚨', subtitle: 'All-in-one Response' },
+  { label: 'Ambulance & Medical', number: '108', icon: '🚑', subtitle: 'Medical Emergency' },
+  { label: 'Police Control', number: '100', icon: '👮', subtitle: 'Immediate Assistance' },
+  { label: 'Fire Department', number: '101', icon: '🔥', subtitle: 'Fire Emergency' },
+  { label: 'Women Helpline', number: '181', icon: '👮', subtitle: 'Immediate Assistance' },
+];
+
+// Dropdown Constants
+const FUEL_TYPES = ['Petrol', 'Diesel', 'Electric'];
+
+const BREAKDOWN_TYPES = [
+  "Engine won't start",
+  'Tyre puncture',
+  'Chain issue',
+  'Clutch issue',
+  'Brake issue',
+  'Battery issue',
+  'Overheating',
+  'Bike suddenly stopped',
+  'Other',
+];
+
+const ASSISTANCE_TYPES = [
+  'Medical assistance',
+  'Police assistance',
+  'Vehicle towing',
+  'Flat tyre help',
+  'Battery jump start',
+  'Fuel delivery',
+  'Need another rider',
+  'Other',
+];
+
+type SosModalView = 'SELECT_INCIDENT' | 'INCIDENT_FORM' | 'ACTIVE_SOS' | 'HISTORY_LIST' | 'HISTORY_DETAIL';
+
 export default function DashboardScreen() {
   const router = useRouter();
   const [rider, setRider] = useState<any>(null);
@@ -87,7 +144,7 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [errorProfile, setErrorProfile] = useState<boolean>(false);
-  
+
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState<number>(0);
   const bellScale = useRef(new Animated.Value(1)).current;
   const avatarScale = useRef(new Animated.Value(1)).current;
@@ -96,20 +153,34 @@ export default function DashboardScreen() {
   const themeToggleAnim = useRef(new Animated.Value(isDarkMode ? 1 : 0)).current;
 
   const [shiftModalVisible, setShiftModalVisible] = useState<boolean>(false);
-  const [shiftTimeRemaining, setShiftTimeRemaining] = useState<number>(0); 
+  const [shiftTimeRemaining, setShiftTimeRemaining] = useState<number>(0);
   const [showExtensionModal, setShowExtensionModal] = useState<boolean>(false);
   const [hasExtendedCurrentShift, setHasExtendedCurrentShift] = useState<boolean>(false);
 
-  // SOS States
+  // --- SOS MODAL INTERNAL STATE MANAGEMENT ---
   const [sosModalVisible, setSosModalVisible] = useState<boolean>(false);
+  const [sosModalView, setSosModalView] = useState<SosModalView>('SELECT_INCIDENT');
   const [selectedSosOption, setSelectedSosOption] = useState<IncidentCard | null>(null);
-  const [customInputText, setCustomInputText] = useState<string>('');
   const [attachedPhotoUri, setAttachedPhotoUri] = useState<string | null>(null);
   const [uploadingSos, setUploadingSos] = useState<boolean>(false);
   const [sosSuccess, setSosSuccess] = useState<boolean>(false);
-  
+
+  // Extended SOS Form Field States
+  const [accidentTarget, setAccidentTarget] = useState<'I had an accident' | 'Someone else had an accident' | null>(null);
+  const [fuelType, setFuelType] = useState<string | null>(null);
+  const [breakdownType, setBreakdownType] = useState<string | null>(null);
+  const [assistanceType, setAssistanceType] = useState<string | null>(null);
+  const [customInputText, setCustomInputText] = useState<string>('');
+
   // Active Unresolved SOS Report Data
   const [activeSosReport, setActiveSosReport] = useState<any>(null);
+
+  // SOS History States
+  const [sosHistoryList, setSosHistoryList] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [selectedHistoryReport, setSelectedHistoryReport] = useState<any | null>(null);
+  const [signedPhotoUrl, setSignedPhotoUrl] = useState<string | null>(null);
 
   const [currentGps, setCurrentGps] = useState<{
     latitude: number;
@@ -135,9 +206,9 @@ export default function DashboardScreen() {
   // Realtime & Debounce references
   const riderRef = useRef<any>(null);
   const dashboardChannelRef = useRef<any>(null);
+  const sosChannelRef = useRef<any>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Keep riderRef updated
   useEffect(() => {
     riderRef.current = rider;
   }, [rider]);
@@ -151,13 +222,24 @@ export default function DashboardScreen() {
     headerBg: isDarkMode ? COLORS.darkCard : COLORS.white,
   };
 
-  // Debounced dashboard reload to handle rapid incoming events
+  const getShiftStatus = (shift: ScheduleShift): ShiftStatus => {
+    const now = new Date();
+    const currentHour = now.getHours() + now.getMinutes() / 60;
+
+    if (currentHour < shift.startHour) {
+      return 'Upcoming';
+    } else if (currentHour >= shift.startHour && currentHour < shift.endHour) {
+      return 'Available Now';
+    } else {
+      return 'Completed';
+    }
+  };
+
   const debouncedReloadDashboard = useCallback(() => {
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
     debounceTimerRef.current = setTimeout(() => {
-      console.log('[Dashboard Realtime] Triggering debounced dashboard update...');
       fetchUnreadCount();
       loadDashboardData(true);
     }, 400);
@@ -194,6 +276,12 @@ export default function DashboardScreen() {
     }
   };
 
+  const makeEmergencyCall = (phoneNumber: string) => {
+    Linking.openURL(`tel:${phoneNumber}`).catch(() => {
+      alert(`Unable to make call to ${phoneNumber}. Please dial manually.`);
+    });
+  };
+
   useEffect(() => {
     updateGreeting();
     loadDashboardData();
@@ -206,15 +294,13 @@ export default function DashboardScreen() {
     return () => clearInterval(greetingInterval);
   }, []);
 
-  // Set up lightweight Realtime listeners for Dashboard
+  // Dashboard Realtime Subscriptions
   useEffect(() => {
     if (!rider?.id) return;
 
     const riderId = rider.id;
-    console.log(`[Dashboard Realtime] Setting up listeners for rider ID: ${riderId}`);
 
     if (dashboardChannelRef.current) {
-      console.log('[Dashboard Realtime] Cleaning up old channel instance...');
       supabase.removeChannel(dashboardChannelRef.current);
       dashboardChannelRef.current = null;
     }
@@ -231,11 +317,10 @@ export default function DashboardScreen() {
             const activeId = riderRef.current?.id;
 
             if (newRiderId === activeId || oldRiderId === activeId) {
-              console.log('[Dashboard Realtime] Order update relevant to current rider:', payload.eventType);
               debouncedReloadDashboard();
             }
           } catch (e) {
-            console.error('[Dashboard Realtime] Orders payload error:', e);
+            console.error(e);
           }
         }
       )
@@ -252,39 +337,25 @@ export default function DashboardScreen() {
             const activeId = riderRef.current?.id;
 
             if (shiftRiderId === activeId) {
-              console.log('[Dashboard Realtime] Shift update relevant to current rider:', payload.eventType);
               debouncedReloadDashboard();
             }
           } catch (e) {
-            console.error('[Dashboard Realtime] Shifts payload error:', e);
+            console.error(e);
           }
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'notifications' },
-        (payload) => {
-          try {
-            console.log('[Dashboard Realtime] Notification change event triggered.');
-            debouncedReloadDashboard();
-          } catch (e) {
-            console.error('[Dashboard Realtime] Notifications payload error:', e);
-          }
-        }
-      )
-      .subscribe((status, err) => {
-        console.log(`[Dashboard Realtime] Subscription status: ${status}`);
-        if (err) console.error('[Dashboard Realtime] Subscription error:', err);
-        if (status === 'SUBSCRIBED') {
-          console.log('[Dashboard Realtime] Reconnected/Connected. Refreshing dashboard data...');
+        () => {
           debouncedReloadDashboard();
         }
-      });
+      )
+      .subscribe();
 
     dashboardChannelRef.current = channel;
 
     return () => {
-      console.log('[Dashboard Realtime] Cleaning up dashboard subscriptions on unmount / ID change...');
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       if (dashboardChannelRef.current) {
         supabase.removeChannel(dashboardChannelRef.current);
@@ -292,6 +363,68 @@ export default function DashboardScreen() {
       }
     };
   }, [rider?.id, debouncedReloadDashboard]);
+
+  // SOS Realtime Subscription
+  useEffect(() => {
+    if (!rider?.id) return;
+
+    const riderId = rider.id;
+
+    if (sosChannelRef.current) {
+      supabase.removeChannel(sosChannelRef.current);
+      sosChannelRef.current = null;
+    }
+
+    const channel = supabase
+      .channel(`public:rider_emergency_reports:rider:${riderId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'rider_emergency_reports',
+          filter: `rider_id=eq.${riderId}`,
+        },
+        (payload) => {
+          const updatedReport = payload.new as any;
+          if (!updatedReport) return;
+
+          if (
+            !updatedReport.resolved_at &&
+            !['completed', 'resolved', 'cancelled'].includes(updatedReport.status?.toLowerCase())
+          ) {
+            setActiveSosReport(updatedReport);
+          } else {
+            setActiveSosReport((prev: any) => (prev?.id === updatedReport.id ? null : prev));
+          }
+
+          setSosHistoryList((prevList) => {
+            const exists = prevList.some((r) => r.id === updatedReport.id);
+            if (exists) {
+              return prevList.map((r) => (r.id === updatedReport.id ? updatedReport : r));
+            }
+            return [updatedReport, ...prevList];
+          });
+
+          setSelectedHistoryReport((prevSelected: any) => {
+            if (prevSelected && prevSelected.id === updatedReport.id) {
+              return updatedReport;
+            }
+            return prevSelected;
+          });
+        }
+      )
+      .subscribe();
+
+    sosChannelRef.current = channel;
+
+    return () => {
+      if (sosChannelRef.current) {
+        supabase.removeChannel(sosChannelRef.current);
+        sosChannelRef.current = null;
+      }
+    };
+  }, [rider?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -314,7 +447,6 @@ export default function DashboardScreen() {
     }).start();
   }, [isDarkMode]);
 
-  // SHIFT TIMER & EXTENSION
   useEffect(() => {
     let interval: any = setInterval(() => {
       calculateShiftTimers();
@@ -336,7 +468,7 @@ export default function DashboardScreen() {
 
   const translateX = themeToggleAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [2, 26], 
+    outputRange: [2, 26],
   });
 
   async function checkTutorialStatus() {
@@ -369,13 +501,12 @@ export default function DashboardScreen() {
           return;
         }
       } catch (err) {
-        console.error('[KYC Safety System] Failed to drop driver availability status offline:', err);
+        console.error(err);
       }
     }
     setRider(profileData);
   };
 
-  // CHECK ACTIVE UNRESOLVED SOS STATUS
   async function checkActiveUnresolvedSos(riderId: string) {
     try {
       const { data, error } = await supabase
@@ -402,6 +533,50 @@ export default function DashboardScreen() {
     }
   }
 
+  async function fetchSosHistory(riderId: string) {
+    setLoadingHistory(true);
+    setHistoryError(null);
+    try {
+      const { data, error } = await supabase
+        .from('rider_emergency_reports')
+        .select('*')
+        .eq('rider_id', riderId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setSosHistoryList(data || []);
+    } catch (err: any) {
+      console.error('Failed to load SOS history:', err);
+      setHistoryError(err.message || 'Unable to load SOS history.');
+    } finally {
+      setLoadingHistory(false);
+    }
+  }
+
+  async function resolveSignedPhotoUrl(photoPath: string | null) {
+    if (!photoPath) {
+      setSignedPhotoUrl(null);
+      return;
+    }
+
+    if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) {
+      setSignedPhotoUrl(photoPath);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.storage
+        .from('rider-sos')
+        .createSignedUrl(photoPath, 3600);
+
+      if (error) throw error;
+      setSignedPhotoUrl(data?.signedUrl || null);
+    } catch (err) {
+      console.error('Error generating signed URL:', err);
+      setSignedPhotoUrl(null);
+    }
+  }
+
   async function loadDashboardData(isRefresh = false) {
     try {
       if (!isRefresh) setLoading(true);
@@ -412,7 +587,6 @@ export default function DashboardScreen() {
         return;
       }
 
-      // 1. Calculate Today's Earnings & Deliveries
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);
 
@@ -426,7 +600,6 @@ export default function DashboardScreen() {
       const earningsToday = (todayOrders || []).reduce((sum, o) => sum + (Number(o.rider_earning) || 0), 0);
       const ordersCompletedToday = todayOrders?.length || 0;
 
-      // 2. Calculate Lifetime Earnings
       const { data: totalOrders } = await supabase
         .from('orders')
         .select('rider_earning')
@@ -444,7 +617,6 @@ export default function DashboardScreen() {
 
       await handleKycSafetySync(enhancedProfile);
 
-      // Active shift lookup
       const { data: shiftData } = await supabase
         .from('rider_shifts')
         .select('*')
@@ -463,7 +635,6 @@ export default function DashboardScreen() {
         setHasExtendedCurrentShift(false);
       }
 
-      // Double Verification Check: Rider receives delivery options ONLY if Online + Active Shift
       const isRiderOnline = profileData.availability_status?.toLowerCase() === 'available';
       const isFullyEligible = isRiderOnline && !!currentActiveShift;
 
@@ -481,13 +652,12 @@ export default function DashboardScreen() {
             .or(`rider_id.eq.${profileData.id},rider_id.is.null`)
             .not('order_status', 'ilike', 'delivered')
             .not('order_status', 'ilike', 'cancel%');
-            
+
           return { ...v, pendingOrdersCount: count || 0 };
         })
       );
       setVendors(enhancedVendors);
 
-      // Fetch active order context for SOS reporting
       const { data: activeOrders } = await supabase
         .from('orders')
         .select('id, order_number, vendor_id, vendors(shop_name)')
@@ -502,11 +672,9 @@ export default function DashboardScreen() {
         setActiveOrderContext(null);
       }
 
-      // Check for an active unresolved SOS report
       const unresolvedReport = await checkActiveUnresolvedSos(profileData.id);
       setActiveSosReport(unresolvedReport);
 
-      // Customer reviews
       const { data: reviewsData } = await supabase
         .from('reviews')
         .select('*')
@@ -514,7 +682,6 @@ export default function DashboardScreen() {
         .order('created_at', { ascending: false });
       setReviews(reviewsData || []);
 
-      // Recent deliveries
       const { data: deliveriesData } = await supabase
         .from('orders')
         .select('id, order_number, order_status, total_amount, updated_at, vendor:vendors(shop_name)')
@@ -591,22 +758,22 @@ export default function DashboardScreen() {
     }
   }
 
-  async function handleSelectShift(shift: typeof AVAILABLE_SHIFTS[0]) {
+  async function handleSelectShift(shift: ScheduleShift) {
     if (rider?.kyc_status !== 'verified') {
       alert('Complete your KYC verification first.');
       return;
     }
 
     if (activeShift) {
-      alert("You already have an active shift.");
+      alert('You already have an active shift.');
       setShiftModalVisible(false);
       return;
     }
 
     try {
       const now = new Date();
-      const futureEnd = new Date(now.getTime() + shift.durationHours * 60 * 60 * 1000); 
-      
+      const futureEnd = new Date(now.getTime() + shift.durationHours * 60 * 60 * 1000);
+
       const { data, error } = await supabase
         .from('rider_shifts')
         .insert({
@@ -614,7 +781,7 @@ export default function DashboardScreen() {
           shift_start: now.toISOString(),
           shift_end: futureEnd.toISOString(),
           status: 'active',
-          created_at: now.toISOString()
+          created_at: now.toISOString(),
         })
         .select()
         .single();
@@ -624,7 +791,7 @@ export default function DashboardScreen() {
         setActiveShift(data);
         setHasExtendedCurrentShift(false);
       }
-      
+
       setShiftModalVisible(false);
       await loadDashboardData(true);
     } catch (error) {
@@ -677,7 +844,7 @@ export default function DashboardScreen() {
         setShowExtensionModal(false);
       }
     } catch (error) {
-      console.error('[Shift Extension System] Failed to extend operational shift windows:', error);
+      console.error(error);
     }
   }
 
@@ -695,12 +862,12 @@ export default function DashboardScreen() {
 
     Animated.sequence([
       Animated.timing(onlineBtnScale, { toValue: 0.96, duration: 80, useNativeDriver: true }),
-      Animated.timing(onlineBtnScale, { toValue: 1, duration: 80, useNativeDriver: true })
+      Animated.timing(onlineBtnScale, { toValue: 1, duration: 80, useNativeDriver: true }),
     ]).start();
 
     const currentStatus = rider.availability_status?.toLowerCase();
     const newStatus = currentStatus === 'available' ? 'offline' : 'available';
-    
+
     try {
       const updatedRider = await updateAvailabilityStatus(newStatus);
       if (updatedRider) {
@@ -720,11 +887,10 @@ export default function DashboardScreen() {
     }
   }
 
-  // --- SOS CAMERA & EVIDENCE PICKER ---
   async function pickImageAttachment() {
     const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
     if (!permissionResult.granted) {
-      alert("Camera permissions are required for emergency evidence verification.");
+      alert('Camera permissions are required for emergency evidence verification.');
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
@@ -736,7 +902,6 @@ export default function DashboardScreen() {
     }
   }
 
-  // --- AUTOMATIC HIGH ACCURACY GPS CAPTURE ---
   async function captureGpsLocation() {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
@@ -760,33 +925,63 @@ export default function DashboardScreen() {
     }
   }
 
-  // --- SOS OPEN HANDLER (WITH RE-CHECK FOR ACTIVE UNRESOLVED SOS) ---
   async function handleSosOpen() {
     if (!rider?.id) return;
-    
-    // Check database to ensure no active unresolved SOS report exists
+
+    setSosModalVisible(true);
+
     const unresolved = await checkActiveUnresolvedSos(rider.id);
     setActiveSosReport(unresolved);
 
-    if (!unresolved) {
-      // Pre-capture GPS location when launching SOS flow
-      await captureGpsLocation();
+    if (unresolved) {
+      setSosModalView('ACTIVE_SOS');
+    } else {
+      setSosModalView('SELECT_INCIDENT');
+      captureGpsLocation();
     }
-    
-    setSosModalVisible(true);
   }
 
-  // --- SUBMIT SOS REPORT ---
+  const isSosFormValid = (): boolean => {
+    if (!selectedSosOption) return false;
+
+    switch (selectedSosOption.type) {
+      case 'Accident':
+        if (!accidentTarget) return false;
+        if (accidentTarget === 'Someone else had an accident' && !customInputText.trim()) return false;
+        if (!attachedPhotoUri) return false;
+        break;
+      case 'Road Block':
+        if (!attachedPhotoUri) return false;
+        break;
+      case 'Out of Fuel':
+        if (!fuelType) return false;
+        break;
+      case 'Vehicle Breakdown':
+        if (!breakdownType) return false;
+        if (breakdownType === 'Other' && !customInputText.trim()) return false;
+        break;
+      case 'Need Assistance':
+        if (!assistanceType) return false;
+        if (assistanceType === 'Other' && !customInputText.trim()) return false;
+        break;
+      case 'Other':
+        if (!customInputText.trim()) return false;
+        break;
+      default:
+        break;
+    }
+
+    return true;
+  };
+
   async function submitSosReport() {
     if (!selectedSosOption) return;
 
-    // Proof photo mandatory for ALL incident types
-    if (!attachedPhotoUri) {
-      alert('A proof photo is mandatory before submitting an SOS alert.');
+    if (!isSosFormValid()) {
+      alert('Please complete all required fields and upload evidence photo if mandatory.');
       return;
     }
 
-    // Ensure GPS coordinates are available
     let gpsCoords = currentGps;
     if (!gpsCoords) {
       gpsCoords = await captureGpsLocation();
@@ -795,52 +990,58 @@ export default function DashboardScreen() {
 
     setUploadingSos(true);
     try {
-      // 1. Convert photo Uri to Blob and upload to 'rider-sos' private storage bucket
       let uploadedStoragePath = '';
-      try {
-        const response = await fetch(attachedPhotoUri);
-        const blob = await response.blob();
-        
-        const fileExt = attachedPhotoUri.split('.').pop() || 'jpg';
-        const fileName = `${rider.id}/${Date.now()}.${fileExt}`;
+      if (attachedPhotoUri) {
+        try {
+          const response = await fetch(attachedPhotoUri);
+          const blob = await response.blob();
 
-        const { data: storageData, error: storageErr } = await supabase.storage
-          .from('rider-sos')
-          .upload(fileName, blob, {
-            contentType: `image/${fileExt}`,
-            upsert: true,
-          });
+          const fileExt = attachedPhotoUri.split('.').pop() || 'jpg';
+          const fileName = `${rider.id}/${Date.now()}.${fileExt}`;
 
-        if (storageErr) throw storageErr;
-        if (storageData) {
-          uploadedStoragePath = storageData.path;
+          const { data: storageData, error: storageErr } = await supabase.storage
+            .from('rider-sos')
+            .upload(fileName, blob, {
+              contentType: `image/${fileExt}`,
+              upsert: true,
+            });
+
+          if (storageErr) throw storageErr;
+          if (storageData) {
+            uploadedStoragePath = storageData.path;
+          }
+        } catch (uploadErr) {
+          console.error('Error uploading photo proof to rider-sos bucket:', uploadErr);
+          throw new Error('Failed to upload evidence photo. Please try again.');
         }
-      } catch (uploadErr) {
-        console.error('Error uploading photo proof to rider-sos bucket:', uploadErr);
-        throw new Error('Failed to upload evidence photo. Please try again.');
       }
 
-      // 2. Insert SOS Emergency Record into rider_emergency_reports with Admin Details
-      const nowIso = new Date().toISOString();
+      const payload: Record<string, any> = {
+        rider_id: rider.id,
+        issue_type: selectedSosOption.type,
+        description: customInputText.trim() || selectedSosOption.desc,
+        photo_url: uploadedStoragePath || null,
+        latitude: gpsCoords.latitude,
+        longitude: gpsCoords.longitude,
+        location_accuracy: gpsCoords.location_accuracy,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        vendor_id: activeOrderContext?.vendor_id || null,
+        vendor_name: activeOrderContext?.vendors?.shop_name || null,
+        order_id: activeOrderContext?.id || null,
+        order_number: activeOrderContext?.order_number || null,
+      };
+
+      if (accidentTarget) payload.accident_target = accidentTarget;
+      if (fuelType) payload.fuel_type = fuelType;
+      if (breakdownType) payload.breakdown_type = breakdownType;
+      if (assistanceType) payload.assistance_type = assistanceType;
+      if (customInputText.trim()) payload.custom_description = customInputText.trim();
+
       const { data: insertedReport, error: insertErr } = await supabase
         .from('rider_emergency_reports')
-        .insert({
-          rider_id: rider.id,
-          issue_type: selectedSosOption.type,
-          description: customInputText || selectedSosOption.desc,
-          photo_url: uploadedStoragePath,
-          latitude: gpsCoords.latitude,
-          longitude: gpsCoords.longitude,
-          location_accuracy: gpsCoords.location_accuracy,
-          status: 'pending',
-          created_at: nowIso,
-          updated_at: nowIso,
-          // Contextual metadata for Admin support visibility
-          vendor_id: activeOrderContext?.vendor_id || null,
-          vendor_name: activeOrderContext?.vendors?.shop_name || null,
-          order_id: activeOrderContext?.id || null,
-          order_number: activeOrderContext?.order_number || null,
-        })
+        .insert(payload)
         .select()
         .single();
 
@@ -850,11 +1051,10 @@ export default function DashboardScreen() {
       setSosSuccess(true);
       setActiveSosReport(insertedReport);
 
-      // Auto dismiss success screen after 3 seconds
       setTimeout(() => {
-        resetSosModalState();
-      }, 3000);
-
+        setSosSuccess(false);
+        setSosModalView('ACTIVE_SOS');
+      }, 2500);
     } catch (e: any) {
       console.error('[SOS Submission Error]:', e);
       alert(e.message || 'Failed to send emergency alert. Please try again or contact dispatch.');
@@ -864,11 +1064,18 @@ export default function DashboardScreen() {
 
   function resetSosModalState() {
     setSosModalVisible(false);
+    setSosModalView('SELECT_INCIDENT');
     setSelectedSosOption(null);
-    setCustomInputText('');
     setAttachedPhotoUri(null);
+    setAccidentTarget(null);
+    setFuelType(null);
+    setBreakdownType(null);
+    setAssistanceType(null);
+    setCustomInputText('');
     setUploadingSos(false);
     setSosSuccess(false);
+    setSelectedHistoryReport(null);
+    setSignedPhotoUrl(null);
   }
 
   const formatTimer = (secs: number) => {
@@ -882,6 +1089,43 @@ export default function DashboardScreen() {
     if (!name) return 'RV';
     const parts = name.trim().split(/\s+/);
     return parts.length >= 2 ? `${parts[0][0]}${parts[1][0]}`.toUpperCase() : `${name.substring(0, 2)}`.toUpperCase();
+  };
+
+  const getIncidentIcon = (type: string) => {
+    const found = INCIDENT_TYPES.find((i) => i.type.toLowerCase() === type?.toLowerCase());
+    return found ? found.icon : '🚨';
+  };
+
+  const getStatusBadgeStyle = (status: string) => {
+    const st = (status || 'pending').toLowerCase();
+    switch (st) {
+      case 'acknowledged':
+        return {
+          bg: '#DBEAFE',
+          text: '#1E40AF',
+          label: 'Acknowledged',
+        };
+      case 'resolved':
+      case 'completed':
+        return {
+          bg: '#D1FAE5',
+          text: '#065F46',
+          label: 'Resolved',
+        };
+      case 'cancelled':
+        return {
+          bg: '#FEE2E2',
+          text: '#991B1B',
+          label: 'Cancelled',
+        };
+      case 'pending':
+      default:
+        return {
+          bg: '#FEF3C7',
+          text: '#92400E',
+          label: 'Pending',
+        };
+    }
   };
 
   if (errorProfile) {
@@ -905,7 +1149,7 @@ export default function DashboardScreen() {
     { title: 'Dashboard V2', desc: 'Monitor metrics, stores, and active shift timers smoothly.' },
     { title: 'Fulfillment Nodes', desc: 'Track live store locations and total assigned pending count.' },
     { title: 'Operational Status', desc: 'Securely switch online or offline to manage incoming dispatches.' },
-    { title: 'SOS Emergency Support', desc: 'Report vehicle logs or road barriers instantly to active support.' }
+    { title: 'SOS Emergency Support', desc: 'Report vehicle logs or road barriers instantly to active support.' },
   ];
 
   const SkeletonCard = () => (
@@ -939,7 +1183,7 @@ export default function DashboardScreen() {
               onPress={() => {
                 Animated.sequence([
                   Animated.timing(bellScale, { toValue: 0.85, duration: 80, useNativeDriver: true }),
-                  Animated.timing(bellScale, { toValue: 1, duration: 80, useNativeDriver: true })
+                  Animated.timing(bellScale, { toValue: 1, duration: 80, useNativeDriver: true }),
                 ]).start(() => {
                   router.push('/notifications');
                 });
@@ -947,9 +1191,7 @@ export default function DashboardScreen() {
             >
               <Animated.View style={[styles.bellContainer, { transform: [{ scale: bellScale }] }]}>
                 <Ionicons name="notifications-outline" size={24} color={theme.text} />
-                {unreadNotificationsCount > 0 && (
-                  <View style={styles.badgeIndicator} />
-                )}
+                {unreadNotificationsCount > 0 && <View style={styles.badgeIndicator} />}
               </Animated.View>
             </TouchableOpacity>
 
@@ -958,22 +1200,21 @@ export default function DashboardScreen() {
               onPress={() => {
                 Animated.sequence([
                   Animated.timing(avatarScale, { toValue: 0.88, duration: 80, useNativeDriver: true }),
-                  Animated.timing(avatarScale, { toValue: 1, duration: 80, useNativeDriver: true })
+                  Animated.timing(avatarScale, { toValue: 1, duration: 80, useNativeDriver: true }),
                 ]).start(() => {
                   router.push('/profile');
                 });
               }}
             >
               <Animated.View style={{ transform: [{ scale: avatarScale }] }}>
-                {!loading && (
-                  rider?.profile_photo_url ? (
+                {!loading &&
+                  (rider?.profile_photo_url ? (
                     <Image source={{ uri: rider.profile_photo_url }} style={styles.avatar} />
                   ) : (
                     <View style={styles.avatarFallback}>
                       <Text style={styles.avatarFallbackText}>{getAvatarFallback(rider?.rider_name || '')}</Text>
                     </View>
-                  )
-                )}
+                  ))}
               </Animated.View>
             </TouchableOpacity>
           </View>
@@ -991,16 +1232,15 @@ export default function DashboardScreen() {
           <SkeletonCard />
         </ScrollView>
       ) : (
-        <ScrollView 
-          style={{ flex: 1 }} 
+        <ScrollView
+          style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.emeraldGreen} colors={[COLORS.emeraldGreen]} />
           }
         >
           <Animated.View style={{ padding: 16, opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
-            
-            {/* KYC Dynamic Status Alerts */}
+            {/* KYC Alerts */}
             {rider?.kyc_status === 'pending' && (
               <View style={[styles.kycAlertCard, { backgroundColor: isDarkMode ? COLORS.amberBgDark : COLORS.amberBgLight, borderLeftColor: isDarkMode ? COLORS.amberBorderDark : COLORS.amberBorderLight }]}>
                 <Text style={[styles.kycAlertTitle, { color: isDarkMode ? COLORS.amberTextDark : COLORS.amberTextLight }]}>🛡️ Verification in Progress</Text>
@@ -1016,9 +1256,9 @@ export default function DashboardScreen() {
                 <Text style={[styles.kycAlertDesc, { color: isDarkMode ? COLORS.darkMuted : COLORS.textMuted, marginBottom: 12 }]}>
                   Your KYC verification was rejected. Please update documents in your Profile.
                 </Text>
-                <TouchableOpacity 
-                  activeOpacity={0.8} 
-                  onPress={() => router.push('/profile')} 
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => router.push('/profile')}
                   style={[styles.kycActionBtn, { backgroundColor: isDarkMode ? COLORS.redBorderDark : COLORS.redBorderLight }]}
                 >
                   <Text style={styles.kycActionBtnText}>Update Documents</Text>
@@ -1026,58 +1266,68 @@ export default function DashboardScreen() {
               </View>
             )}
 
-            {/* 1. STATUS CARD (DOUBLE VERIFICATION INDICATORS) */}
+            {/* 1. STATUS CARD */}
             <Animated.View style={{ transform: [{ scale: onlineBtnScale }], marginBottom: 14 }}>
-              <TouchableOpacity 
-                activeOpacity={rider?.kyc_status === 'verified' ? 0.9 : 1} 
-                onPress={toggleAvailability} 
+              <TouchableOpacity
+                activeOpacity={rider?.kyc_status === 'verified' ? 0.9 : 1}
+                onPress={toggleAvailability}
                 style={[
-                  styles.statusLargePill, 
-                  { 
-                    backgroundColor: isFullyEligible 
-                      ? '#E6F4EA' 
-                      : isAvailable 
-                        ? (isDarkMode ? '#372C15' : '#FEF3C7') 
-                        : (isDarkMode ? '#2D3748' : '#F3F4F6'), 
-                    borderColor: isFullyEligible 
-                      ? '#A3E635' 
-                      : isAvailable 
-                        ? '#F59E0B' 
-                        : theme.border,
-                    opacity: rider?.kyc_status === 'verified' ? 1 : 0.6
-                  }
+                  styles.statusLargePill,
+                  {
+                    backgroundColor: isFullyEligible
+                      ? '#E6F4EA'
+                      : isAvailable
+                      ? isDarkMode
+                        ? '#372C15'
+                        : '#FEF3C7'
+                      : isDarkMode
+                      ? '#2D3748'
+                      : '#F3F4F6',
+                    borderColor: isFullyEligible
+                      ? '#A3E635'
+                      : isAvailable
+                      ? '#F59E0B'
+                      : theme.border,
+                    opacity: rider?.kyc_status === 'verified' ? 1 : 0.6,
+                  },
                 ]}
               >
-                <View style={[
-                  styles.statusIndicatorDot, 
-                  { backgroundColor: isFullyEligible ? COLORS.emeraldGreen : isAvailable ? '#F59E0B' : '#9CA3AF' }
-                ]} />
+                <View
+                  style={[
+                    styles.statusIndicatorDot,
+                    { backgroundColor: isFullyEligible ? COLORS.emeraldGreen : isAvailable ? '#F59E0B' : '#9CA3AF' },
+                  ]}
+                />
                 <View style={{ flex: 1 }}>
-                  <Text style={[
-                    styles.statusPillTitle, 
-                    { color: isFullyEligible ? '#137333' : isAvailable ? '#92400E' : theme.text }
-                  ]}>
-                    {isFullyEligible 
-                      ? '🟢 Online — Shift Active' 
-                      : isAvailable 
-                        ? '🟡 Online — No Active Shift' 
-                        : '⚫ Offline'}
+                  <Text
+                    style={[
+                      styles.statusPillTitle,
+                      { color: isFullyEligible ? '#137333' : isAvailable ? '#92400E' : theme.text },
+                    ]}
+                  >
+                    {isFullyEligible
+                      ? '🟢 Online — Shift Active'
+                      : isAvailable
+                      ? '🟡 Online — No Active Shift'
+                      : '⚫ Offline'}
                   </Text>
-                  <Text style={[
-                    styles.statusPillSubtitle, 
-                    { color: isFullyEligible ? '#137333' : isAvailable ? '#B45309' : theme.textMuted }
-                  ]}>
-                    {isFullyEligible 
-                      ? 'Receiving Delivery Requests' 
-                      : isAvailable 
-                        ? 'Not Receiving Orders — Select Shift' 
-                        : 'Tap to go Online'}
+                  <Text
+                    style={[
+                      styles.statusPillSubtitle,
+                      { color: isFullyEligible ? '#137333' : isAvailable ? '#B45309' : theme.textMuted },
+                    ]}
+                  >
+                    {isFullyEligible
+                      ? 'Receiving Delivery Requests'
+                      : isAvailable
+                      ? 'Not Receiving Orders — Select Shift'
+                      : 'Tap to go Online'}
                   </Text>
                 </View>
               </TouchableOpacity>
             </Animated.View>
 
-            {/* WARNING CARD: ONLINE WITHOUT ACTIVE SHIFT */}
+            {/* WARNING CARD */}
             {isAvailable && !hasShift && (
               <View style={[styles.warningShiftCard, { backgroundColor: isDarkMode ? '#2B1D0C' : '#FFFBEB', borderColor: isDarkMode ? '#B45309' : '#F59E0B' }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -1086,7 +1336,7 @@ export default function DashboardScreen() {
                     <Text style={{ fontSize: 14, fontWeight: '700', color: isDarkMode ? '#FDE68A' : '#92400E' }}>You are online but no shift is active.</Text>
                     <Text style={{ fontSize: 12, color: isDarkMode ? '#D97706' : '#B45309', marginTop: 2 }}>Select a shift to begin receiving delivery requests.</Text>
                   </View>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     onPress={() => setShiftModalVisible(true)}
                     style={{ backgroundColor: '#F59E0B', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 }}
                   >
@@ -1135,7 +1385,7 @@ export default function DashboardScreen() {
                     <Text style={styles.actionBtnText}>End Shift</Text>
                   </TouchableOpacity>
                 ) : (
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     onPress={() => {
                       if (rider?.kyc_status !== 'verified') {
                         alert('Complete your KYC verification first.');
@@ -1144,7 +1394,7 @@ export default function DashboardScreen() {
                       } else {
                         setShiftModalVisible(true);
                       }
-                    }} 
+                    }}
                     style={[styles.actionBtn, { backgroundColor: isAvailable ? COLORS.emeraldGreen : '#9CA3AF' }]}
                   >
                     <Text style={styles.actionBtnText}>Select Shift</Text>
@@ -1152,7 +1402,7 @@ export default function DashboardScreen() {
                 )}
               </View>
             </View>
-            
+
             {/* 4. ASSIGNED STORES */}
             <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
               <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 4 }]}>🏪 Assigned Stores</Text>
@@ -1184,7 +1434,7 @@ export default function DashboardScreen() {
                 recentDeliveries.map((delivery) => (
                   <View key={delivery.id} style={[styles.deliveryRow, { borderColor: theme.border }]}>
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.deliveryNumber, { color: theme.text }]}>#{delivery.order_number || delivery.id.substring(0,8)}</Text>
+                      <Text style={[styles.deliveryNumber, { color: theme.text }]}>#{delivery.order_number || delivery.id.substring(0, 8)}</Text>
                       <Text style={[styles.deliveryStore, { color: theme.textMuted }]}>{delivery.vendor?.shop_name || 'Rivo Store Point'}</Text>
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
@@ -1228,40 +1478,32 @@ export default function DashboardScreen() {
             <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: COLORS.danger, borderWidth: 1, borderRadius: 20 }]}>
               <Text style={[styles.sectionTitle, { color: COLORS.danger }]}>🚨 Emergency SOS</Text>
               <Text style={[styles.metricLabel, { color: theme.textMuted, marginTop: 4, marginBottom: 14 }]}>
-                {activeSosReport 
-                  ? 'Emergency request active. Support has been notified.' 
+                {activeSosReport
+                  ? 'Emergency request active. Support has been notified.'
                   : 'Report road barriers or collisions to live emergency support.'}
               </Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 activeOpacity={0.8}
-                onPress={handleSosOpen} 
+                onPress={handleSosOpen}
                 style={[styles.actionBtn, { backgroundColor: activeSosReport ? '#9CA3AF' : COLORS.danger, alignItems: 'center', borderRadius: 12 }]}
               >
                 <Text style={styles.actionBtnText}>{activeSosReport ? 'View Active SOS' : 'Open SOS'}</Text>
               </TouchableOpacity>
             </View>
-
           </Animated.View>
         </ScrollView>
       )}
 
-      {/* 10-MINUTE SHIFT EXTENSION POPUP MODAL */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={showExtensionModal}
-        onRequestClose={() => setShowExtensionModal(false)}
-      >
+      {/* SHIFT EXTENSION POPUP MODAL */}
+      <Modal animationType="fade" transparent={true} visible={showExtensionModal} onRequestClose={() => setShowExtensionModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.cardBg, borderRadius: 24, padding: 24 }]}>
             <Text style={{ fontSize: 40, textAlign: 'center', marginBottom: 8 }}>⏰</Text>
-            
-            <Text style={[styles.modalTitle, { color: theme.text, textAlign: 'center' }]}>
-              Shift Ending Soon!
-            </Text>
-            
+
+            <Text style={[styles.modalTitle, { color: theme.text, textAlign: 'center' }]}>Shift Ending Soon!</Text>
+
             <Text style={[styles.modalSubtitle, { color: theme.textMuted, textAlign: 'center', marginVertical: 12, lineHeight: 20 }]}>
-              Your current shift ends in <Text style={{ fontWeight: '800', color: COLORS.emeraldGreen }}>{formatTimer(shiftTimeRemaining)}</Text>. 
+              Your current shift ends in <Text style={{ fontWeight: '800', color: COLORS.emeraldGreen }}>{formatTimer(shiftTimeRemaining)}</Text>.
               Would you like to extend your shift by 2 hours to keep receiving deliveries?
             </Text>
 
@@ -1271,16 +1513,9 @@ export default function DashboardScreen() {
                 onPress={async () => {
                   await handleContinueShift();
                 }}
-                style={{
-                  backgroundColor: COLORS.emeraldGreen,
-                  paddingVertical: 14,
-                  borderRadius: 14,
-                  alignItems: 'center',
-                }}
+                style={{ backgroundColor: COLORS.emeraldGreen, paddingVertical: 14, borderRadius: 14, alignItems: 'center' }}
               >
-                <Text style={{ color: COLORS.white, fontWeight: '700', fontSize: 16 }}>
-                  Yes, Extend Shift
-                </Text>
+                <Text style={{ color: COLORS.white, fontWeight: '700', fontSize: 16 }}>Yes, Extend Shift</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1289,124 +1524,240 @@ export default function DashboardScreen() {
                   setShowExtensionModal(false);
                   await handleEndShiftEarly();
                 }}
-                style={{
-                  backgroundColor: theme.border,
-                  paddingVertical: 14,
-                  borderRadius: 14,
-                  alignItems: 'center',
-                }}
+                style={{ backgroundColor: theme.border, paddingVertical: 14, borderRadius: 14, alignItems: 'center' }}
               >
-                <Text style={{ color: theme.text, fontWeight: '600', fontSize: 15 }}>
-                  No, End Shift Now
-                </Text>
+                <Text style={{ color: theme.text, fontWeight: '600', fontSize: 15 }}>No, End Shift Now</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* SHIFT SELECT MODAL */}
+      {/* SCHEDULE-BASED SHIFT SELECT MODAL */}
       <Modal animationType="slide" transparent={true} visible={shiftModalVisible} onRequestClose={() => setShiftModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={{ flex: 1 }} onPress={() => setShiftModalVisible(false)} />
           <View style={[styles.modalContent, { backgroundColor: theme.cardBg }]}>
             <View style={[styles.modalIndicator, { backgroundColor: theme.border }]} />
-            <Text style={[styles.modalTitle, { color: theme.text }]}>Choose Your Shift</Text>
-            <Text style={[styles.modalSubtitle, { color: theme.textMuted }]}>Select a shift time below to start taking deliveries.</Text>
-            
-            <View style={{ gap: 10, marginVertical: 10 }}>
-              {AVAILABLE_SHIFTS.map((shift) => (
-                <TouchableOpacity 
-                  key={shift.id} 
-                  onPress={() => handleSelectShift(shift)} 
-                  style={[styles.shiftSelectorCard, { backgroundColor: theme.bg, borderColor: theme.border, borderRadius: 16 }]}
-                >
-                  <Text style={[styles.shiftSelectorText, { color: theme.text }]}>{shift.name}</Text>
-                </TouchableOpacity>
-              ))}
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Shift Schedule</Text>
+            <Text style={[styles.modalSubtitle, { color: theme.textMuted }]}>Select an available shift below based on current time.</Text>
+
+            <View style={{ gap: 12, marginVertical: 10 }}>
+              {SHIFT_SCHEDULE.map((shift) => {
+                const status = getShiftStatus(shift);
+                const isAvailableSlot = status === 'Available Now';
+
+                let badgeBg = '#E5E7EB';
+                let badgeText = '#6B7280';
+
+                if (status === 'Available Now') {
+                  badgeBg = '#D1FAE5';
+                  badgeText = '#065F46';
+                } else if (status === 'Upcoming') {
+                  badgeBg = '#FEF3C7';
+                  badgeText = '#92400E';
+                } else if (status === 'Completed') {
+                  badgeBg = isDarkMode ? '#374151' : '#E5E7EB';
+                  badgeText = isDarkMode ? '#9CA3AF' : '#6B7280';
+                }
+
+                return (
+                  <TouchableOpacity
+                    key={shift.id}
+                    disabled={!isAvailableSlot}
+                    onPress={() => handleSelectShift(shift)}
+                    style={[
+                      styles.shiftSelectorCard,
+                      {
+                        backgroundColor: theme.bg,
+                        borderColor: isAvailableSlot ? COLORS.emeraldGreen : theme.border,
+                        borderRadius: 16,
+                        opacity: isAvailableSlot ? 1 : 0.5,
+                      },
+                    ]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.shiftSelectorText, { color: theme.text }]}>{shift.name}</Text>
+                      <Text style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>{shift.timeLabel}</Text>
+                    </View>
+                    <View style={[styles.shiftBadge, { backgroundColor: badgeBg }]}>
+                      <Text style={[styles.shiftBadgeText, { color: badgeText }]}>{status}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* MODERN SOS BOTTOM SHEET MODAL */}
+      {/* MULTI-VIEW INTERNAL EMERGENCY SOS MODAL */}
       <Modal animationType="slide" transparent={true} visible={sosModalVisible} onRequestClose={() => resetSosModalState()}>
         <View style={styles.modalOverlay}>
-          {/* Tap outside to dismiss */}
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => resetSosModalState()} />
           <View style={[styles.modalContent, { backgroundColor: theme.cardBg }]}>
             <View style={[styles.modalIndicator, { backgroundColor: theme.border }]} />
-            
-            {activeSosReport ? (
-              /* ACTIVE UNRESOLVED SOS INFORMATION VIEW */
-              <View style={{ paddingVertical: 16 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                  <Text style={{ fontSize: 28 }}>🚨</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.modalTitle, { color: COLORS.danger }]}>Emergency Request Active</Text>
-                    <Text style={[styles.modalSubtitle, { color: theme.textMuted, marginTop: 2, marginBottom: 0 }]}>
-                      Support has already been notified and is reviewing your report.
-                    </Text>
-                  </View>
-                </View>
 
-                <View style={[styles.summaryCard, { backgroundColor: theme.bg, borderColor: theme.border, marginVertical: 12 }]}>
-                  <View style={styles.sosMetaRow}>
-                    <Text style={[styles.sosMetaLabel, { color: theme.textMuted }]}>Issue Type</Text>
-                    <Text style={[styles.sosMetaValue, { color: theme.text }]}>{activeSosReport.issue_type}</Text>
-                  </View>
-                  <View style={styles.sosMetaRow}>
-                    <Text style={[styles.sosMetaLabel, { color: theme.textMuted }]}>Submitted At</Text>
-                    <Text style={[styles.sosMetaValue, { color: theme.text }]}>
-                      {new Date(activeSosReport.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </Text>
-                  </View>
-                  <View style={styles.sosMetaRow}>
-                    <Text style={[styles.sosMetaLabel, { color: theme.textMuted }]}>Status</Text>
-                    <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
-                      <Text style={{ color: '#D97706', fontSize: 11, fontWeight: '800', textTransform: 'uppercase' }}>
-                        {activeSosReport.status || 'Pending'}
+            {/* HEADER NAVIGATION BUTTONS INSIDE SOS MODAL */}
+            <View style={styles.modalHeaderRow}>
+              {sosModalView === 'HISTORY_DETAIL' ? (
+                <TouchableOpacity
+                  style={styles.modalBackBtn}
+                  onPress={() => {
+                    setSelectedHistoryReport(null);
+                    setSignedPhotoUrl(null);
+                    setSosModalView('HISTORY_LIST');
+                  }}
+                >
+                  <Ionicons name="arrow-back" size={18} color={theme.text} />
+                  <Text style={[styles.modalBackBtnText, { color: theme.text }]}>Back</Text>
+                </TouchableOpacity>
+              ) : sosModalView === 'HISTORY_LIST' ? (
+                <TouchableOpacity
+                  style={styles.modalBackBtn}
+                  onPress={() => {
+                    if (activeSosReport) {
+                      setSosModalView('ACTIVE_SOS');
+                    } else {
+                      setSosModalView('SELECT_INCIDENT');
+                    }
+                  }}
+                >
+                  <Ionicons name="arrow-back" size={18} color={theme.text} />
+                  <Text style={[styles.modalBackBtnText, { color: theme.text }]}>Back</Text>
+                </TouchableOpacity>
+              ) : sosModalView === 'INCIDENT_FORM' ? (
+                <TouchableOpacity
+                  style={styles.modalBackBtn}
+                  onPress={() => {
+                    setSelectedSosOption(null);
+                    setSosModalView('SELECT_INCIDENT');
+                  }}
+                >
+                  <Ionicons name="arrow-back" size={18} color={theme.text} />
+                  <Text style={[styles.modalBackBtnText, { color: theme.text }]}>Back</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={{ flex: 1 }} />
+              )}
+
+              <TouchableOpacity onPress={() => resetSosModalState()} style={styles.closeIconButton}>
+                <Ionicons name="close" size={20} color={theme.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* VIEW 1: ACTIVE SOS VIEW */}
+            {sosModalView === 'ACTIVE_SOS' && activeSosReport && (
+              <ScrollView style={{ maxHeight: height * 0.7 }} showsVerticalScrollIndicator={false}>
+                <View style={{ paddingVertical: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                    <Text style={{ fontSize: 28 }}>🚨</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.modalTitle, { color: COLORS.danger }]}>Emergency Request Active</Text>
+                      <Text style={[styles.modalSubtitle, { color: theme.textMuted, marginTop: 2, marginBottom: 0 }]}>
+                        Support has been notified and is reviewing your report.
                       </Text>
                     </View>
                   </View>
-                </View>
 
-                <Text style={{ fontSize: 12, color: theme.textMuted, textAlign: 'center', marginVertical: 8 }}>
-                  Please remain in a safe location until dispatch contacts you or resolves the issue.
-                </Text>
-              </View>
-            ) : sosSuccess ? (
-              /* SUCCESS SCREEN */
-              <View style={{ paddingVertical: 24, alignItems: 'center' }}>
-                <Text style={{ fontSize: 52, marginBottom: 10 }}>✅</Text>
-                <Text style={[styles.modalTitle, { color: theme.text, textAlign: 'center' }]}>SOS Sent</Text>
-                <Text style={[styles.modalSubtitle, { color: theme.textMuted, textAlign: 'center', marginTop: 8, lineHeight: 20 }]}>
-                  Your location and evidence have been shared.{'\n'}Support has been notified.{'\n'}Remain in a safe location if possible.
-                </Text>
-              </View>
-            ) : uploadingSos ? (
-              /* UPLOAD / SUBMITTING STATE */
-              <View style={{ paddingVertical: 36, alignItems: 'center' }}>
-                <ActivityIndicator size="large" color={COLORS.danger} style={{ marginBottom: 16 }} />
-                <Text style={[styles.modalTitle, { color: theme.text, fontSize: 18 }]}>Sending Emergency Alert...</Text>
-                <View style={{ marginTop: 10, gap: 4, alignItems: 'center' }}>
-                  <Text style={{ fontSize: 13, color: theme.textMuted }}>Uploading photo proof...</Text>
-                  <Text style={{ fontSize: 13, color: theme.textMuted }}>Sharing live GPS coordinates...</Text>
-                  <Text style={{ fontSize: 13, color: theme.textMuted }}>Notifying support dispatch...</Text>
-                  <Text style={{ fontSize: 12, color: COLORS.danger, fontWeight: '700', marginTop: 6 }}>Please wait...</Text>
+                  <View style={[styles.summaryCard, { backgroundColor: theme.bg, borderColor: theme.border, marginVertical: 12 }]}>
+                    <View style={styles.sosMetaRow}>
+                      <Text style={[styles.sosMetaLabel, { color: theme.textMuted }]}>Issue Type</Text>
+                      <Text style={[styles.sosMetaValue, { color: theme.text }]}>{activeSosReport.issue_type}</Text>
+                    </View>
+                    <View style={styles.sosMetaRow}>
+                      <Text style={[styles.sosMetaLabel, { color: theme.textMuted }]}>Submitted At</Text>
+                      <Text style={[styles.sosMetaValue, { color: theme.text }]}>
+                        {new Date(activeSosReport.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    </View>
+                    <View style={styles.sosMetaRow}>
+                      <Text style={[styles.sosMetaLabel, { color: theme.textMuted }]}>Status</Text>
+                      {(() => {
+                        const b = getStatusBadgeStyle(activeSosReport.status);
+                        return (
+                          <View style={{ backgroundColor: b.bg, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                            <Text style={{ color: b.text, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' }}>
+                              {b.label}
+                            </Text>
+                          </View>
+                        );
+                      })()}
+                    </View>
+                  </View>
+
+                  <Text style={{ fontSize: 12, color: theme.textMuted, textAlign: 'center', marginVertical: 8 }}>
+                    Please remain in a safe location until dispatch contacts you or resolves the issue.
+                  </Text>
+
+                  {/* DIRECT EMERGENCY HELPLINE CALL SECTION */}
+                  <View style={[styles.helplineSection, { backgroundColor: theme.bg, borderColor: theme.border, marginVertical: 12 }]}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: theme.text, marginBottom: 8 }}>📞 Direct Emergency Helplines</Text>
+                    <View style={{ gap: 8 }}>
+                      {EMERGENCY_HELPLINES.map((h) => (
+                        <TouchableOpacity
+                          key={h.number}
+                          activeOpacity={0.8}
+                          onPress={() => makeEmergencyCall(h.number)}
+                          style={[styles.helplineCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}
+                        >
+                          <Text style={{ fontSize: 20, marginRight: 10 }}>{h.icon}</Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: theme.text }}>{h.label}</Text>
+                            <Text style={{ fontSize: 11, color: theme.textMuted }}>{h.subtitle}</Text>
+                          </View>
+                          <View style={styles.callPill}>
+                            <Ionicons name="call" size={12} color={COLORS.white} style={{ marginRight: 4 }} />
+                            <Text style={styles.callPillText}>{h.number}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  {/* BOTTOM PAST REQUESTS LINK */}
+                  <View style={[styles.pastRequestsBanner, { backgroundColor: theme.bg, borderColor: theme.border, marginTop: 8 }]}>
+                    <Text style={{ fontSize: 18, marginBottom: 4 }}>📜 Past Requests</Text>
+                    <Text style={{ fontSize: 12, color: theme.textMuted, marginBottom: 12, lineHeight: 16 }}>
+                      View your previous emergency requests, track their status and read admin updates.
+                    </Text>
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={async () => {
+                        setSosModalView('HISTORY_LIST');
+                        if (rider?.id) fetchSosHistory(rider.id);
+                      }}
+                      style={[styles.historyActionBtn, { backgroundColor: COLORS.emeraldGreen }]}
+                    >
+                      <Text style={{ color: COLORS.white, fontWeight: '700', fontSize: 13 }}>View History</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            ) : selectedSosOption === null ? (
-              /* INCIDENT SELECTION CARDS VIEW */
-              <View style={{ paddingBottom: 10 }}>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>Emergency Assistance</Text>
-                <Text style={[styles.modalSubtitle, { color: theme.textMuted }]}>Select the incident template that matches your emergency.</Text>
-                <ScrollView style={{ maxHeight: height * 0.5 }} showsVerticalScrollIndicator={false}>
+              </ScrollView>
+            )}
+
+            {/* VIEW 2: INCIDENT SELECTION CARDS VIEW */}
+            {sosModalView === 'SELECT_INCIDENT' && (
+              <ScrollView style={{ maxHeight: height * 0.7 }} showsVerticalScrollIndicator={false}>
+                <View style={{ paddingBottom: 10 }}>
+                  <Text style={[styles.modalTitle, { color: theme.text }]}>Emergency Assistance</Text>
+                  <Text style={[styles.modalSubtitle, { color: theme.textMuted }]}>Select the incident template that matches your emergency.</Text>
+
+                  {!currentGps && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                      <ActivityIndicator size="small" color={COLORS.emeraldGreen} />
+                      <Text style={{ fontSize: 12, color: theme.textMuted }}>Acquiring GPS location in background...</Text>
+                    </View>
+                  )}
+
                   <View style={styles.sosCardsContainer}>
                     {INCIDENT_TYPES.map((item) => (
-                      <TouchableOpacity 
-                        key={item.type} 
-                        onPress={() => setSelectedSosOption(item)}
+                      <TouchableOpacity
+                        key={item.type}
+                        onPress={() => {
+                          setSelectedSosOption(item);
+                          setSosModalView('INCIDENT_FORM');
+                        }}
                         style={[styles.incidentCardItem, { backgroundColor: theme.bg, borderColor: theme.border }]}
                       >
                         <Text style={{ fontSize: 26, marginRight: 12 }}>{item.icon}</Text>
@@ -1418,90 +1769,585 @@ export default function DashboardScreen() {
                       </TouchableOpacity>
                     ))}
                   </View>
-                </ScrollView>
-              </View>
-            ) : (
-              /* INCIDENT SUMMARY SCREEN */
-              <View style={{ paddingVertical: 6 }}>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>Incident Summary</Text>
-                <Text style={[styles.modalSubtitle, { color: theme.textMuted }]}>Attach mandatory evidence photo and submit.</Text>
 
-                <View style={[styles.summaryCard, { backgroundColor: theme.bg, borderColor: theme.border }]}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text }}>
-                    {selectedSosOption.icon} {selectedSosOption.title}
-                  </Text>
-                  
-                  {/* Evidence Checklist */}
-                  <View style={{ marginTop: 10, gap: 6 }}>
-                    <Text style={{ fontSize: 12, color: currentGps ? COLORS.emeraldGreen : COLORS.danger, fontWeight: '600' }}>
-                      {currentGps 
-                        ? `📍 GPS Captured (${currentGps.latitude.toFixed(4)}, ${currentGps.longitude.toFixed(4)})` 
-                        : '❌ GPS Location Required'}
+                  {/* DIRECT EMERGENCY HELPLINES CALL QUICK ACTIONS */}
+                  <View style={[styles.helplineSection, { backgroundColor: theme.bg, borderColor: theme.border, marginTop: 16 }]}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: theme.text, marginBottom: 8 }}>📞 Quick Call Emergency Helplines</Text>
+                    <View style={{ gap: 8 }}>
+                      {EMERGENCY_HELPLINES.map((h) => (
+                        <TouchableOpacity
+                          key={h.number}
+                          activeOpacity={0.8}
+                          onPress={() => makeEmergencyCall(h.number)}
+                          style={[styles.helplineCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}
+                        >
+                          <Text style={{ fontSize: 20, marginRight: 10 }}>{h.icon}</Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: theme.text }}>{h.label}</Text>
+                            <Text style={{ fontSize: 11, color: theme.textMuted }}>{h.subtitle}</Text>
+                          </View>
+                          <View style={styles.callPill}>
+                            <Ionicons name="call" size={12} color={COLORS.white} style={{ marginRight: 4 }} />
+                            <Text style={styles.callPillText}>{h.number}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  {/* BOTTOM PAST REQUESTS SECTION */}
+                  <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 16 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text, marginBottom: 4 }}>📜 Past Requests</Text>
+                    <Text style={{ fontSize: 12, color: theme.textMuted, marginBottom: 12, lineHeight: 16 }}>
+                      View your previous emergency requests, track their status and read admin updates.
                     </Text>
-                    <Text style={{ fontSize: 12, color: attachedPhotoUri ? COLORS.emeraldGreen : COLORS.danger, fontWeight: '600' }}>
-                      {attachedPhotoUri ? '📷 Proof Photo Attached' : '⚠️ Proof Photo Required (*)'}
-                    </Text>
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={async () => {
+                        setSosModalView('HISTORY_LIST');
+                        if (rider?.id) fetchSosHistory(rider.id);
+                      }}
+                      style={[styles.historyActionBtn, { backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border }]}
+                    >
+                      <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>View History</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
+              </ScrollView>
+            )}
 
-                {/* Proof Photo Attachment Button */}
-                <TouchableOpacity 
-                  onPress={pickImageAttachment} 
-                  style={[
-                    styles.photoPickerBtn, 
-                    { 
-                      backgroundColor: theme.bg, 
-                      borderColor: attachedPhotoUri ? COLORS.emeraldGreen : COLORS.danger, 
-                      borderRadius: 14, 
-                      marginVertical: 12 
-                    }
-                  ]}
-                >
-                  <Text style={{ fontWeight: '700', color: attachedPhotoUri ? COLORS.emeraldGreen : theme.text }}>
-                    {attachedPhotoUri ? '✅ Evidence Photo Attached (Tap to retake)' : '📷 Launch Camera to Capture Proof (*)'}
+            {/* VIEW 3: INCIDENT FORM VIEW */}
+            {sosModalView === 'INCIDENT_FORM' && selectedSosOption && (
+              <ScrollView style={{ maxHeight: height * 0.7 }} showsVerticalScrollIndicator={false}>
+                {sosSuccess ? (
+                  <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 52, marginBottom: 10 }}>✅</Text>
+                    <Text style={[styles.modalTitle, { color: theme.text, textAlign: 'center' }]}>SOS Sent</Text>
+                    <Text style={[styles.modalSubtitle, { color: theme.textMuted, textAlign: 'center', marginTop: 8, lineHeight: 20 }]}>
+                      Your location and evidence have been shared.{'\n'}Support has been notified.{'\n'}Remain in a safe location if possible.
+                    </Text>
+                  </View>
+                ) : uploadingSos ? (
+                  <View style={{ paddingVertical: 36, alignItems: 'center' }}>
+                    <ActivityIndicator size="large" color={COLORS.danger} style={{ marginBottom: 16 }} />
+                    <Text style={[styles.modalTitle, { color: theme.text, fontSize: 18 }]}>Sending Emergency Alert...</Text>
+                    <View style={{ marginTop: 10, gap: 4, alignItems: 'center' }}>
+                      <Text style={{ fontSize: 13, color: theme.textMuted }}>Uploading photo proof...</Text>
+                      <Text style={{ fontSize: 13, color: theme.textMuted }}>Sharing live GPS coordinates...</Text>
+                      <Text style={{ fontSize: 13, color: theme.textMuted }}>Notifying support dispatch...</Text>
+                      <Text style={{ fontSize: 12, color: COLORS.danger, fontWeight: '700', marginTop: 6 }}>Please wait...</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={{ paddingVertical: 6 }}>
+                    <Text style={[styles.modalTitle, { color: theme.text }]}>
+                      {selectedSosOption.icon} {selectedSosOption.title}
+                    </Text>
+                    <Text style={[styles.modalSubtitle, { color: theme.textMuted }]}>Provide details regarding this incident.</Text>
+
+                    {/* ACCIDENT */}
+                    {selectedSosOption.type === 'Accident' && (
+                      <View style={{ marginBottom: 16 }}>
+                        <Text style={[styles.inputLabel, { color: theme.text }]}>Who had the accident? (*)</Text>
+                        <View style={{ gap: 8, marginTop: 8 }}>
+                          {(['I had an accident', 'Someone else had an accident'] as const).map((opt) => (
+                            <TouchableOpacity
+                              key={opt}
+                              onPress={() => setAccidentTarget(opt)}
+                              style={[
+                                styles.optionSelectorBtn,
+                                {
+                                  backgroundColor: theme.bg,
+                                  borderColor: accidentTarget === opt ? COLORS.emeraldGreen : theme.border,
+                                },
+                              ]}
+                            >
+                              <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }}>
+                                {accidentTarget === opt ? '🔘 ' : '⚪ '} {opt}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+
+                        {accidentTarget === 'Someone else had an accident' && (
+                          <View style={{ marginTop: 14 }}>
+                            <Text style={[styles.inputLabel, { color: theme.text }]}>Describe what happened (*)</Text>
+                            <TextInput
+                              style={[
+                                styles.formTextInput,
+                                { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text, marginTop: 6 },
+                              ]}
+                              placeholder="Provide details about the incident..."
+                              placeholderTextColor={theme.textMuted}
+                              value={customInputText}
+                              onChangeText={setCustomInputText}
+                              multiline
+                            />
+                          </View>
+                        )}
+                      </View>
+                    )}
+
+                    {/* ROAD BLOCK */}
+                    {selectedSosOption.type === 'Road Block' && (
+                      <View style={{ marginBottom: 16 }}>
+                        <Text style={{ fontSize: 13, color: theme.textMuted }}>
+                          Automatic GPS capturing enabled. Proof photo is mandatory.
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* OUT OF FUEL */}
+                    {selectedSosOption.type === 'Out of Fuel' && (
+                      <View style={{ marginBottom: 16 }}>
+                        <Text style={[styles.inputLabel, { color: theme.text }]}>Fuel Type (*)</Text>
+                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                          {FUEL_TYPES.map((type) => (
+                            <TouchableOpacity
+                              key={type}
+                              onPress={() => setFuelType(type)}
+                              style={[
+                                styles.chipBtn,
+                                {
+                                  backgroundColor: fuelType === type ? COLORS.emeraldGreen : theme.bg,
+                                  borderColor: fuelType === type ? COLORS.emeraldGreen : theme.border,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={{
+                                  color: fuelType === type ? COLORS.white : theme.text,
+                                  fontWeight: '700',
+                                  fontSize: 12,
+                                }}
+                              >
+                                {type}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+
+                        <Text style={[styles.inputLabel, { color: theme.text, marginTop: 14 }]}>Optional Notes</Text>
+                        <TextInput
+                          style={[
+                            styles.formTextInput,
+                            { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text, marginTop: 6 },
+                          ]}
+                          placeholder="Additional details (e.g., nearest landmark)..."
+                          placeholderTextColor={theme.textMuted}
+                          value={customInputText}
+                          onChangeText={setCustomInputText}
+                          multiline
+                        />
+                      </View>
+                    )}
+
+                    {/* VEHICLE BREAKDOWN */}
+                    {selectedSosOption.type === 'Vehicle Breakdown' && (
+                      <View style={{ marginBottom: 16 }}>
+                        <Text style={[styles.inputLabel, { color: theme.text }]}>Breakdown Issue (*)</Text>
+                        <View style={{ gap: 8, marginTop: 8 }}>
+                          {BREAKDOWN_TYPES.map((item) => (
+                            <TouchableOpacity
+                              key={item}
+                              onPress={() => setBreakdownType(item)}
+                              style={[
+                                styles.optionSelectorBtn,
+                                {
+                                  backgroundColor: theme.bg,
+                                  borderColor: breakdownType === item ? COLORS.emeraldGreen : theme.border,
+                                },
+                              ]}
+                            >
+                              <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }}>
+                                {breakdownType === item ? '🔘 ' : '⚪ '} {item}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+
+                        {breakdownType === 'Other' && (
+                          <View style={{ marginTop: 14 }}>
+                            <Text style={[styles.inputLabel, { color: theme.text }]}>Describe the problem (*)</Text>
+                            <TextInput
+                              style={[
+                                styles.formTextInput,
+                                { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text, marginTop: 6 },
+                              ]}
+                              placeholder="Specify mechanical breakdown details..."
+                              placeholderTextColor={theme.textMuted}
+                              value={customInputText}
+                              onChangeText={setCustomInputText}
+                              multiline
+                            />
+                          </View>
+                        )}
+                      </View>
+                    )}
+
+                    {/* NEED ASSISTANCE */}
+                    {selectedSosOption.type === 'Need Assistance' && (
+                      <View style={{ marginBottom: 16 }}>
+                        <Text style={[styles.inputLabel, { color: theme.text }]}>Assistance Type (*)</Text>
+                        <View style={{ gap: 8, marginTop: 8 }}>
+                          {ASSISTANCE_TYPES.map((item) => (
+                            <TouchableOpacity
+                              key={item}
+                              onPress={() => setAssistanceType(item)}
+                              style={[
+                                styles.optionSelectorBtn,
+                                {
+                                  backgroundColor: theme.bg,
+                                  borderColor: assistanceType === item ? COLORS.emeraldGreen : theme.border,
+                                },
+                              ]}
+                            >
+                              <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }}>
+                                {assistanceType === item ? '🔘 ' : '⚪ '} {item}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+
+                        {assistanceType === 'Other' && (
+                          <View style={{ marginTop: 14 }}>
+                            <Text style={[styles.inputLabel, { color: theme.text }]}>Describe assistance required (*)</Text>
+                            <TextInput
+                              style={[
+                                styles.formTextInput,
+                                { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text, marginTop: 6 },
+                              ]}
+                              placeholder="Detail what assistance you need..."
+                              placeholderTextColor={theme.textMuted}
+                              value={customInputText}
+                              onChangeText={setCustomInputText}
+                              multiline
+                            />
+                          </View>
+                        )}
+                      </View>
+                    )}
+
+                    {/* OTHER ISSUE */}
+                    {selectedSosOption.type === 'Other' && (
+                      <View style={{ marginBottom: 16 }}>
+                        <Text style={[styles.inputLabel, { color: theme.text }]}>Describe emergency issue (*)</Text>
+                        <TextInput
+                          style={[
+                            styles.formTextInput,
+                            { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text, marginTop: 6 },
+                          ]}
+                          placeholder="Detail the emergency situation..."
+                          placeholderTextColor={theme.textMuted}
+                          value={customInputText}
+                          onChangeText={setCustomInputText}
+                          multiline
+                        />
+                      </View>
+                    )}
+
+                    <View style={[styles.summaryCard, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+                      <View style={{ gap: 6 }}>
+                        <Text style={{ fontSize: 12, color: currentGps ? COLORS.emeraldGreen : COLORS.danger, fontWeight: '600' }}>
+                          {currentGps
+                            ? `📍 GPS Captured (${currentGps.latitude.toFixed(4)}, ${currentGps.longitude.toFixed(4)})`
+                            : '⏳ Fetching GPS location...'}
+                        </Text>
+
+                        {selectedSosOption.type === 'Accident' || selectedSosOption.type === 'Road Block' ? (
+                          <Text style={{ fontSize: 12, color: attachedPhotoUri ? COLORS.emeraldGreen : COLORS.danger, fontWeight: '600' }}>
+                            {attachedPhotoUri ? '📷 Proof Photo Attached' : '⚠️ Proof Photo Required (*)'}
+                          </Text>
+                        ) : (
+                          <Text style={{ fontSize: 12, color: attachedPhotoUri ? COLORS.emeraldGreen : theme.textMuted, fontWeight: '600' }}>
+                            {attachedPhotoUri ? '📷 Proof Photo Attached' : '📷 Proof Photo Optional'}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={pickImageAttachment}
+                      style={[
+                        styles.photoPickerBtn,
+                        {
+                          backgroundColor: theme.bg,
+                          borderColor:
+                            selectedSosOption.type === 'Accident' || selectedSosOption.type === 'Road Block'
+                              ? attachedPhotoUri
+                                ? COLORS.emeraldGreen
+                                : COLORS.danger
+                              : attachedPhotoUri
+                              ? COLORS.emeraldGreen
+                              : theme.border,
+                          borderRadius: 14,
+                          marginVertical: 12,
+                        },
+                      ]}
+                    >
+                      <Text style={{ fontWeight: '700', color: attachedPhotoUri ? COLORS.emeraldGreen : theme.text, fontSize: 13 }}>
+                        {attachedPhotoUri ? '✅ Photo Attached (Tap to retake)' : '📷 Capture Evidence Photo'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setSelectedSosOption(null);
+                          setSosModalView('SELECT_INCIDENT');
+                        }}
+                        style={[styles.closeModalBtn, { flex: 1, marginTop: 0, backgroundColor: theme.border, borderRadius: 14 }]}
+                      >
+                        <Text style={{ fontWeight: '700', color: theme.text }}>Cancel</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        disabled={!isSosFormValid()}
+                        onPress={submitSosReport}
+                        style={[
+                          styles.actionBtn,
+                          {
+                            flex: 1.5,
+                            backgroundColor: isSosFormValid() ? COLORS.danger : '#9CA3AF',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            borderRadius: 14,
+                          },
+                        ]}
+                      >
+                        <Text style={styles.actionBtnText}>Submit SOS Alert</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+              </ScrollView>
+            )}
+
+            {/* VIEW 4: PAST REQUESTS HISTORY LIST */}
+            {sosModalView === 'HISTORY_LIST' && (
+              <ScrollView style={{ maxHeight: height * 0.7 }} showsVerticalScrollIndicator={false}>
+                <View style={{ paddingBottom: 10 }}>
+                  <Text style={[styles.modalTitle, { color: theme.text }]}>📜 Past Emergency Requests</Text>
+                  <Text style={[styles.modalSubtitle, { color: theme.textMuted }]}>
+                    Track your reported incidents, status changes, and admin updates.
                   </Text>
-                </TouchableOpacity>
 
-                {/* Incident Description TextInput */}
-                <TextInput 
-                  style={[
-                    styles.formTextInput, 
-                    { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text, borderRadius: 14, marginBottom: 16 }
-                  ]} 
-                  placeholder="Describe emergency details..."
-                  placeholderTextColor={theme.textMuted}
-                  value={customInputText}
-                  onChangeText={setCustomInputText}
-                  multiline
-                />
+                  {loadingHistory ? (
+                    <View style={{ paddingVertical: 30, alignItems: 'center' }}>
+                      <ActivityIndicator size="large" color={COLORS.emeraldGreen} />
+                      <Text style={{ fontSize: 13, color: theme.textMuted, marginTop: 10 }}>Loading request logs...</Text>
+                    </View>
+                  ) : historyError ? (
+                    <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+                      <Text style={{ fontSize: 13, color: COLORS.danger, textAlign: 'center' }}>{historyError}</Text>
+                      <TouchableOpacity
+                        onPress={() => rider?.id && fetchSosHistory(rider.id)}
+                        style={{ marginTop: 10, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: theme.bg, borderRadius: 8, borderWidth: 1, borderColor: theme.border }}
+                      >
+                        <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>Retry</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : sosHistoryList.length === 0 ? (
+                    <View style={styles.emptyHistoryContainer}>
+                      <Text style={{ fontSize: 40, marginBottom: 8 }}>🛡️</Text>
+                      <Text style={[styles.emptyStateTitle, { color: theme.text }]}>No emergency requests yet.</Text>
+                      <Text style={[styles.emptyStateDesc, { color: theme.textMuted }]}>
+                        When you submit an SOS alert, it will be saved here for tracking.
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={{ gap: 10, marginTop: 6 }}>
+                      {sosHistoryList.map((item) => {
+                        const icon = getIncidentIcon(item.issue_type);
+                        const badge = getStatusBadgeStyle(item.status);
+                        const createdDate = new Date(item.created_at);
 
-                <View style={{ flexDirection: 'row', gap: 12 }}>
-                  <TouchableOpacity 
-                    onPress={() => setSelectedSosOption(null)} 
-                    style={[styles.closeModalBtn, { flex: 1, marginTop: 0, backgroundColor: theme.border, borderRadius: 14 }]}
-                  >
-                    <Text style={{ fontWeight: '700', color: theme.text }}>Back</Text>
-                  </TouchableOpacity>
-
-                  {/* Submit SOS Button (Disabled until BOTH Photo & GPS are ready) */}
-                  <TouchableOpacity 
-                    disabled={!attachedPhotoUri || !currentGps}
-                    onPress={submitSosReport} 
-                    style={[
-                      styles.actionBtn, 
-                      { 
-                        flex: 1.5, 
-                        backgroundColor: (attachedPhotoUri && currentGps) ? COLORS.danger : '#9CA3AF', 
-                        justifyContent: 'center', 
-                        alignItems: 'center', 
-                        borderRadius: 14 
-                      }
-                    ]}
-                  >
-                    <Text style={styles.actionBtnText}>Submit SOS Alert</Text>
-                  </TouchableOpacity>
+                        return (
+                          <TouchableOpacity
+                            key={item.id}
+                            activeOpacity={0.8}
+                            onPress={() => {
+                              setSelectedHistoryReport(item);
+                              resolveSignedPhotoUrl(item.photo_url);
+                              setSosModalView('HISTORY_DETAIL');
+                            }}
+                            style={[styles.historyCardItem, { backgroundColor: theme.bg, borderColor: theme.border }]}
+                          >
+                            <Text style={{ fontSize: 24, marginRight: 12 }}>{icon}</Text>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.historyCardTitle, { color: theme.text }]}>{item.issue_type}</Text>
+                              <Text style={[styles.historyCardTime, { color: theme.textMuted }]}>
+                                {createdDate.toLocaleDateString()} at {createdDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </Text>
+                            </View>
+                            <View style={[styles.historyStatusBadge, { backgroundColor: badge.bg }]}>
+                              <Text style={[styles.historyStatusText, { color: badge.text }]}>{badge.label}</Text>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
                 </View>
-              </View>
+              </ScrollView>
+            )}
+
+            {/* VIEW 5: REQUEST DETAIL VIEW */}
+            {sosModalView === 'HISTORY_DETAIL' && selectedHistoryReport && (
+              <ScrollView style={{ maxHeight: height * 0.7 }} showsVerticalScrollIndicator={false}>
+                <View style={{ paddingBottom: 16 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                      <Text style={{ fontSize: 28 }}>{getIncidentIcon(selectedHistoryReport.issue_type)}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.modalTitle, { color: theme.text, fontSize: 18 }]}>{selectedHistoryReport.issue_type}</Text>
+                        <Text style={{ fontSize: 11, color: theme.textMuted }}>
+                          Submitted: {new Date(selectedHistoryReport.created_at).toLocaleString()}
+                        </Text>
+                      </View>
+                    </View>
+                    {(() => {
+                      const badge = getStatusBadgeStyle(selectedHistoryReport.status);
+                      return (
+                        <View style={[styles.historyStatusBadge, { backgroundColor: badge.bg, paddingHorizontal: 10, paddingVertical: 4 }]}>
+                          <Text style={[styles.historyStatusText, { color: badge.text }]}>{badge.label}</Text>
+                        </View>
+                      );
+                    })()}
+                  </View>
+
+                  {/* STATUS TIMELINE */}
+                  <View style={[styles.timelineCard, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: theme.text, marginBottom: 12 }}>Status Timeline</Text>
+                    <View style={styles.timelineRow}>
+                      {/* Step 1: Submitted */}
+                      <View style={styles.timelineStep}>
+                        <View style={[styles.timelineDot, { backgroundColor: COLORS.emeraldGreen }]} />
+                        <Text style={[styles.timelineLabel, { color: theme.text }]}>Submitted</Text>
+                        <Text style={[styles.timelineTime, { color: theme.textMuted }]}>
+                          {new Date(selectedHistoryReport.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                      </View>
+
+                      {/* Step 2: Acknowledged */}
+                      {selectedHistoryReport.acknowledged_at && (
+                        <>
+                          <View style={[styles.timelineConnector, { backgroundColor: COLORS.emeraldGreen }]} />
+                          <View style={styles.timelineStep}>
+                            <View style={[styles.timelineDot, { backgroundColor: COLORS.emeraldGreen }]} />
+                            <Text style={[styles.timelineLabel, { color: theme.text }]}>Acknowledged</Text>
+                            <Text style={[styles.timelineTime, { color: theme.textMuted }]}>
+                              {new Date(selectedHistoryReport.acknowledged_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </Text>
+                          </View>
+                        </>
+                      )}
+
+                      {/* Step 3: Resolved */}
+                      {selectedHistoryReport.resolved_at && (
+                        <>
+                          <View style={[styles.timelineConnector, { backgroundColor: COLORS.emeraldGreen }]} />
+                          <View style={styles.timelineStep}>
+                            <View style={[styles.timelineDot, { backgroundColor: COLORS.emeraldGreen }]} />
+                            <Text style={[styles.timelineLabel, { color: theme.text }]}>Resolved</Text>
+                            <Text style={[styles.timelineTime, { color: theme.textMuted }]}>
+                              {new Date(selectedHistoryReport.resolved_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </Text>
+                          </View>
+                        </>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* DETAILS CARD */}
+                  <View style={[styles.detailCard, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+                    {selectedHistoryReport.vendor_name && (
+                      <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>Vendor</Text>
+                        <Text style={[styles.detailValue, { color: theme.text }]}>{selectedHistoryReport.vendor_name}</Text>
+                      </View>
+                    )}
+
+                    {selectedHistoryReport.order_number && (
+                      <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>Order Number</Text>
+                        <Text style={[styles.detailValue, { color: theme.text }]}>#{selectedHistoryReport.order_number}</Text>
+                      </View>
+                    )}
+
+                    {selectedHistoryReport.accident_target && (
+                      <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>Accident Target</Text>
+                        <Text style={[styles.detailValue, { color: theme.text }]}>{selectedHistoryReport.accident_target}</Text>
+                      </View>
+                    )}
+
+                    {selectedHistoryReport.fuel_type && (
+                      <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>Fuel Type</Text>
+                        <Text style={[styles.detailValue, { color: theme.text }]}>{selectedHistoryReport.fuel_type}</Text>
+                      </View>
+                    )}
+
+                    {selectedHistoryReport.breakdown_type && (
+                      <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>Breakdown Type</Text>
+                        <Text style={[styles.detailValue, { color: theme.text }]}>{selectedHistoryReport.breakdown_type}</Text>
+                      </View>
+                    )}
+
+                    {selectedHistoryReport.assistance_type && (
+                      <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>Assistance Type</Text>
+                        <Text style={[styles.detailValue, { color: theme.text }]}>{selectedHistoryReport.assistance_type}</Text>
+                      </View>
+                    )}
+
+                    {selectedHistoryReport.latitude && selectedHistoryReport.longitude && (
+                      <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>GPS Location</Text>
+                        <Text style={[styles.detailValue, { color: theme.text }]}>
+                          {selectedHistoryReport.latitude.toFixed(4)}, {selectedHistoryReport.longitude.toFixed(4)}
+                        </Text>
+                      </View>
+                    )}
+
+                    {selectedHistoryReport.description && (
+                      <View style={{ marginTop: 6 }}>
+                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>Description</Text>
+                        <Text style={[styles.detailValueText, { color: theme.text }]}>{selectedHistoryReport.description}</Text>
+                      </View>
+                    )}
+
+                    {selectedHistoryReport.custom_description && (
+                      <View style={{ marginTop: 6 }}>
+                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>Notes</Text>
+                        <Text style={[styles.detailValueText, { color: theme.text }]}>{selectedHistoryReport.custom_description}</Text>
+                      </View>
+                    )}
+
+                    {selectedHistoryReport.resolution_notes && (
+                      <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: theme.border }}>
+                        <Text style={[styles.detailLabel, { color: COLORS.emeraldGreen, fontWeight: '700' }]}>Admin Resolution Notes</Text>
+                        <Text style={[styles.detailValueText, { color: theme.text, marginTop: 2 }]}>{selectedHistoryReport.resolution_notes}</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* EVIDENCE PHOTO DISPLAY */}
+                  {signedPhotoUrl ? (
+                    <View style={{ marginTop: 12 }}>
+                      <Text style={[styles.detailLabel, { color: theme.textMuted, marginBottom: 6 }]}>Evidence Photo</Text>
+                      <Image source={{ uri: signedPhotoUrl }} style={styles.fullEvidenceImage} resizeMode="cover" />
+                    </View>
+                  ) : selectedHistoryReport.photo_url ? (
+                    <View style={{ marginTop: 12, padding: 12, backgroundColor: theme.bg, borderRadius: 12, alignItems: 'center' }}>
+                      <ActivityIndicator size="small" color={COLORS.emeraldGreen} />
+                      <Text style={{ fontSize: 11, color: theme.textMuted, marginTop: 4 }}>Loading photo proof...</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </ScrollView>
             )}
           </View>
         </View>
@@ -1514,22 +2360,24 @@ export default function DashboardScreen() {
             <Text style={styles.tutorialBadge}>WIZARD GUIDE {tutorialStep + 1} / 4</Text>
             <Text style={[styles.tutorialTitle, { color: theme.text }]}>{tutorialSteps[tutorialStep].title}</Text>
             <Text style={[styles.tutorialDesc, { color: theme.textMuted }]}>{tutorialSteps[tutorialStep].desc}</Text>
-            
+
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 32, alignItems: 'center' }}>
               {tutorialStep > 0 ? (
-                <TouchableOpacity onPress={() => setTutorialStep(p => p - 1)} style={styles.tutorialBackBtn}>
+                <TouchableOpacity onPress={() => setTutorialStep((p) => p - 1)} style={styles.tutorialBackBtn}>
                   <Text style={{ color: theme.textMuted, fontWeight: '600' }}>Back</Text>
                 </TouchableOpacity>
-              ) : <View />}
+              ) : (
+                <View />
+              )}
 
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => {
                   if (tutorialStep < 3) {
-                    setTutorialStep(p => p + 1);
+                    setTutorialStep((p) => p + 1);
                   } else {
                     completeTutorial();
                   }
-                }} 
+                }}
                 style={[styles.tutorialNextBtn, { backgroundColor: COLORS.emeraldGreen, borderRadius: 99 }]}
               >
                 <Text style={{ color: COLORS.white, fontWeight: '800' }}>
@@ -1540,7 +2388,6 @@ export default function DashboardScreen() {
           </View>
         </View>
       )}
-
     </View>
   );
 }
@@ -1864,7 +2711,7 @@ const styles = StyleSheet.create({
   modalContent: {
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    padding: 24,
+    padding: 20,
     maxHeight: height * 0.85,
   },
   modalIndicator: {
@@ -1872,26 +2719,57 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: 99,
     alignSelf: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  modalBackBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingRight: 8,
+  },
+  modalBackBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  closeIconButton: {
+    padding: 4,
   },
   modalTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
     letterSpacing: -0.5,
   },
   modalSubtitle: {
     fontSize: 13,
     marginTop: 4,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   shiftSelectorCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     padding: 16,
     borderWidth: 1,
-    marginBottom: 8,
   },
   shiftSelectorText: {
-    fontWeight: '600',
-    fontSize: 14,
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  shiftBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  shiftBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   sosCardsContainer: {
     gap: 10,
@@ -1927,6 +2805,22 @@ const styles = StyleSheet.create({
     padding: 14,
     fontSize: 14,
     minHeight: 50,
+    borderRadius: 14,
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  optionSelectorBtn: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  chipBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
   },
   closeModalBtn: {
     padding: 16,
@@ -1945,6 +2839,135 @@ const styles = StyleSheet.create({
   sosMetaValue: {
     fontSize: 13,
     fontWeight: '700',
+  },
+  pastRequestsBanner: {
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  historyActionBtn: {
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyHistoryContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 36,
+  },
+  historyCardItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  historyCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  historyCardTime: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  historyStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  historyStatusText: {
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  timelineCard: {
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  timelineStep: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  timelineDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginBottom: 4,
+  },
+  timelineConnector: {
+    height: 2,
+    flex: 1,
+    marginBottom: 14,
+  },
+  timelineLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  timelineTime: {
+    fontSize: 9,
+    marginTop: 2,
+  },
+  detailCard: {
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  detailLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  detailValue: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  detailValueText: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2,
+  },
+  fullEvidenceImage: {
+    width: '100%',
+    height: 180,
+    borderRadius: 14,
+  },
+  helplineSection: {
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  helplineCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  callPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.danger,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  callPillText: {
+    color: COLORS.white,
+    fontWeight: '800',
+    fontSize: 12,
   },
   tutorialOverlay: {
     position: 'absolute',
