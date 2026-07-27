@@ -133,7 +133,7 @@ export default function DeliveriesScreen() {
         return;
       }
 
-      // 1. Try expo-audio (SDK 53 native audio)
+      // Try expo-audio
       let AudioModule: any = null;
       try {
         AudioModule = require('expo-audio');
@@ -143,24 +143,6 @@ export default function DeliveriesScreen() {
         const player = AudioModule.createAudioPlayer(soundAsset);
         player.play();
         return;
-      }
-
-      // 2. Fallback to expo-av (Legacy)
-      let AvModule: any = null;
-      try {
-        AvModule = require('expo-av').Audio;
-      } catch (e) {}
-
-      if (AvModule && soundAsset) {
-        await AvModule.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          shouldDuckAndroid: true,
-        });
-        const { sound } = await AvModule.Sound.createAsync(
-          soundAsset,
-          { shouldPlay: true, volume: 1.0 }
-        );
-        await sound.playAsync();
       }
     } catch (err) {
       console.error('[Audio] Error playing order assigned alert sound:', err);
