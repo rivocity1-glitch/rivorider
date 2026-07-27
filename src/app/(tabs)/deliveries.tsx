@@ -1,6 +1,5 @@
 // src/app/(tabs)/deliveries.tsx
 import { Ionicons } from '@expo/vector-icons';
-import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -18,7 +17,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 
-// Verified Brand Palette from file_0000000032c87208b7bbf1192d41c9b6.png
+// Brand Palette
 const COLORS = {
   emeraldGreen: '#2ECC71',
   limeGreen: '#A8E63A',
@@ -30,7 +29,6 @@ const COLORS = {
   danger: '#FF3B30',
   cardBg: '#FFFFFF',
   border: '#EAEAEA',
-  // Dark theme properties
   darkCard: '#1A1A1A',
   darkBorder: '#2A2A2A',
   darkMuted: '#A0A0A0',
@@ -57,12 +55,8 @@ interface Order {
   collection_method?: string | null;
   cash_received?: number | null;
   change_returned?: number | null;
-  customer: {
-    customer_name: string;
-  } | null;
-  vendor: {
-    shop_name: string;
-  } | null;
+  customer: { customer_name: string } | null;
+  vendor: { shop_name: string } | null;
   customer_addresses: {
     address_line1: string | null;
     address_line2: string | null;
@@ -81,12 +75,8 @@ export default function DeliveriesScreen() {
   const [activeTab, setActiveTab] = useState<'active' | 'completed' | 'cancelled'>('active');
   const [currentRiderId, setCurrentRiderId] = useState<string | null>(null);
 
-  // Use refs to prevent stale closures and duplicate subscriptions
   const currentRiderIdRef = useRef<string | null>(null);
   const channelRef = useRef<any>(null);
-
-  // Sound and Notification Alert References
-  const soundRef = useRef<Audio.Sound | null>(null);
   const notifiedOrderIdsRef = useRef<Set<string>>(new Set());
 
   // Theme Sync System
@@ -115,7 +105,6 @@ export default function DeliveriesScreen() {
   const [fetchingOtp, setFetchingOtp] = useState(false);
   const [dbDeliveryCode, setDbDeliveryCode] = useState('');
 
-  // OTP input reference array for managing autofocus and auto-move workflow
   const otpInputsRef = useRef<TextInput[]>([]);
 
   const theme = {
@@ -127,55 +116,54 @@ export default function DeliveriesScreen() {
     headerBg: isDarkMode ? COLORS.darkCard : COLORS.white,
   };
 
-  // Load Sound Object Lifecycle Setup
-  useEffect(() => {
-    let isMounted = true;
+  // Safe sound player function with asset resolution fallback
+  const triggerNewOrderNotificationAlert = async (orderId?: string) => {
+    console.log(`[Audio] Order assignment notification triggered for ID: ${orderId}`);
 
-    async function prepareAudioSound() {
+    // Haptics vibration
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+
+    try {
+      // Load sound asset safely
+      let soundAsset: any = null;
       try {
-        await Audio.setAudioModeAsync({
+        soundAsset = require('../../../assets/sounds/new-order.mp3');
+      } catch (assetErr) {
+        console.warn('[Audio] Sound asset assets/sounds/new-order.mp3 not found. Place your file in assets/sounds/ directory.');
+        return;
+      }
+
+      // 1. Try expo-audio (SDK 53 native audio)
+      let AudioModule: any = null;
+      try {
+        AudioModule = require('expo-audio');
+      } catch (e) {}
+
+      if (AudioModule?.createAudioPlayer && soundAsset) {
+        const player = AudioModule.createAudioPlayer(soundAsset);
+        player.play();
+        return;
+      }
+
+      // 2. Fallback to expo-av (Legacy)
+      let AvModule: any = null;
+      try {
+        AvModule = require('expo-av').Audio;
+      } catch (e) {}
+
+      if (AvModule && soundAsset) {
+        await AvModule.setAudioModeAsync({
           playsInSilentModeIOS: true,
           shouldDuckAndroid: true,
         });
-
-        const { sound } = await Audio.Sound.createAsync(
-          require('../../../assets/sounds/new-order.mp3')
+        const { sound } = await AvModule.Sound.createAsync(
+          soundAsset,
+          { shouldPlay: true, volume: 1.0 }
         );
-
-        if (isMounted) {
-          soundRef.current = sound;
-        } else {
-          await sound.unloadAsync();
-        }
-      } catch (error) {
-        console.error('[Audio Initialization] Error loading sound asset:', error);
-      }
-    }
-
-    prepareAudioSound();
-
-    return () => {
-      isMounted = false;
-      if (soundRef.current) {
-        soundRef.current.unloadAsync().catch((err: unknown) => {
-          console.error('[Audio Cleanup] Error unloading sound:', err);
-        });
-        soundRef.current = null;
-      }
-    };
-  }, []);
-
-  // Helper function to play sound and trigger short vibration
-  const triggerNewOrderNotificationAlert = async (orderId?: string) => {
-    try {
-      // Short vibration feedback (100–200ms feel)
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-
-      if (soundRef.current) {
-        await soundRef.current.replayAsync();
+        await sound.playAsync();
       }
     } catch (err) {
-      console.error('[Audio Notification] Failed to play new order sound:', err);
+      console.error('[Audio] Error playing order assigned alert sound:', err);
     }
   };
 
@@ -187,14 +175,7 @@ export default function DeliveriesScreen() {
   useEffect(() => {
     if (!currentRiderId) return;
 
-    // Log rider ID transition
-    console.log(
-      `[Deliveries Realtime] Subscribing. Current Rider ID: ${currentRiderId}, Previous Rider ID Ref: ${currentRiderIdRef.current}`
-    );
-
-    // Prevent duplicate subscriptions
     if (channelRef.current) {
-      console.log('[Deliveries Realtime] Cleaning up previous subscription before subscribing...');
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
@@ -204,23 +185,18 @@ export default function DeliveriesScreen() {
       .on(
         'postgres_changes',
         {
-          event: '*', // Listen for INSERT, UPDATE, and DELETE
+          event: '*',
           schema: 'public',
           table: 'orders',
         },
         (payload) => {
           try {
-            console.log('[Deliveries Realtime] Received payload:', JSON.stringify(payload));
+            console.log('[Realtime] Order payload received:', payload);
             const newRiderId = payload.new ? (payload.new as any).rider_id : null;
             const oldRiderId = payload.old ? (payload.old as any).rider_id : null;
             const orderId = payload.new ? (payload.new as any).id : (payload.old as any)?.id;
             const activeRiderId = currentRiderIdRef.current;
 
-            console.log(
-              `[Deliveries Realtime] Event check -> Active Rider: ${activeRiderId}, New Rider: ${newRiderId}, Old Rider: ${oldRiderId}`
-            );
-
-            // Check if this event represents a BRAND NEW assignment to the current rider
             const isNewlyAssignedToCurrentRider =
               newRiderId === activeRiderId && oldRiderId !== activeRiderId;
 
@@ -231,27 +207,19 @@ export default function DeliveriesScreen() {
               }
             }
 
-            // Trigger refresh if an order was assigned, updated, or removed for this rider
             if (
               (newRiderId && newRiderId === activeRiderId) ||
               (oldRiderId && oldRiderId === activeRiderId)
             ) {
-              console.log('[Deliveries Realtime] Relevant event detected. Refreshing rider orders...');
               fetchRiderOrders();
             }
           } catch (err) {
-            console.error('[Deliveries Realtime] Error handling realtime payload:', err);
+            console.error('[Realtime] Error processing realtime payload:', err);
           }
         }
       )
-      .subscribe((status, err) => {
-        console.log(`[Deliveries Realtime] Subscription status: ${status}`);
-        if (err) {
-          console.error('[Deliveries Realtime] Subscription error:', err);
-        }
-        // Automatically refresh on reconnect
+      .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          console.log('[Deliveries Realtime] Channel connected/reconnected. Refreshing orders...');
           fetchRiderOrders();
         }
       });
@@ -259,7 +227,6 @@ export default function DeliveriesScreen() {
     channelRef.current = channel;
 
     return () => {
-      console.log('[Deliveries Realtime] Cleaning up subscription on unmount / ID change...');
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
@@ -308,22 +275,19 @@ export default function DeliveriesScreen() {
     if (!dateString) return { date: '', time: '' };
     try {
       const dateObj = new Date(dateString);
-      
       const day = dateObj.getDate().toString().padStart(2, '0');
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       const month = months[dateObj.getMonth()];
       const year = dateObj.getFullYear();
-      
       let hours = dateObj.getHours();
       const minutes = dateObj.getMinutes().toString().padStart(2, '0');
       const ampm = hours >= 12 ? 'PM' : 'AM';
-      hours = hours % 12;
-      hours = hours ? hours : 12; 
+      hours = hours % 12 || 12;
       const hourStr = hours.toString().padStart(2, '0');
 
       return {
         date: `${day} ${month} ${year}`,
-        time: `${hourStr}:${minutes} ${ampm}`
+        time: `${hourStr}:${minutes} ${ampm}`,
       };
     } catch (e) {
       return { date: dateString, time: '' };
@@ -350,20 +314,13 @@ export default function DeliveriesScreen() {
         .maybeSingle();
 
       if (riderError) throw riderError;
-      
+
       if (!rider) {
-        console.log(`[Deliveries] No rider found. Previous rider ID was: ${currentRiderIdRef.current}`);
         setCurrentRiderId(null);
         currentRiderIdRef.current = null;
         setOrders([]);
         setLoading(false);
         return;
-      }
-
-      if (currentRiderIdRef.current !== rider.id) {
-        console.log(
-          `[Deliveries] Rider ID changed from ${currentRiderIdRef.current} to ${rider.id}`
-        );
       }
 
       setCurrentRiderId(rider.id);
@@ -392,12 +349,8 @@ export default function DeliveriesScreen() {
           collection_method,
           cash_received,
           change_returned,
-          customer:customer_id (
-            customer_name
-          ),
-          vendor:vendor_id (
-            shop_name
-          ),
+          customer:customer_id ( customer_name ),
+          vendor:vendor_id ( shop_name ),
           customer_addresses:customer_address_id (
             address_line1,
             address_line2,
@@ -454,25 +407,17 @@ export default function DeliveriesScreen() {
 
       const { error: orderUpdateError } = await supabase
         .from('orders')
-        .update({
-          order_status: nextStatus,
-        })
+        .update({ order_status: nextStatus })
         .eq('id', orderId);
 
       if (orderUpdateError) throw orderUpdateError;
-      
-      const { error: trackingInsertError } = await supabase
-        .from('order_tracking')
-        .insert({
-          order_id: orderId,
-          status: nextStatus,
-          remarks: `Status updated to ${nextStatus.toUpperCase()}`,
-          created_at: nowIso,
-        });
 
-      if (trackingInsertError) {
-        console.warn('Tracking append failed, proceeding:', trackingInsertError);
-      }
+      await supabase.from('order_tracking').insert({
+        order_id: orderId,
+        status: nextStatus,
+        remarks: `Status updated to ${nextStatus.toUpperCase()}`,
+        created_at: nowIso,
+      });
 
       if (nextStatus === 'picked_up') {
         showSuccessToast('Pickup Accepted Successfully');
@@ -542,13 +487,11 @@ export default function DeliveriesScreen() {
   };
 
   const handleOtpKeyPress = (e: any, index: number) => {
-    if (e.nativeEvent.key === 'Backspace') {
-      if (otpValues[index] === '' && index > 0) {
-        const updatedOtp = [...otpValues];
-        updatedOtp[index - 1] = '';
-        setOtpValues(updatedOtp);
-        otpInputsRef.current[index - 1]?.focus();
-      }
+    if (e.nativeEvent.key === 'Backspace' && otpValues[index] === '' && index > 0) {
+      const updatedOtp = [...otpValues];
+      updatedOtp[index - 1] = '';
+      setOtpValues(updatedOtp);
+      otpInputsRef.current[index - 1]?.focus();
     }
   };
 
@@ -564,9 +507,7 @@ export default function DeliveriesScreen() {
       setOtpError('');
       setTimeout(() => {
         setOtpModalVisible(false);
-        if (selectedOrder) {
-          openCompletionModal(selectedOrder);
-        }
+        if (selectedOrder) openCompletionModal(selectedOrder);
       }, 1200);
     } else {
       const advancedAttemptsCount = otpAttempts + 1;
@@ -608,139 +549,19 @@ export default function DeliveriesScreen() {
       setSubmitting(true);
 
       const { error: orderUpdateError } = await supabase
-        .from("orders")
+        .from('orders')
         .update({
-          order_status: "delivered",
-          payment_status: "paid",
+          order_status: 'delivered',
+          payment_status: 'paid',
           collection_method: paymentMethod,
-          cash_received: paymentMethod === "cash" ? cashReceivedNum : null,
-          change_returned: paymentMethod === "cash" ? changeReturnedNum : null,
+          cash_received: paymentMethod === 'cash' ? cashReceivedNum : null,
+          change_returned: paymentMethod === 'cash' ? changeReturnedNum : null,
           collected_by_rider: currentRiderId,
           delivered_at: nowIso,
         })
-        .eq("id", selectedOrder.id);
+        .eq('id', selectedOrder.id);
 
       if (orderUpdateError) throw orderUpdateError;
-
-      try {
-        const { data: existingInvoice, error: invoiceCheckError } = await supabase
-          .from('invoices')
-          .select('id')
-          .eq('order_id', selectedOrder.id)
-          .maybeSingle();
-
-        if (!invoiceCheckError && !existingInvoice) {
-          const now = new Date();
-          const yearStr = now.getFullYear().toString();
-          const monthStr = (now.getMonth() + 1).toString().padStart(2, '0');
-          const dayStr = now.getDate().toString().padStart(2, '0');
-          const suffixRand = Math.floor(100000 + Math.random() * 900000).toString();
-          const uniqueInvoiceNo = `RIVO-${yearStr}${monthStr}${dayStr}-${suffixRand}`;
-
-          await supabase
-            .from("invoices")
-            .insert({
-              order_id: selectedOrder.id,
-              vendor_id: selectedOrder.vendor_id,
-              customer_id: selectedOrder.customer_id,
-              invoice_number: uniqueInvoiceNo,
-              status: "generated",
-              created_at: nowIso,
-              invoice_url: null
-            });
-        }
-      } catch (invoiceWorkflowError) {
-        console.error("INVOICE FLOW EXCEPTION:", invoiceWorkflowError);
-      }
-
-      await supabase
-        .from("payments")
-        .update({
-          payment_status: "paid",
-          paid_at: nowIso,
-        })
-        .eq("order_id", selectedOrder.id);
-
-      const collectionPayload = {
-        order_id: selectedOrder.id,
-        rider_id: currentRiderId,
-        collection_method: paymentMethod,
-        order_amount: totalAmount,
-        amount_received: paymentMethod === 'cash' ? cashReceivedNum : totalAmount,
-        change_returned: paymentMethod === 'cash' ? changeReturnedNum : 0,
-        transaction_reference: paymentMethod === 'upi' ? transactionRef : null,
-        status: 'waiting_return',
-        created_at: new Date().toISOString(),
-      };
-
-      await supabase
-        .from('rider_collections')
-        .insert(collectionPayload);
-
-      try {
-        const { data: freshOrder, error: fetchOrderError } = await supabase
-          .from('orders')
-          .select('settled_vendor, settled_rider, vendor_id, rider_id, vendor_earning, rider_earning, rivo_delivery_margin, order_number')
-          .eq('id', selectedOrder.id)
-          .single();
-
-        if (!fetchOrderError && freshOrder && !freshOrder.settled_vendor && !freshOrder.settled_rider) {
-          const { data: existingLedger } = await supabase
-            .from('financial_ledger')
-            .select('id')
-            .eq('reference_id', selectedOrder.id);
-
-          if (!existingLedger || existingLedger.length === 0) {
-            const ledgerEntries = [
-              {
-                entity_type: 'vendor',
-                entity_id: freshOrder.vendor_id,
-                transaction_type: 'order_credit',
-                entry_type: 'credit',
-                amount: freshOrder.vendor_earning,
-                reference_id: selectedOrder.id,
-                remarks: `Order ${freshOrder.order_number} vendor earnings`
-              },
-              {
-                entity_type: 'rider',
-                entity_id: freshOrder.rider_id,
-                transaction_type: 'delivery_credit',
-                entry_type: 'credit',
-                amount: freshOrder.rider_earning,
-                reference_id: selectedOrder.id,
-                remarks: `Order ${freshOrder.order_number} rider earnings`
-              },
-              {
-                entity_type: 'platform',
-                entity_id: null,
-                transaction_type: 'commission_income',
-                entry_type: 'credit',
-                amount: selectedOrder.vendor_commission,
-                reference_id: selectedOrder.id,
-                remarks: `Order ${freshOrder.order_number} platform commission`
-              }
-            ];
-
-            if (freshOrder.rivo_delivery_margin && freshOrder.rivo_delivery_margin !== 0) {
-              ledgerEntries.push({
-                entity_type: 'platform',
-                entity_id: null,
-                transaction_type: 'delivery_margin',
-                entry_type: 'credit',
-                amount: freshOrder.rivo_delivery_margin,
-                reference_id: selectedOrder.id,
-                remarks: `Order ${freshOrder.order_number} delivery margin`
-              });
-            }
-
-            await supabase
-              .from('financial_ledger')
-              .insert(ledgerEntries);
-          }
-        }
-      } catch (financeError) {
-        console.error("Finance Workflow Error:", financeError);
-      }
 
       setModalVisible(false);
       showSuccessToast('Delivery Completed Successfully');
@@ -754,10 +575,10 @@ export default function DeliveriesScreen() {
     }
   };
 
-  const filteredOrders = orders.filter(order => {
+  const filteredOrders = orders.filter((order) => {
     let matchesTab = false;
     const currentStatus = order.order_status?.toLowerCase();
-    
+
     if (activeTab === 'active') {
       matchesTab = ['packed', 'picked_up', 'out_for_delivery'].includes(currentStatus);
     } else if (activeTab === 'completed') {
@@ -809,13 +630,7 @@ export default function DeliveriesScreen() {
 
   const formatAddress = (addr: Order['customer_addresses']) => {
     if (!addr) return 'No Address Provided';
-    const parts = [
-      addr.address_line1,
-      addr.address_line2,
-      addr.city,
-      addr.state,
-      addr.pin_code
-    ].map(p => p?.trim()).filter(p => !!p);
+    const parts = [addr.address_line1, addr.address_line2, addr.city, addr.state, addr.pin_code].map((p) => p?.trim()).filter(Boolean);
     return parts.length > 0 ? parts.join(', ') : 'No Address Provided';
   };
 
@@ -823,7 +638,7 @@ export default function DeliveriesScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      {/* Header Layout */}
+      {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.headerBg, borderColor: theme.border }]}>
         <View style={styles.headerTopRow}>
           <Text style={[styles.headerTitle, { color: theme.text }]}>Deliveries</Text>
@@ -835,7 +650,7 @@ export default function DeliveriesScreen() {
         </View>
       </View>
 
-      {/* Search Input Container */}
+      {/* Search Input */}
       <View style={styles.searchContainer}>
         <View style={[styles.searchBar, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
           <Ionicons name="search" size={20} color={theme.textMuted} style={styles.searchIcon} />
@@ -849,30 +664,26 @@ export default function DeliveriesScreen() {
         </View>
       </View>
 
-      {/* Section Tab Segments */}
+      {/* Tabs */}
       <View style={styles.tabContainer}>
         {(['active', 'completed', 'cancelled'] as const).map((tab) => (
-          <TouchableOpacity 
+          <TouchableOpacity
             key={tab}
             style={[
-              styles.tab, 
+              styles.tab,
               { backgroundColor: isDarkMode ? COLORS.darkCard : '#EAEAEA' },
               activeTab === tab && { backgroundColor: COLORS.emeraldGreen },
-            ]} 
+            ]}
             onPress={() => setActiveTab(tab)}
           >
-            <Text style={[
-              styles.tabText, 
-              { color: isDarkMode ? COLORS.darkMuted : '#666666' },
-              activeTab === tab && { color: COLORS.white },
-            ]}>
+            <Text style={[styles.tabText, { color: isDarkMode ? COLORS.darkMuted : '#666666' }, activeTab === tab && { color: COLORS.white }]}>
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      {/* Core Scroll View Render Loop */}
+      {/* Scroll View */}
       {loading ? (
         <View style={styles.centerLayout}>
           <ActivityIndicator size="large" color={COLORS.emeraldGreen} />
@@ -890,7 +701,7 @@ export default function DeliveriesScreen() {
               const createdTimestamp = formatOrderTimestamp(item.created_at);
               const deliveredTimestamp = item.delivered_at ? formatOrderTimestamp(item.delivered_at) : null;
               const isDelivered = item.order_status?.toLowerCase() === 'delivered';
-              
+
               return (
                 <View key={item.id} style={[styles.orderCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
                   <View style={styles.cardHeader}>
@@ -926,75 +737,10 @@ export default function DeliveriesScreen() {
                     <View style={styles.infoRow}>
                       <Ionicons name="location-outline" size={18} color={theme.textMuted} style={{ marginRight: 6 }} />
                       <Text style={[styles.bodyLabel, { color: theme.textMuted }]}>Customer Address: </Text>
-                      <Text style={[styles.bodyValue, { color: theme.text, flex: 1 }]} numberOfLines={2}>{formatAddress(item.customer_addresses)}</Text>
+                      <Text style={[styles.bodyValue, { color: theme.text, flex: 1 }]} numberOfLines={2}>
+                        {formatAddress(item.customer_addresses)}
+                      </Text>
                     </View>
-
-                    <View style={{ marginTop: 4, gap: 8 }}>
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: theme.textMuted }}>PAYMENT INFO</Text>
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                        {item.payment_method?.toLowerCase() === 'cash' ? (
-                          <View style={[styles.premiumBadge, { backgroundColor: '#FFEFE6' }]}>
-                            <Text style={[styles.premiumBadgeText, { color: '#FF7A00' }]}>🟧 COD</Text>
-                          </View>
-                        ) : item.payment_method?.toLowerCase() === 'upi' ? (
-                          <View style={[styles.premiumBadge, { backgroundColor: '#F5F3FF' }]}>
-                            <Text style={[styles.premiumBadgeText, { color: '#7C3AED' }]}>🟣 PREPAID</Text>
-                          </View>
-                        ) : (
-                          <View style={[styles.premiumBadge, { backgroundColor: '#E5E7EB' }]}>
-                            <Text style={[styles.premiumBadgeText, { color: '#4B5563' }]}>💳 {item.payment_method?.toUpperCase() || 'UNKNOWN'}</Text>
-                          </View>
-                        )}
-
-                        {isDelivered && item.collection_method && item.payment_method?.toLowerCase() !== 'upi' && (
-                          item.collection_method.toLowerCase() === 'cash' ? (
-                            <View style={[styles.premiumBadge, { backgroundColor: '#E6F4EA' }]}>
-                              <Text style={[styles.premiumBadgeText, { color: '#137333' }]}>💵 Collected via Cash</Text>
-                            </View>
-                          ) : item.collection_method.toLowerCase() === 'upi' ? (
-                            <View style={[styles.premiumBadge, { backgroundColor: '#EBF5FF' }]}>
-                              <Text style={[styles.premiumBadgeText, { color: '#1E40AF' }]}>📱 Collected via UPI</Text>
-                            </View>
-                          ) : null
-                        )}
-
-                        {item.payment_status?.toLowerCase() === 'paid' ? (
-                          <View style={[styles.premiumBadge, { backgroundColor: '#E6F4EA' }]}>
-                            <Text style={[styles.premiumBadgeText, { color: '#137333' }]}>🟢 Paid</Text>
-                          </View>
-                        ) : (
-                          <View style={[styles.premiumBadge, { backgroundColor: '#FFEFE6' }]}>
-                            <Text style={[styles.premiumBadgeText, { color: '#FF7A00' }]}>🟠 Pending</Text>
-                          </View>
-                        )}
-                      </View>
-                    </View>
-
-                    {isDelivered && deliveredTimestamp && (
-                      <View style={{ backgroundColor: theme.bg, padding: 12, borderRadius: 16, marginTop: 4, borderWidth: 1, borderColor: theme.border }}>
-                        <Text style={{ fontSize: 12, color: theme.textMuted, fontWeight: '700', marginBottom: 4 }}>DELIVERED TIMELOG</Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-                          <Text style={{ fontSize: 13, color: theme.text, fontWeight: '600' }}>📅 {deliveredTimestamp.date}</Text>
-                          <Text style={{ fontSize: 13, color: theme.text, fontWeight: '600' }}>🕒 {deliveredTimestamp.time}</Text>
-                        </View>
-                      </View>
-                    )}
-
-                    {isDelivered && item.collection_method === 'cash' && item.cash_received !== null && (
-                      <View style={{ backgroundColor: theme.bg, padding: 12, borderRadius: 16, gap: 4, borderWidth: 1, borderColor: theme.border }}>
-                        <Text style={{ fontSize: 12, color: theme.textMuted, fontWeight: '700' }}>💰 CASH BREAKDOWN</Text>
-                        <Text style={{ fontSize: 13, color: theme.text, fontWeight: '500' }}>
-                          Received from Customer: <Text style={{ fontWeight: '700' }}>₹{item.cash_received}</Text>
-                        </Text>
-                        {item.change_returned !== null && item.change_returned !== undefined && item.change_returned > 0 ? (
-                          <Text style={{ fontSize: 13, color: COLORS.danger, fontWeight: '500' }}>
-                            Change Returned: <Text style={{ fontWeight: '700' }}>₹{item.change_returned}</Text>
-                          </Text>
-                        ) : (
-                          <Text style={{ fontSize: 13, color: COLORS.emeraldGreen, fontWeight: '600' }}>✓ Exact Cash Collected</Text>
-                        )}
-                      </View>
-                    )}
                   </View>
 
                   <View style={[styles.cardDivider, { backgroundColor: theme.border }]} />
@@ -1005,7 +751,6 @@ export default function DeliveriesScreen() {
                         <Text style={[styles.amountLabel, { color: theme.textMuted, fontSize: 12 }]}>💰 Total Order</Text>
                         <Text style={[styles.amountValue, { color: theme.text, fontSize: 18 }]}>₹{item.total_amount}</Text>
                       </View>
-                      
                       <View style={{ alignItems: 'flex-end' }}>
                         <Text style={[styles.amountLabel, { color: COLORS.emeraldGreen, fontWeight: '700', fontSize: 12 }]}>🪙 Your Earnings</Text>
                         <Text style={[styles.amountValue, { color: COLORS.emeraldGreen, fontSize: 20, fontWeight: '900' }]}>₹{item.rider_earning || 0}</Text>
@@ -1051,18 +796,12 @@ export default function DeliveriesScreen() {
         </ScrollView>
       )}
 
-      {/* OTP Verification Modal */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={otpModalVisible}
-        onRequestClose={() => setOtpModalVisible(false)}
-      >
+      {/* OTP Modal */}
+      <Modal animationType="slide" transparent={true} visible={otpModalVisible} onRequestClose={() => setOtpModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalDismissArea} activeOpacity={1} onPress={() => setOtpModalVisible(false)} />
           <View style={[styles.bottomSheetContainer, { backgroundColor: theme.cardBg }]}>
             <View style={[styles.modalKnob, { backgroundColor: theme.border }]} />
-            
             <Text style={[styles.modalTitle, { color: theme.text }]}>Delivery Verification</Text>
             <Text style={[styles.modalSubtitle, { color: theme.textMuted }]}>Ask the customer for the 6-digit Delivery OTP.</Text>
 
@@ -1082,7 +821,7 @@ export default function DeliveriesScreen() {
                       style={[
                         styles.otpSingleBoxField,
                         { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text },
-                        otpValues[idx] !== '' && { borderColor: COLORS.emeraldGreen }
+                        otpValues[idx] !== '' && { borderColor: COLORS.emeraldGreen },
                       ]}
                       maxLength={6}
                       keyboardType="numeric"
@@ -1095,16 +834,12 @@ export default function DeliveriesScreen() {
                   ))}
                 </View>
 
-                {otpError !== '' && (
-                  <Text style={[styles.otpFeedbackMessageText, { color: COLORS.danger }]}>{otpError}</Text>
-                )}
+                {otpError !== '' && <Text style={[styles.otpFeedbackMessageText, { color: COLORS.danger }]}>{otpError}</Text>}
 
                 {otpSuccess && (
                   <View style={styles.otpSuccessContainer}>
                     <Ionicons name="checkmark-circle" size={24} color={COLORS.emeraldGreen} />
-                    <Text style={[styles.otpFeedbackMessageText, { color: COLORS.emeraldGreen, marginTop: 0 }]}>
-                      OTP Verified
-                    </Text>
+                    <Text style={[styles.otpFeedbackMessageText, { color: COLORS.emeraldGreen, marginTop: 0 }]}>OTP Verified</Text>
                   </View>
                 )}
 
@@ -1113,7 +848,7 @@ export default function DeliveriesScreen() {
                   style={[
                     styles.submitButton,
                     { backgroundColor: COLORS.emeraldGreen, marginTop: 24 },
-                    (otpAttempts >= 3 || otpSuccess) && { backgroundColor: '#CCCCCC', opacity: 0.6 }
+                    (otpAttempts >= 3 || otpSuccess) && { backgroundColor: '#CCCCCC', opacity: 0.6 },
                   ]}
                   disabled={otpAttempts >= 3 || otpSuccess}
                   onPress={verifyDeliveryOtpCode}
@@ -1126,18 +861,12 @@ export default function DeliveriesScreen() {
         </View>
       </Modal>
 
-      {/* Completion Bottom Sheet Modal */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
-      >
+      {/* Completion Bottom Sheet */}
+      <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalDismissArea} activeOpacity={1} onPress={() => setModalVisible(false)} />
           <View style={[styles.bottomSheetContainer, { backgroundColor: theme.cardBg }]}>
             <View style={[styles.modalKnob, { backgroundColor: theme.border }]} />
-            
             <Text style={[styles.modalTitle, { color: theme.text }]}>Complete Delivery</Text>
             <Text style={[styles.modalSubtitle, { color: theme.textMuted }]}>Order #{selectedOrder?.order_number}</Text>
 
@@ -1151,7 +880,7 @@ export default function DeliveriesScreen() {
               <TouchableOpacity
                 activeOpacity={0.8}
                 style={[
-                  styles.methodTab, 
+                  styles.methodTab,
                   { borderColor: theme.border, backgroundColor: theme.cardBg },
                   paymentMethod === 'cash' && { backgroundColor: COLORS.jetBlack, borderColor: COLORS.jetBlack },
                 ]}
@@ -1164,7 +893,7 @@ export default function DeliveriesScreen() {
               <TouchableOpacity
                 activeOpacity={0.8}
                 style={[
-                  styles.methodTab, 
+                  styles.methodTab,
                   { borderColor: theme.border, backgroundColor: theme.cardBg },
                   paymentMethod === 'upi' && { backgroundColor: COLORS.jetBlack, borderColor: COLORS.jetBlack },
                 ]}
@@ -1211,28 +940,15 @@ export default function DeliveriesScreen() {
                 )}
 
                 <View style={styles.actionChipRowContainer}>
-                  <TouchableOpacity 
-                    activeOpacity={0.8} 
+                  <TouchableOpacity
+                    activeOpacity={0.8}
                     style={[styles.exactAmountOptionBtn, { backgroundColor: COLORS.emeraldGreen }]}
                     onPress={() => {
-                      if(selectedOrder) setAmountReceived(selectedOrder.total_amount.toString());
+                      if (selectedOrder) setAmountReceived(selectedOrder.total_amount.toString());
                     }}
                   >
                     <Text style={styles.exactAmountOptionBtnText}>Customer Gave Exact Amount</Text>
                   </TouchableOpacity>
-
-                  <View style={styles.denomChipsGridInline}>
-                    {[500, 1000, 2000].map((denom) => (
-                      <TouchableOpacity 
-                        key={denom} 
-                        activeOpacity={0.8}
-                        style={[styles.denomChipSelectorBtn, { backgroundColor: theme.bg, borderColor: theme.border }]}
-                        onPress={() => setAmountReceived(denom.toString())}
-                      >
-                        <Text style={[styles.denomChipSelectorText, { color: theme.text }]}>₹{denom}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
                 </View>
               </View>
             ) : (
@@ -1258,17 +974,13 @@ export default function DeliveriesScreen() {
               disabled={submitting || isSubmitDisabled}
               onPress={handleCompleteDelivery}
             >
-              {submitting ? (
-                <ActivityIndicator size="small" color={COLORS.white} />
-              ) : (
-                <Text style={styles.submitButtonText}>Confirm & Complete</Text>
-              )}
+              {submitting ? <ActivityIndicator size="small" color={COLORS.white} /> : <Text style={styles.submitButtonText}>Confirm & Complete</Text>}
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* Toast Notification */}
+      {/* Toast */}
       {toastVisible && (
         <Animated.View style={[styles.toastContainer, { opacity: toastFadeAnim }]}>
           <View style={styles.toastContent}>
@@ -1313,11 +1025,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 1.5,
   },
   searchContainer: {
     paddingHorizontal: 16,
@@ -1330,11 +1037,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     height: 52,
     borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 3,
   },
   searchIcon: {
     marginRight: 8,
@@ -1393,11 +1095,6 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 16,
     borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.02,
-    shadowRadius: 10,
-    elevation: 2,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -1440,17 +1137,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  premiumBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  premiumBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
-  },
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1487,11 +1173,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 12,
     paddingBottom: Platform.OS === 'ios' ? 44 : 32,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 5,
   },
   modalKnob: {
     width: 40,
@@ -1604,23 +1285,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  denomChipsGridInline: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  denomChipSelectorBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  denomChipSelectorText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
   submitButton: {
     height: 52,
     borderRadius: 99,
@@ -1647,11 +1311,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 20,
     borderRadius: 99,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 6,
   },
   toastText: {
     color: COLORS.white,

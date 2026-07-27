@@ -13,6 +13,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+
+import { registerForPushNotifications } from '@/lib/pushNotifications';
 import { signInRider } from '../../services/auth';
 
 export default function LoginScreen() {
@@ -63,6 +65,13 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       await signInRider(email, password);
+
+      try {
+        await registerForPushNotifications();
+      } catch (err) {
+        console.warn('Push registration failed:', err);
+      }
+
       router.replace('/(tabs)/dashboard' as any);
     } catch (error: any) {
       Alert.alert('Login Failed', error.message || 'An error occurred during login.');
