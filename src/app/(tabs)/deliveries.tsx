@@ -116,24 +116,19 @@ export default function DeliveriesScreen() {
     headerBg: isDarkMode ? COLORS.darkCard : COLORS.white,
   };
 
-  // Safe sound player function with asset resolution fallback
   const triggerNewOrderNotificationAlert = async (orderId?: string) => {
     console.log(`[Audio] Order assignment notification triggered for ID: ${orderId}`);
-
-    // Haptics vibration
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
     try {
-      // Load sound asset safely
       let soundAsset: any = null;
       try {
         soundAsset = require('../../../assets/sounds/new-order.mp3');
       } catch (assetErr) {
-        console.warn('[Audio] Sound asset assets/sounds/new-order.mp3 not found. Place your file in assets/sounds/ directory.');
+        console.warn('[Audio] Sound asset assets/sounds/new-order.mp3 not found.');
         return;
       }
 
-      // Try expo-audio
       let AudioModule: any = null;
       try {
         AudioModule = require('expo-audio');
@@ -153,7 +148,6 @@ export default function DeliveriesScreen() {
     fetchRiderOrders();
   }, []);
 
-  // Supabase Realtime Subscription Management Loop
   useEffect(() => {
     if (!currentRiderId) return;
 
@@ -173,7 +167,6 @@ export default function DeliveriesScreen() {
         },
         (payload) => {
           try {
-            console.log('[Realtime] Order payload received:', payload);
             const newRiderId = payload.new ? (payload.new as any).rider_id : null;
             const oldRiderId = payload.old ? (payload.old as any).rider_id : null;
             const orderId = payload.new ? (payload.new as any).id : (payload.old as any)?.id;
@@ -530,6 +523,7 @@ export default function DeliveriesScreen() {
     try {
       setSubmitting(true);
 
+      // 1. Update order as the single source of truth
       const { error: orderUpdateError } = await supabase
         .from('orders')
         .update({
@@ -544,6 +538,21 @@ export default function DeliveriesScreen() {
         .eq('id', selectedOrder.id);
 
       if (orderUpdateError) throw orderUpdateError;
+
+      // 2. Insert into rider_collections for settlement tracking ONLY (No duplicate cash numbers)
+      const { error: collectionError } = await supabase
+        .from('rider_collections')
+        .insert({
+          order_id: selectedOrder.id,
+          rider_id: currentRiderId,
+          status: 'waiting_return',
+          transaction_reference: paymentMethod === 'upi' ? transactionRef : null,
+          created_at: nowIso,
+        });
+
+      if (collectionError) {
+        console.warn('Rider collections entry warning:', collectionError);
+      }
 
       setModalVisible(false);
       showSuccessToast('Delivery Completed Successfully');
@@ -594,6 +603,22 @@ export default function DeliveriesScreen() {
       case 'delivered': return '#16A34A';
       default: return '#666666';
     }
+  };
+
+  const getOrderPaymentTypeLabel = (order: Order) => {
+    const rawMethod = (order.payment_method || '').toLowerCase();
+    const collectionMethod = (order.collection_method || '').toLowerCase();
+
+    if (rawMethod === 'cod' || rawMethod === 'cash') {
+      if (collectionMethod === 'upi') {
+        return 'COD (Paid via UPI)';
+      }
+      return 'COD (Cash on Delivery)';
+    } else if (rawMethod === 'upi' || rawMethod === 'online' || rawMethod === 'prepaid') {
+      return 'Prepaid (UPI)';
+    }
+
+    return order.payment_method?.toUpperCase() || 'Prepaid';
   };
 
   const calculatedChange = () => {
@@ -723,6 +748,55 @@ export default function DeliveriesScreen() {
                         {formatAddress(item.customer_addresses)}
                       </Text>
                     </View>
+
+                    {/* FINANCIAL BREAKDOWN SECTION FOR COMPLETED DELIVERIES */}
+                    {isDelivered && (
+                      <View style={[styles.completedFinancialBox, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+                        <Text style={[styles.completedFinancialHeaderTitle, { color: theme.text }]}>
+                          💳 Payment & Settlement Breakdown
+                        </Text>
+                        
+                        <View style={styles.financialRowItem}>
+                          <Text style={[styles.financialRowLabel, { color: theme.textMuted }]}>Payment Method:</Text>
+                          <View style={styles.paymentMethodTag}>
+                            <Text style={styles.paymentMethodTagText}>{getOrderPaymentTypeLabel(item)}</Text>
+                          </View>
+                        </View>
+
+                        {item.collection_method === 'cash' || item.cash_received ? (
+                          <>
+                            <View style={styles.financialRowItem}>
+                              <Text style={[styles.financialRowLabel, { color: theme.textMuted }]}>Cash Received from Customer:</Text>
+                              <Text style={[styles.financialRowValue, { color: COLORS.emeraldGreen }]}>
+                                ₹{item.cash_received ?? item.total_amount}
+                              </Text>
+                            </View>
+
+                            <View style={styles.financialRowItem}>
+                              <Text style={[styles.financialRowLabel, { color: theme.textMuted }]}>Change Given to Customer:</Text>
+                              <Text style={[styles.financialRowValue, { color: COLORS.danger }]}>
+                                ₹{item.change_returned ?? 0}
+                              </Text>
+                            </View>
+                          </>
+                        ) : (
+                          <View style={styles.financialRowItem}>
+                            <Text style={[styles.financialRowLabel, { color: theme.textMuted }]}>Amount Collected:</Text>
+                            <Text style={[styles.financialRowValue, { color: COLORS.emeraldGreen }]}>
+                              ₹{item.total_amount} (Online/UPI)
+                            </Text>
+                          </View>
+                        )}
+
+                        {deliveredTimestamp && (
+                          <View style={{ marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: theme.border }}>
+                            <Text style={{ fontSize: 11, color: theme.textMuted }}>
+                              Delivered on: {deliveredTimestamp.date} at {deliveredTimestamp.time}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    )}
                   </View>
 
                   <View style={[styles.cardDivider, { backgroundColor: theme.border }]} />
@@ -1118,6 +1192,42 @@ const styles = StyleSheet.create({
   bodyValue: {
     fontSize: 14,
     fontWeight: '700',
+  },
+  completedFinancialBox: {
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginTop: 8,
+    gap: 6,
+  },
+  completedFinancialHeaderTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  financialRowItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  financialRowLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  financialRowValue: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  paymentMethodTag: {
+    backgroundColor: '#E2E8F0',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  paymentMethodTagText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#334155',
   },
   cardFooter: {
     flexDirection: 'row',

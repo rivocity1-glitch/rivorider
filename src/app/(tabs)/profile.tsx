@@ -1,6 +1,6 @@
+// src/app/(tabs)/profile.tsx
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { useNavigation, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -24,7 +24,6 @@ const { width } = Dimensions.get('window');
 
 const COLORS = {
   emeraldGreen: '#10B981',
-  limeGreen: '#10B981',
   jetBlack: '#0B0F19',
   white: '#FFFFFF',
   offWhite: '#F3F4F6',
@@ -81,11 +80,10 @@ interface RiderProfile {
 }
 
 export default function ProfileScreen() {
-  const router = useRouter();
-  const navigation = useNavigation();
-
   const [loading, setLoading] = useState(true);
   const [submittingKyc, setSubmittingKyc] = useState(false);
+  const [savingBankDetails, setSavingBankDetails] = useState(false);
+  const [isEditingBank, setIsEditingBank] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rider, setRider] = useState<Rider | null>(null);
   const [profile, setProfile] = useState<RiderProfile | null>(null);
@@ -172,8 +170,14 @@ export default function ProfileScreen() {
     }).start();
   };
 
+  // Fix old bucket URLs automatically to avatars
+  const normalizePhotoUrl = (url?: string) => {
+    if (!url) return '';
+    return url.replace('/rider-profiles/', '/avatars/');
+  };
+
   const populateFields = (riderData: Rider, profileData: RiderProfile | null) => {
-    setSelfieUrl(riderData.profile_photo_url || '');
+    setSelfieUrl(normalizePhotoUrl(riderData.profile_photo_url));
     if (profileData) {
       setAadhaarNumber(profileData.aadhaar_number || '');
       setAadhaarUrl(profileData.aadhaar_front_url || '');
@@ -204,7 +208,12 @@ export default function ProfileScreen() {
         .single();
 
       if (riderError) throw riderError;
-      setRider(riderData);
+      
+      const normalizedRider = {
+        ...riderData,
+        profile_photo_url: normalizePhotoUrl(riderData.profile_photo_url),
+      };
+      setRider(normalizedRider);
 
       const { data: profileData, error: profileError } = await supabase
         .from('rider_profiles')
@@ -217,7 +226,7 @@ export default function ProfileScreen() {
       }
 
       setProfile(profileData || null);
-      populateFields(riderData, profileData);
+      populateFields(normalizedRider, profileData || null);
       startAnimations();
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred while loading profile data.');
@@ -226,7 +235,7 @@ export default function ProfileScreen() {
     }
   };
 
-  // Profile Selfie Capture
+  // Profile Selfie Capture (Always available for all riders)
   const handleCaptureSelfie = async () => {
     try {
       const cameraPerm = await ImagePicker.requestCameraPermissionsAsync();
@@ -236,7 +245,7 @@ export default function ProfileScreen() {
       }
 
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.6,
@@ -266,11 +275,11 @@ export default function ProfileScreen() {
       });
 
       const fileExt = uri.split('.').pop() || 'jpg';
-      const fileName = `selfie-${rider.id}-${Date.now()}.${fileExt}`;
+      const fileName = `${rider.id}/avatar-${Date.now()}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(fileName, blob, { contentType: `image/${fileExt}` });
+        .upload(fileName, blob, { contentType: `image/${fileExt}`, upsert: true });
 
       if (uploadError) throw uploadError;
 
@@ -319,7 +328,7 @@ export default function ProfileScreen() {
       }
 
       const result = await launchFunc({
-        mediaTypes: ['images'],
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         quality: 0.6,
       });
@@ -371,9 +380,51 @@ export default function ProfileScreen() {
     }
   };
 
-  // Determine if EV / Bicycle (makes DL optional)
   const isEvOrNonMotorized = ['ev', 'electric', 'bicycle', 'cycle', 'ev gearbike']
     .some(type => (rider?.vehicle_type || '').toLowerCase().includes(type));
+
+  // Edit and Save Bank Details
+  const handleSaveBankDetails = async () => {
+    if (!rider) return;
+
+    if (!accountHolder.trim()) return Alert.alert('Validation Error', 'Account Holder Name is required.');
+    if (!bankName.trim()) return Alert.alert('Validation Error', 'Bank Name is required.');
+    if (!accountNumber.trim()) return Alert.alert('Validation Error', 'Account Number is required.');
+    if (!ifsc.trim()) return Alert.alert('Validation Error', 'IFSC Code is required.');
+
+    try {
+      setSavingBankDetails(true);
+
+      const bankPayload = {
+        account_holder_name: accountHolder.trim(),
+        bank_name: bankName.trim(),
+        account_number: accountNumber.trim(),
+        ifsc_code: ifsc.trim().toUpperCase(),
+        upi_id: upi.trim(),
+      };
+
+      const { error: profileErr } = await supabase
+        .from('rider_profiles')
+        .upsert({ rider_id: rider.id, ...bankPayload }, { onConflict: 'rider_id' });
+
+      if (profileErr) throw profileErr;
+
+      const { error: riderErr } = await supabase
+        .from('riders')
+        .update(bankPayload)
+        .eq('id', rider.id);
+
+      if (riderErr) throw riderErr;
+
+      Alert.alert('Success', 'Bank details updated successfully.');
+      setIsEditingBank(false);
+      await fetchProfileData();
+    } catch (err: any) {
+      Alert.alert('Update Failed', err.message || 'Could not update bank details.');
+    } finally {
+      setSavingBankDetails(false);
+    }
+  };
 
   // Submit Verification Data
   const handleSubmitKYC = async () => {
@@ -384,8 +435,7 @@ export default function ProfileScreen() {
     if (!aadhaarUrl) return Alert.alert('Missing Document', 'Please upload your Aadhaar front photo.');
     if (!panNumber.trim()) return Alert.alert('Missing Details', 'Please enter your PAN number.');
     if (!panUrl) return Alert.alert('Missing Document', 'Please upload your PAN card photo.');
-    
-    // DL check is skipped if the vehicle type is EV / Bicycle
+
     if (!isEvOrNonMotorized) {
       if (!dlNumber.trim()) return Alert.alert('Missing Details', 'Driving Licence number is required for petrol/fuel vehicles.');
       if (!dlUrl) return Alert.alert('Missing Document', 'Please upload your Driving Licence photo.');
@@ -459,8 +509,7 @@ export default function ProfileScreen() {
     ]);
   };
 
-  const handleOpenEmail = () => Linking.openURL('mailto:rivo.city1@gmail.com');
-  const handleOpenWhatsApp = () => Alert.alert('Support', 'Redirecting to Rivo WhatsApp Support workspace...');
+  const handleOpenEmail = () => Linking.openURL('mailto:rivocityhelp1@gmail.com');
 
   if (loading) {
     return (
@@ -511,10 +560,15 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <Animated.View style={[styles.body, { opacity: fadeAnim, transform: [{ translateY: slideUpAnim }] }]}>
           
-          {/* 1. PROFILE PHOTO (SELFIE HERO) */}
+          {/* 1. PROFILE PHOTO (SELFIE HERO - ALWAYS EDITABLE) */}
           <View style={[styles.profileHeroCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
             <View style={{ alignItems: 'center' }}>
-              <TouchableOpacity style={styles.largeAvatarContainer} onPress={handleCaptureSelfie} disabled={!isEditable} activeOpacity={0.8}>
+              <TouchableOpacity
+                style={styles.largeAvatarContainer}
+                onPress={handleCaptureSelfie}
+                disabled={uploadingPhoto}
+                activeOpacity={0.8}
+              >
                 {selfieUrl ? (
                   <Image source={{ uri: selfieUrl }} style={styles.largeAvatar} />
                 ) : (
@@ -527,11 +581,9 @@ export default function ProfileScreen() {
                     <ActivityIndicator size="small" color="#ffffff" />
                   </View>
                 )}
-                {isEditable && (
-                  <View style={styles.cameraIconBadge}>
-                    <Ionicons name="camera" size={14} color="#ffffff" />
-                  </View>
-                )}
+                <View style={styles.cameraIconBadge}>
+                  <Ionicons name="camera" size={14} color="#ffffff" />
+                </View>
               </TouchableOpacity>
 
               <Text style={[styles.riderNameText, { color: theme.text, marginTop: 12 }]}>{rider.rider_name || 'Rivo Rider'}</Text>
@@ -546,7 +598,7 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* 6. KYC STATUS CARDS */}
+          {/* KYC STATUS CARDS */}
           {kycStatus === 'pending' && (
             <View style={[styles.card, { backgroundColor: isDarkMode ? '#272314' : '#FEF3C7', borderColor: isDarkMode ? '#453507' : '#FDE68A' }]}>
               <View style={styles.cardHeader}>
@@ -669,7 +721,7 @@ export default function ProfileScreen() {
 
             <View style={[styles.infoDivider, { backgroundColor: theme.border, marginVertical: 16 }]} />
 
-            {/* Driving License - Conditional (Optional for EV/Cycle) */}
+            {/* Driving License */}
             <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>
               Driving Licence {isEvOrNonMotorized ? '(Optional for EV / Cycle)' : '(Required)'}
             </Text>
@@ -709,9 +761,18 @@ export default function ProfileScreen() {
 
           {/* 3. BANK DETAILS CARD */}
           <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="wallet-outline" size={18} color={COLORS.emeraldGreen} style={{ marginRight: 8 }} />
-              <Text style={[styles.cardTitle, { color: theme.text }]}>Bank Details</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <View style={styles.cardHeader}>
+                <Ionicons name="wallet-outline" size={18} color={COLORS.emeraldGreen} style={{ marginRight: 8 }} />
+                <Text style={[styles.cardTitle, { color: theme.text }]}>Bank Details</Text>
+              </View>
+              <TouchableOpacity 
+                style={styles.editBankBtn} 
+                onPress={() => setIsEditingBank(!isEditingBank)}
+              >
+                <Ionicons name={isEditingBank ? "close-outline" : "create-outline"} size={16} color={COLORS.emeraldGreen} />
+                <Text style={styles.editBankBtnText}>{isEditingBank ? 'Cancel' : 'Edit Bank Details'}</Text>
+              </TouchableOpacity>
             </View>
 
             <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>Account Holder Name</Text>
@@ -723,7 +784,7 @@ export default function ProfileScreen() {
                 placeholderTextColor={theme.textMuted}
                 value={accountHolder}
                 onChangeText={setAccountHolder}
-                editable={isEditable}
+                editable={isEditingBank || isEditable}
               />
             </View>
 
@@ -736,7 +797,7 @@ export default function ProfileScreen() {
                 placeholderTextColor={theme.textMuted}
                 value={bankName}
                 onChangeText={setBankName}
-                editable={isEditable}
+                editable={isEditingBank || isEditable}
               />
             </View>
 
@@ -750,7 +811,7 @@ export default function ProfileScreen() {
                 keyboardType="number-pad"
                 value={accountNumber}
                 onChangeText={setAccountNumber}
-                editable={isEditable}
+                editable={isEditingBank || isEditable}
               />
             </View>
 
@@ -765,7 +826,7 @@ export default function ProfileScreen() {
                 maxLength={11}
                 value={ifsc}
                 onChangeText={setIfsc}
-                editable={isEditable}
+                editable={isEditingBank || isEditable}
               />
             </View>
 
@@ -779,12 +840,27 @@ export default function ProfileScreen() {
                 autoCapitalize="none"
                 value={upi}
                 onChangeText={setUpi}
-                editable={isEditable}
+                editable={isEditingBank || isEditable}
               />
             </View>
+
+            {isEditingBank && (
+              <TouchableOpacity
+                style={[styles.saveBankBtn, { backgroundColor: COLORS.emeraldGreen }]}
+                onPress={handleSaveBankDetails}
+                disabled={savingBankDetails}
+                activeOpacity={0.8}
+              >
+                {savingBankDetails ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Text style={styles.saveBankBtnText}>Save Bank Details</Text>
+                )}
+              </TouchableOpacity>
+            )}
           </View>
 
-          {/* 5. SUBMIT KYC ACTION BUTTON */}
+          {/* SUBMIT KYC ACTION BUTTON */}
           {isEditable && (
             <TouchableOpacity
               style={[styles.submitButton, { backgroundColor: COLORS.emeraldGreen }]}
@@ -812,17 +888,7 @@ export default function ProfileScreen() {
                 <Ionicons name="mail" size={16} color={theme.textMuted} style={{ marginRight: 10 }} />
                 <Text style={[styles.supportText, { color: theme.text }]}>Email Support</Text>
               </View>
-              <Text style={[styles.supportSubText, { color: theme.textMuted }]}>rivo.city1@gmail.com</Text>
-            </TouchableOpacity>
-            
-            <View style={[styles.infoDivider, { backgroundColor: theme.border }]} />
-            
-            <TouchableOpacity style={styles.supportAction} onPress={handleOpenWhatsApp} activeOpacity={0.7}>
-              <View style={styles.supportLeft}>
-                <Ionicons name="logo-whatsapp" size={16} color="#10B981" style={{ marginRight: 10 }} />
-                <Text style={[styles.supportText, { color: theme.text }]}>WhatsApp Support</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={14} color={theme.textMuted} />
+              <Text style={[styles.supportSubText, { color: theme.textMuted }]}>rivocityhelp1@gmail.com</Text>
             </TouchableOpacity>
           </View>
 
@@ -964,7 +1030,6 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
   },
   cardTitle: {
     fontSize: 16,
@@ -1029,6 +1094,28 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginTop: 10,
     resizeMode: 'cover',
+  },
+  editBankBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  editBankBtnText: {
+    color: COLORS.emeraldGreen,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  saveBankBtn: {
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  saveBankBtnText: {
+    color: COLORS.white,
+    fontWeight: '800',
+    fontSize: 14,
   },
   submitButton: {
     paddingVertical: 16,

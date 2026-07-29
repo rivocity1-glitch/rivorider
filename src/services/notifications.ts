@@ -38,7 +38,7 @@ export async function getNotifications(riderId: string): Promise<RiderNotificati
   }
 }
 
-export async function getUnreadNotificationCount(riderId: string): Promise<number> {
+export async function getUnreadNotificationCount(riderId: string, p0?: string): Promise<number> {
   try {
     const { count, error } = await supabase
       .from("notifications")

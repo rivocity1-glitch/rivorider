@@ -1,25 +1,24 @@
 {
   "expo": {
-    "name": "rivorider",
+    "name": "Rivo.City Rider",
     "slug": "rivorider",
     "version": "1.0.0",
     "owner": "rivo.ved",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/icon.png",
     "scheme": "rivorider",
     "userInterfaceStyle": "automatic",
 
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/icon.png"
     },
 
     "android": {
       "package": "com.rivo.ved.rivorider",
       "adaptiveIcon": {
         "backgroundColor": "#0D0D0D",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "monochromeImage": "./assets/notification-icon.png"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -37,7 +36,7 @@
 
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/favicon.png"
     },
 
     "plugins": [
@@ -46,7 +45,7 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#0D0D0D",
-          "image": "./assets/images/rider-splash.png",
+          "image": "./assets/splash-icon.png",
           "imageWidth": 220
         }
       ],
@@ -54,7 +53,7 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow Rivo Rider to access your location."
+          "locationAlwaysAndWhenInUsePermission": "Allow Rivo.City Rider to access your location."
         }
       ],
       "expo-web-browser",

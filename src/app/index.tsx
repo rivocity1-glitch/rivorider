@@ -1,26 +1,27 @@
 import { Redirect } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { AnimatedSplash } from '../../components/splash/AnimatedSplash';
 import { supabase } from '../lib/supabase';
 
 export default function Index() {
-  const [loading, setLoading] = useState(true);
-  const [loggedIn, setLoggedIn] = useState(false);
+  const [animationFinished, setAnimationFinished] = useState(false);
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    checkSession();
-  }, []);
+  const handleAnimationComplete = async () => {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      setLoggedIn(!!session);
+    } catch {
+      setLoggedIn(false);
+    } finally {
+      setAnimationFinished(true);
+    }
+  };
 
-  async function checkSession() {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    setLoggedIn(!!session);
-    setLoading(false);
-  }
-
-  if (loading) {
-    return null;
+  if (!animationFinished || loggedIn === null) {
+    return <AnimatedSplash onAnimationComplete={handleAnimationComplete} />;
   }
 
   if (loggedIn) {
