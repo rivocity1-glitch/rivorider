@@ -14,6 +14,13 @@ import {
   View,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
+import {
+  getNotifications,
+  markAllNotificationsAsRead,
+  markNotificationAsRead,
+  RiderNotification as Notification,
+  subscribeToNotifications,
+} from '../services/notifications';
 
 // --- Types & Interfaces ---
 export type NotificationType =
@@ -36,19 +43,6 @@ export type NotificationType =
   | 'sos_sent'
   | 'sos_accepted'
   | 'sos_closed';
-
-export interface Notification {
-  id: string;
-  recipient_id: string;
-  title: string;
-  message: string;
-  is_read: boolean;
-  created_at: string;
-  type: NotificationType;
-  recipient_type: 'rider';
-  reference_id: string | null;
-  metadata: Record<string, any> | null;
-}
 
 // --- Configuration Maps ---
 const typeConfigs: Record<
@@ -136,7 +130,7 @@ const SkeletonCard = () => {
         Animated.timing(animatedValue, { toValue: 0, duration: 1000, useNativeDriver: true }),
       ])
     ).start();
-  }, []);
+  }, [animatedValue]);
 
   const opacity = animatedValue.interpolate({
     inputRange: [0, 1],
@@ -165,37 +159,54 @@ export default function NotificationsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const [riderId, setRiderId] = useState<string | null>(null);
 
   // Modal State
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
   const [longPressedNotification, setLongPressedNotification] = useState<Notification | null>(null);
 
-  // Fetch Notifications Logic using Auth User ID
-  const fetchNotifications = async (showTriggerLoading = false) => {
-    if (showTriggerLoading) setLoading(true);
+  /**
+   * Resolves auth.user.id -> riders.auth_user_id -> riders.id
+   */
+  const resolveRiderId = async (): Promise<string | null> => {
     try {
       const {
         data: { user },
         error: authError,
       } = await supabase.auth.getUser();
 
-      if (authError || !user) {
+      if (authError || !user) return null;
+
+      const { data: riderData, error: riderError } = await supabase
+        .from('riders')
+        .select('id')
+        .eq('auth_user_id', user.id)
+        .maybeSingle();
+
+      if (riderError || !riderData?.id) return null;
+
+      return riderData.id;
+    } catch (err) {
+      console.error('Error resolving rider ID:', err);
+      return null;
+    }
+  };
+
+  // Fetch Notifications Logic using Resolved riders.id
+  const fetchNotifications = async (showTriggerLoading = false) => {
+    if (showTriggerLoading) setLoading(true);
+    try {
+      const rId = riderId || (await resolveRiderId());
+
+      if (!rId) {
         setLoading(false);
         setRefreshing(false);
         return;
       }
 
-      setAuthUserId(user.id);
+      setRiderId(rId);
 
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('recipient_type', 'rider')
-        .eq('recipient_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      const data = await getNotifications(rId);
       setNotifications(data || []);
     } catch (err) {
       console.error('Error fetching notifications:', err);
@@ -209,53 +220,18 @@ export default function NotificationsScreen() {
     fetchNotifications(true);
   }, []);
 
-  // Dynamic Realtime Sync using Auth User ID
+  // Dynamic Realtime Sync using riders.id
   useEffect(() => {
-    if (!authUserId) return;
+    if (!riderId) return;
 
-    const channelName = `realtime-notifications-${authUserId}`;
-    supabase.removeChannel(supabase.channel(channelName));
-
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `recipient_type=eq.rider`,
-        },
-        (payload) => {
-          const newNotif = payload.new as Notification;
-          if (newNotif.recipient_id === authUserId) {
-            setNotifications((prev) => [newNotif, ...prev]);
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'notifications',
-          filter: `recipient_type=eq.rider`,
-        },
-        (payload) => {
-          const updatedNotif = payload.new as Notification;
-          if (updatedNotif.recipient_id === authUserId) {
-            setNotifications((prev) =>
-              prev.map((n) => (n.id === updatedNotif.id ? updatedNotif : n))
-            );
-          }
-        }
-      )
-      .subscribe();
+    const unsubscribe = subscribeToNotifications(riderId, () => {
+      fetchNotifications(false);
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      unsubscribe();
     };
-  }, [authUserId]);
+  }, [riderId]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -268,22 +244,14 @@ export default function NotificationsScreen() {
 
   // Handle Tap updates & navigations
   const handleNotificationTap = async (item: Notification) => {
-    if (!item.is_read && authUserId) {
-      // 1. Optimistic UI update
+    if (!item.is_read && riderId) {
+      // Optimistic UI update
       setNotifications((prev) =>
         prev.map((n) => (n.id === item.id ? { ...n, is_read: true } : n))
       );
 
-      // 2. Persist update in database (explicit recipient_id match for RLS compliance)
-      const { error } = await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('id', item.id)
-        .eq('recipient_id', authUserId);
-
-      if (error) {
-        console.error('[NotificationsScreen] DB Update Error:', error.message);
-      }
+      // Persist update in database using riders.id and recipient_type = 'rider'
+      await markNotificationAsRead(item.id);
     }
 
     switch (item.type) {
@@ -322,22 +290,22 @@ export default function NotificationsScreen() {
   };
 
   const handleMarkAsRead = async (id: string) => {
-    if (!authUserId) return;
+    if (!riderId) return;
 
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
     );
     setLongPressedNotification(null);
 
-    const { error } = await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('id', id)
-      .eq('recipient_id', authUserId);
+    await markNotificationAsRead(id);
+  };
 
-    if (error) {
-      console.error('[NotificationsScreen] DB Update Error:', error.message);
-    }
+  const handleMarkAllRead = async () => {
+    if (!riderId) return;
+
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+
+    await markAllNotificationsAsRead(riderId);
   };
 
   const filteredNotifications = useMemo(() => {
@@ -375,6 +343,11 @@ export default function NotificationsScreen() {
             <View style={styles.badgeContainer}>
               <Text style={styles.badgeText}>{unreadCount}</Text>
             </View>
+          )}
+          {unreadCount > 0 && (
+            <TouchableOpacity onPress={handleMarkAllRead} style={styles.markAllHeaderBtn}>
+              <Text style={styles.markAllHeaderText}>Mark all read</Text>
+            </TouchableOpacity>
           )}
         </View>
         <Text style={styles.headerSubtitle}>
@@ -428,7 +401,7 @@ export default function NotificationsScreen() {
               <View key={groupKey} style={styles.sectionContainer}>
                 <Text style={styles.sectionHeader}>{groupKey}</Text>
                 {items.map((item) => {
-                  const config = typeConfigs[item.type] || typeConfigs.unknown;
+                  const config = typeConfigs[item.type as NotificationType] || typeConfigs.unknown;
                   const colors = categoryColors[config.category];
 
                   return (
@@ -585,6 +558,18 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700',
+  },
+  markAllHeaderBtn: {
+    marginLeft: 'auto',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: '#E8F5E9',
+    borderRadius: 12,
+  },
+  markAllHeaderText: {
+    color: '#2E7D32',
+    fontSize: 12,
+    fontWeight: '600',
   },
   headerSubtitle: {
     fontSize: 14,
