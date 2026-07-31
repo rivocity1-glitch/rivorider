@@ -15,24 +15,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { COLORS, useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../lib/supabase';
-
-// Brand Palette
-const COLORS = {
-  emeraldGreen: '#2ECC71',
-  limeGreen: '#A8E63A',
-  jetBlack: '#0D0D0D',
-  white: '#FFFFFF',
-  offWhite: '#F9F9F9',
-  borderLight: '#EFEFEF',
-  textMuted: '#888888',
-  danger: '#FF3B30',
-  cardBg: '#FFFFFF',
-  border: '#EAEAEA',
-  darkCard: '#1A1A1A',
-  darkBorder: '#2A2A2A',
-  darkMuted: '#A0A0A0',
-};
 
 interface Order {
   id: string;
@@ -69,6 +53,8 @@ interface Order {
 }
 
 export default function DeliveriesScreen() {
+  const { isDarkMode, theme } = useTheme();
+
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [orders, setOrders] = useState<Order[]>([]);
@@ -78,10 +64,6 @@ export default function DeliveriesScreen() {
   const currentRiderIdRef = useRef<string | null>(null);
   const channelRef = useRef<any>(null);
   const notifiedOrderIdsRef = useRef<Set<string>>(new Set());
-
-  // Theme Sync System
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
-  const themeToggleAnim = useRef(new Animated.Value(isDarkMode ? 1 : 0)).current;
 
   // Modal Workflow State
   const [modalVisible, setModalVisible] = useState(false);
@@ -107,17 +89,7 @@ export default function DeliveriesScreen() {
 
   const otpInputsRef = useRef<TextInput[]>([]);
 
-  const theme = {
-    bg: isDarkMode ? COLORS.jetBlack : COLORS.offWhite,
-    cardBg: isDarkMode ? COLORS.darkCard : COLORS.white,
-    text: isDarkMode ? COLORS.white : COLORS.jetBlack,
-    textMuted: isDarkMode ? COLORS.darkMuted : COLORS.textMuted,
-    border: isDarkMode ? COLORS.darkBorder : COLORS.borderLight,
-    headerBg: isDarkMode ? COLORS.darkCard : COLORS.white,
-  };
-
   const triggerNewOrderNotificationAlert = async (orderId?: string) => {
-    console.log(`[Audio] Order assignment notification triggered for ID: ${orderId}`);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
     try {
@@ -125,7 +97,6 @@ export default function DeliveriesScreen() {
       try {
         soundAsset = require('../../../assets/sounds/new-order.mp3');
       } catch (assetErr) {
-        console.warn('[Audio] Sound asset assets/sounds/new-order.mp3 not found.');
         return;
       }
 
@@ -208,23 +179,6 @@ export default function DeliveriesScreen() {
       }
     };
   }, [currentRiderId]);
-
-  useEffect(() => {
-    Animated.timing(themeToggleAnim, {
-      toValue: isDarkMode ? 1 : 0,
-      duration: 250,
-      useNativeDriver: false,
-    }).start();
-  }, [isDarkMode]);
-
-  const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-  };
-
-  const translateX = themeToggleAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [2, 26],
-  });
 
   const showSuccessToast = (message: string) => {
     setToastMessage(message);
@@ -523,7 +477,6 @@ export default function DeliveriesScreen() {
     try {
       setSubmitting(true);
 
-      // 1. Update order as the single source of truth
       const { error: orderUpdateError } = await supabase
         .from('orders')
         .update({
@@ -539,7 +492,6 @@ export default function DeliveriesScreen() {
 
       if (orderUpdateError) throw orderUpdateError;
 
-      // 2. Insert into rider_collections for settlement tracking ONLY (No duplicate cash numbers)
       const { error: collectionError } = await supabase
         .from('rider_collections')
         .insert({
@@ -587,21 +539,21 @@ export default function DeliveriesScreen() {
 
   const getStatusColor = (status: string) => {
     switch (status?.toLowerCase()) {
-      case 'packed': return '#F3E8FF';
-      case 'picked_up': return '#FFE4E6';
-      case 'out_for_delivery': return '#E0F7FA';
-      case 'delivered': return '#DCFCE7';
-      default: return '#E0E0E0';
+      case 'packed': return isDarkMode ? '#4C1D95' : '#F3E8FF';
+      case 'picked_up': return isDarkMode ? '#881337' : '#FFE4E6';
+      case 'out_for_delivery': return isDarkMode ? '#164E63' : '#E0F7FA';
+      case 'delivered': return isDarkMode ? '#064E3B' : '#DCFCE7';
+      default: return isDarkMode ? '#262626' : '#E0E0E0';
     }
   };
 
   const getStatusTextColor = (status: string) => {
     switch (status?.toLowerCase()) {
-      case 'packed': return '#9333EA';
-      case 'picked_up': return '#E11D48';
-      case 'out_for_delivery': return '#00838F';
-      case 'delivered': return '#16A34A';
-      default: return '#666666';
+      case 'packed': return isDarkMode ? '#E9D5FF' : '#9333EA';
+      case 'picked_up': return isDarkMode ? '#FECDD3' : '#E11D48';
+      case 'out_for_delivery': return isDarkMode ? '#A5F3FC' : '#00838F';
+      case 'delivered': return isDarkMode ? '#A7F3D0' : '#16A34A';
+      default: return isDarkMode ? '#A3A3A3' : '#666666';
     }
   };
 
@@ -649,11 +601,6 @@ export default function DeliveriesScreen() {
       <View style={[styles.header, { backgroundColor: theme.headerBg, borderColor: theme.border }]}>
         <View style={styles.headerTopRow}>
           <Text style={[styles.headerTitle, { color: theme.text }]}>Deliveries</Text>
-          <TouchableOpacity activeOpacity={0.9} onPress={toggleTheme} style={[styles.switchTrack, { backgroundColor: isDarkMode ? '#333' : '#E0E0E0' }]}>
-            <Animated.View style={[styles.switchThumb, { transform: [{ translateX }] }]}>
-              <Text style={{ fontSize: 11, textAlign: 'center' }}>{isDarkMode ? '🌙' : '☀️'}</Text>
-            </Animated.View>
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -678,12 +625,12 @@ export default function DeliveriesScreen() {
             key={tab}
             style={[
               styles.tab,
-              { backgroundColor: isDarkMode ? COLORS.darkCard : '#EAEAEA' },
-              activeTab === tab && { backgroundColor: COLORS.emeraldGreen },
+              { backgroundColor: theme.cardBg, borderColor: theme.border, borderWidth: 1 },
+              activeTab === tab && { backgroundColor: COLORS.emeraldGreen, borderColor: COLORS.emeraldGreen },
             ]}
             onPress={() => setActiveTab(tab)}
           >
-            <Text style={[styles.tabText, { color: isDarkMode ? COLORS.darkMuted : '#666666' }, activeTab === tab && { color: COLORS.white }]}>
+            <Text style={[styles.tabText, { color: theme.textMuted }, activeTab === tab && { color: COLORS.white }]}>
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
             </Text>
           </TouchableOpacity>
@@ -715,8 +662,8 @@ export default function DeliveriesScreen() {
                     <View>
                       <Text style={[styles.orderNumberText, { color: theme.text }]}>Order #{item.order_number}</Text>
                       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, flexWrap: 'wrap', gap: 8 }}>
-                        <Text style={[styles.timeText, { color: theme.textMuted }]}>📅 {createdTimestamp.date}</Text>
-                        <Text style={[styles.timeText, { color: theme.textMuted }]}>🕒 {createdTimestamp.time}</Text>
+                        <Text style={[styles.timeText, { color: theme.textMuted }]}>{createdTimestamp.date}</Text>
+                        <Text style={[styles.timeText, { color: theme.textMuted }]}>{createdTimestamp.time}</Text>
                       </View>
                     </View>
                     <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.order_status) }]}>
@@ -753,13 +700,13 @@ export default function DeliveriesScreen() {
                     {isDelivered && (
                       <View style={[styles.completedFinancialBox, { backgroundColor: theme.bg, borderColor: theme.border }]}>
                         <Text style={[styles.completedFinancialHeaderTitle, { color: theme.text }]}>
-                          💳 Payment & Settlement Breakdown
+                          Payment & Settlement Breakdown
                         </Text>
                         
                         <View style={styles.financialRowItem}>
                           <Text style={[styles.financialRowLabel, { color: theme.textMuted }]}>Payment Method:</Text>
-                          <View style={styles.paymentMethodTag}>
-                            <Text style={styles.paymentMethodTagText}>{getOrderPaymentTypeLabel(item)}</Text>
+                          <View style={[styles.paymentMethodTag, { backgroundColor: isDarkMode ? '#334155' : '#E2E8F0' }]}>
+                            <Text style={[styles.paymentMethodTagText, { color: isDarkMode ? '#F1F5F9' : '#334155' }]}>{getOrderPaymentTypeLabel(item)}</Text>
                           </View>
                         </View>
 
@@ -804,11 +751,11 @@ export default function DeliveriesScreen() {
                   <View style={styles.cardFooter}>
                     <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginRight: 10 }}>
                       <View>
-                        <Text style={[styles.amountLabel, { color: theme.textMuted, fontSize: 12 }]}>💰 Total Order</Text>
+                        <Text style={[styles.amountLabel, { color: theme.textMuted, fontSize: 12 }]}>Total Order</Text>
                         <Text style={[styles.amountValue, { color: theme.text, fontSize: 18 }]}>₹{item.total_amount}</Text>
                       </View>
                       <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={[styles.amountLabel, { color: COLORS.emeraldGreen, fontWeight: '700', fontSize: 12 }]}>🪙 Your Earnings</Text>
+                        <Text style={[styles.amountLabel, { color: COLORS.emeraldGreen, fontWeight: '700', fontSize: 12 }]}>Your Earnings</Text>
                         <Text style={[styles.amountValue, { color: COLORS.emeraldGreen, fontSize: 20, fontWeight: '900' }]}>₹{item.rider_earning || 0}</Text>
                       </View>
                     </View>
@@ -991,7 +938,7 @@ export default function DeliveriesScreen() {
 
                 {amountReceived !== '' && !receivedInputValid() && (
                   <Text style={styles.validationErrorBannerText}>
-                    ⚠️ Received cash amount cannot be less than the total order billing rate.
+                    Received cash amount cannot be less than the total order billing rate.
                   </Text>
                 )}
 
@@ -1066,21 +1013,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 26,
     fontWeight: '700',
-  },
-  switchTrack: {
-    width: 50,
-    height: 26,
-    borderRadius: 99,
-    padding: 2,
-    justifyContent: 'center',
-  },
-  switchThumb: {
-    width: 22,
-    height: 22,
-    borderRadius: 99,
-    backgroundColor: COLORS.white,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   searchContainer: {
     paddingHorizontal: 16,
@@ -1219,7 +1151,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   paymentMethodTag: {
-    backgroundColor: '#E2E8F0',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
@@ -1227,7 +1158,6 @@ const styles = StyleSheet.create({
   paymentMethodTagText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#334155',
   },
   cardFooter: {
     flexDirection: 'row',

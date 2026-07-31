@@ -1,3 +1,4 @@
+// src/app/notifications.tsx
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -13,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { COLORS, useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import {
   getNotifications,
@@ -44,31 +46,31 @@ export type NotificationType =
   | 'sos_accepted'
   | 'sos_closed';
 
-// --- Configuration Maps ---
+// --- Configuration Maps (Using Standard Expo Ionicons) ---
 const typeConfigs: Record<
   NotificationType | 'unknown',
-  { icon: string; category: 'Orders' | 'Finance' | 'SOS' | 'KYC' | 'Announcements' | 'System' }
+  { iconName: keyof typeof Ionicons.glyphMap; category: 'Orders' | 'Finance' | 'SOS' | 'KYC' | 'Announcements' | 'System' }
 > = {
-  new_order: { icon: '🆕', category: 'Orders' },
-  order_ready: { icon: '📦', category: 'Orders' },
-  pickup_started: { icon: '🚚', category: 'Orders' },
-  out_for_delivery: { icon: '🚛', category: 'Orders' },
-  delivery_completed: { icon: '✅', category: 'Orders' },
-  order_cancelled: { icon: '❌', category: 'Orders' },
-  settlement_requested: { icon: '💰', category: 'Finance' },
-  settlement_approved: { icon: '💸', category: 'Finance' },
-  settlement_rejected: { icon: '⚠️', category: 'Finance' },
-  payment_received: { icon: '💵', category: 'Finance' },
-  kyc_under_review: { icon: '🛡️', category: 'KYC' },
-  kyc_verified: { icon: '✅', category: 'KYC' },
-  kyc_rejected: { icon: '📄', category: 'KYC' },
-  profile_updated: { icon: '👤', category: 'System' },
-  announcement: { icon: '📢', category: 'Announcements' },
-  system_update: { icon: '⚙️', category: 'System' },
-  sos_sent: { icon: '🚨', category: 'SOS' },
-  sos_accepted: { icon: '🚑', category: 'SOS' },
-  sos_closed: { icon: '✅', category: 'SOS' },
-  unknown: { icon: '🔔', category: 'System' },
+  new_order: { iconName: 'cube-outline', category: 'Orders' },
+  order_ready: { iconName: 'cube-outline', category: 'Orders' },
+  pickup_started: { iconName: 'bicycle-outline', category: 'Orders' },
+  out_for_delivery: { iconName: 'navigate-outline', category: 'Orders' },
+  delivery_completed: { iconName: 'checkmark-circle-outline', category: 'Orders' },
+  order_cancelled: { iconName: 'close-circle-outline', category: 'Orders' },
+  settlement_requested: { iconName: 'cash-outline', category: 'Finance' },
+  settlement_approved: { iconName: 'wallet-outline', category: 'Finance' },
+  settlement_rejected: { iconName: 'alert-circle-outline', category: 'Finance' },
+  payment_received: { iconName: 'cash-outline', category: 'Finance' },
+  kyc_under_review: { iconName: 'time-outline', category: 'KYC' },
+  kyc_verified: { iconName: 'shield-checkmark-outline', category: 'KYC' },
+  kyc_rejected: { iconName: 'document-text-outline', category: 'KYC' },
+  profile_updated: { iconName: 'person-outline', category: 'System' },
+  announcement: { iconName: 'megaphone-outline', category: 'Announcements' },
+  system_update: { iconName: 'settings-outline', category: 'System' },
+  sos_sent: { iconName: 'warning-outline', category: 'SOS' },
+  sos_accepted: { iconName: 'medical-outline', category: 'SOS' },
+  sos_closed: { iconName: 'checkmark-done-circle-outline', category: 'SOS' },
+  unknown: { iconName: 'notifications-outline', category: 'System' },
 };
 
 const categoryColors = {
@@ -120,7 +122,7 @@ function getGroupSection(dateString: string): 'Today' | 'Yesterday' | 'Earlier' 
 }
 
 // --- Skeleton Component ---
-const SkeletonCard = () => {
+const SkeletonCard = ({ theme }: { theme: any }) => {
   const animatedValue = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -138,7 +140,7 @@ const SkeletonCard = () => {
   });
 
   return (
-    <View style={styles.skeletonCard}>
+    <View style={[styles.skeletonCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
       <View style={styles.cardHeader}>
         <Animated.View style={[styles.skeletonIcon, { opacity }]} />
         <View style={{ flex: 1, marginLeft: 12 }}>
@@ -154,6 +156,7 @@ const SkeletonCard = () => {
 // --- Main Component ---
 export default function NotificationsScreen() {
   const router = useRouter();
+  const { theme } = useTheme();
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -165,9 +168,6 @@ export default function NotificationsScreen() {
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
   const [longPressedNotification, setLongPressedNotification] = useState<Notification | null>(null);
 
-  /**
-   * Resolves auth.user.id -> riders.auth_user_id -> riders.id
-   */
   const resolveRiderId = async (): Promise<string | null> => {
     try {
       const {
@@ -192,7 +192,6 @@ export default function NotificationsScreen() {
     }
   };
 
-  // Fetch Notifications Logic using Resolved riders.id
   const fetchNotifications = async (showTriggerLoading = false) => {
     if (showTriggerLoading) setLoading(true);
     try {
@@ -220,7 +219,6 @@ export default function NotificationsScreen() {
     fetchNotifications(true);
   }, []);
 
-  // Dynamic Realtime Sync using riders.id
   useEffect(() => {
     if (!riderId) return;
 
@@ -242,15 +240,12 @@ export default function NotificationsScreen() {
     return notifications.filter((n) => !n.is_read).length;
   }, [notifications]);
 
-  // Handle Tap updates & navigations
   const handleNotificationTap = async (item: Notification) => {
     if (!item.is_read && riderId) {
-      // Optimistic UI update
       setNotifications((prev) =>
         prev.map((n) => (n.id === item.id ? { ...n, is_read: true } : n))
       );
 
-      // Persist update in database using riders.id and recipient_type = 'rider'
       await markNotificationAsRead(item.id);
     }
 
@@ -334,11 +329,14 @@ export default function NotificationsScreen() {
   }, [filteredNotifications]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
       {/* Header View */}
-      <View style={styles.headerContainer}>
+      <View style={[styles.headerContainer, { backgroundColor: theme.headerBg, borderColor: theme.border }]}>
         <View style={styles.headerRow}>
-          <Text style={styles.headerTitle}>🔔 Notifications</Text>
+          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
+            <Ionicons name="arrow-back" size={24} color={theme.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>Notifications</Text>
           {unreadCount > 0 && (
             <View style={styles.badgeContainer}>
               <Text style={styles.badgeText}>{unreadCount}</Text>
@@ -350,19 +348,19 @@ export default function NotificationsScreen() {
             </TouchableOpacity>
           )}
         </View>
-        <Text style={styles.headerSubtitle}>
+        <Text style={[styles.headerSubtitle, { color: theme.textMuted }]}>
           Stay updated with deliveries, settlements and important announcements.
         </Text>
       </View>
 
       {/* Search Input Layout */}
       <View style={styles.searchWrapper}>
-        <View style={styles.searchBar}>
-          <Ionicons name="search-outline" size={18} color="#666" style={styles.searchIcon} />
+        <View style={[styles.searchBar, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+          <Ionicons name="search-outline" size={18} color={theme.textMuted} style={styles.searchIcon} />
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: theme.text }]}
             placeholder="Search notifications"
-            placeholderTextColor="#999"
+            placeholderTextColor={theme.textMuted}
             value={searchQuery}
             onChangeText={setSearchQuery}
             clearButtonMode="while-editing"
@@ -373,25 +371,25 @@ export default function NotificationsScreen() {
       {/* Content Scroller Area */}
       {loading ? (
         <ScrollView contentContainerStyle={styles.scrollContainer}>
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
+          <SkeletonCard theme={theme} />
+          <SkeletonCard theme={theme} />
+          <SkeletonCard theme={theme} />
         </ScrollView>
       ) : filteredNotifications.length === 0 ? (
         <ScrollView
           contentContainerStyle={styles.emptyContainer}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#000" />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.emeraldGreen} />}
         >
-          <Text style={styles.emptyIcon}>🔔</Text>
-          <Text style={styles.emptyTitle}>No notifications yet</Text>
-          <Text style={styles.emptyDesc}>
+          <Ionicons name="notifications-off-outline" size={48} color={theme.textMuted} style={{ marginBottom: 12 }} />
+          <Text style={[styles.emptyTitle, { color: theme.text }]}>No notifications yet</Text>
+          <Text style={[styles.emptyDesc, { color: theme.textMuted }]}>
             Updates about deliveries, settlements and announcements will appear here automatically.
           </Text>
         </ScrollView>
       ) : (
         <ScrollView
           contentContainerStyle={styles.scrollContainer}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#000" />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.emeraldGreen} />}
         >
           {(['Today', 'Yesterday', 'Earlier'] as const).map((groupKey) => {
             const items = groupedNotifications[groupKey];
@@ -399,7 +397,7 @@ export default function NotificationsScreen() {
 
             return (
               <View key={groupKey} style={styles.sectionContainer}>
-                <Text style={styles.sectionHeader}>{groupKey}</Text>
+                <Text style={[styles.sectionHeader, { color: theme.textMuted }]}>{groupKey}</Text>
                 {items.map((item) => {
                   const config = typeConfigs[item.type as NotificationType] || typeConfigs.unknown;
                   const colors = categoryColors[config.category];
@@ -414,27 +412,28 @@ export default function NotificationsScreen() {
                       }}
                       style={[
                         styles.card,
+                        { backgroundColor: theme.cardBg, borderColor: theme.border },
                         !item.is_read && styles.unreadCardBorder,
                       ]}
                     >
                       <View style={styles.cardHeader}>
                         <View style={[styles.iconWrapper, { backgroundColor: colors.bg }]}>
-                          <Text style={[styles.iconText, { color: colors.text }]}>{config.icon}</Text>
+                          <Ionicons name={config.iconName} size={18} color={colors.text} />
                         </View>
                         <View style={styles.titleWrapper}>
                           <Text
-                            style={[styles.cardTitle, !item.is_read && styles.boldText]}
+                            style={[styles.cardTitle, { color: theme.text }, !item.is_read && styles.boldText]}
                             numberOfLines={1}
                           >
                             {item.title}
                           </Text>
-                          <Text style={styles.timeText}>
+                          <Text style={[styles.timeText, { color: theme.textMuted }]}>
                             {formatRelativeTime(item.created_at)}
                           </Text>
                         </View>
                         {!item.is_read && <View style={styles.unreadDot} />}
                       </View>
-                      <Text style={styles.cardMessage} numberOfLines={3}>
+                      <Text style={[styles.cardMessage, { color: theme.textMuted }]} numberOfLines={3}>
                         {item.message}
                       </Text>
                     </TouchableOpacity>
@@ -458,22 +457,22 @@ export default function NotificationsScreen() {
           activeOpacity={1}
           onPress={() => setLongPressedNotification(null)}
         >
-          <View style={styles.actionSheetContainer}>
-            <Text style={styles.sheetTitle} numberOfLines={1}>
+          <View style={[styles.actionSheetContainer, { backgroundColor: theme.cardBg }]}>
+            <Text style={[styles.sheetTitle, { color: theme.text }]} numberOfLines={1}>
               {longPressedNotification?.title}
             </Text>
             <TouchableOpacity
-              style={styles.sheetButton}
+              style={[styles.sheetButton, { backgroundColor: theme.bg }]}
               onPress={() => longPressedNotification && handleMarkAsRead(longPressedNotification.id)}
             >
-              <Ionicons name="checkmark-circle-outline" size={20} color="#2E7D32" />
-              <Text style={styles.sheetButtonText}>Mark as Read</Text>
+              <Ionicons name="checkmark-circle-outline" size={20} color={COLORS.emeraldGreen} />
+              <Text style={[styles.sheetButtonText, { color: COLORS.emeraldGreen }]}>Mark as Read</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.sheetButton, styles.sheetCancelBtn]}
               onPress={() => setLongPressedNotification(null)}
             >
-              <Text style={styles.sheetCancelText}>Cancel</Text>
+              <Text style={[styles.sheetCancelText, { color: theme.text }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -487,25 +486,25 @@ export default function NotificationsScreen() {
         onRequestClose={() => setSelectedNotification(null)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { backgroundColor: theme.cardBg }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalHeaderTitle}>
-                {selectedNotification?.type === 'announcement' ? '📢 Announcement' : '⚙️ System Update'}
+              <Text style={[styles.modalHeaderTitle, { color: theme.text }]}>
+                {selectedNotification?.type === 'announcement' ? 'Announcement' : 'System Update'}
               </Text>
               <TouchableOpacity onPress={() => setSelectedNotification(null)} style={styles.closeIconBtn}>
-                <Ionicons name="close" size={24} color="#000" />
+                <Ionicons name="close" size={24} color={theme.text} />
               </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              <Text style={styles.modalTitleText}>
+              <Text style={[styles.modalTitleText, { color: theme.text }]}>
                 {selectedNotification?.title}
               </Text>
-              <Text style={styles.modalDateText}>
+              <Text style={[styles.modalDateText, { color: theme.textMuted }]}>
                 {selectedNotification?.created_at ? new Date(selectedNotification.created_at).toLocaleString('en-GB') : ''}
               </Text>
-              <View style={styles.modalDivider} />
-              <Text style={styles.modalMessageText}>
+              <View style={[styles.modalDivider, { backgroundColor: theme.border }]} />
+              <Text style={[styles.modalMessageText, { color: theme.text }]}>
                 {selectedNotification?.message}
               </Text>
             </ScrollView>
@@ -523,32 +522,28 @@ export default function NotificationsScreen() {
   );
 }
 
-// --- Light Theme Styles ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
   },
   headerContainer: {
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
-    paddingBottom: 16,
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 64 : 44,
+    paddingBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#EAEAEA',
-    backgroundColor: '#FFFFFF',
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '700',
-    letterSpacing: -0.5,
-    color: '#1A1A1A',
   },
   badgeContainer: {
-    backgroundColor: '#E53935',
+    backgroundColor: COLORS.danger,
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 2,
@@ -561,21 +556,20 @@ const styles = StyleSheet.create({
   },
   markAllHeaderBtn: {
     marginLeft: 'auto',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: '#E8F5E9',
-    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#DCFCE7',
+    borderRadius: 99,
   },
   markAllHeaderText: {
-    color: '#2E7D32',
+    color: '#16A34A',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   headerSubtitle: {
-    fontSize: 14,
+    fontSize: 12,
     marginTop: 4,
-    lineHeight: 20,
-    color: '#666666',
+    lineHeight: 18,
   },
   searchWrapper: {
     paddingHorizontal: 16,
@@ -584,10 +578,10 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    height: 44,
-    backgroundColor: '#EEEEEE',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    height: 52,
+    borderWidth: 1,
   },
   searchIcon: {
     marginRight: 8,
@@ -595,7 +589,6 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 15,
-    color: '#1A1A1A',
   },
   scrollContainer: {
     paddingHorizontal: 16,
@@ -605,30 +598,22 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   sectionHeader: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 10,
     marginLeft: 4,
-    color: '#666666',
   },
   card: {
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 24,
+    padding: 20,
     marginBottom: 12,
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
     borderWidth: 1,
-    borderColor: '#EAEAEA',
   },
   unreadCardBorder: {
     borderLeftWidth: 4,
-    borderLeftColor: '#2E7D32',
+    borderLeftColor: COLORS.emeraldGreen,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -638,12 +623,9 @@ const styles = StyleSheet.create({
   iconWrapper: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  iconText: {
-    fontSize: 18,
   },
   titleWrapper: {
     flex: 1,
@@ -653,7 +635,6 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 15,
     fontWeight: '500',
-    color: '#1A1A1A',
   },
   boldText: {
     fontWeight: '700',
@@ -661,19 +642,17 @@ const styles = StyleSheet.create({
   timeText: {
     fontSize: 11,
     marginTop: 2,
-    color: '#666666',
   },
   unreadDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#2E7D32',
+    backgroundColor: COLORS.emeraldGreen,
   },
   cardMessage: {
     fontSize: 13,
     lineHeight: 18,
     marginLeft: 48,
-    color: '#666666',
   },
   emptyContainer: {
     flexGrow: 1,
@@ -682,56 +661,46 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingBottom: 80,
   },
-  emptyIcon: {
-    fontSize: 48,
-    marginBottom: 16,
-  },
   emptyTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-    color: '#1A1A1A',
+    fontWeight: '700',
+    marginBottom: 4,
   },
   emptyDesc: {
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
-    color: '#666666',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
     alignItems: 'center',
   },
   actionSheetContainer: {
     width: '100%',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     padding: 24,
     paddingBottom: Platform.OS === 'ios' ? 40 : 24,
-    backgroundColor: '#FFFFFF',
   },
   sheetTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     marginBottom: 20,
     textAlign: 'center',
-    color: '#1A1A1A',
   },
   sheetButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    height: 50,
-    borderRadius: 14,
+    height: 52,
+    borderRadius: 99,
     marginBottom: 12,
-    backgroundColor: '#F5F5F5',
   },
   sheetButtonText: {
     fontSize: 15,
-    fontWeight: '600',
-    color: '#2E7D32',
+    fontWeight: '700',
     marginLeft: 10,
   },
   sheetCancelBtn: {
@@ -739,21 +708,14 @@ const styles = StyleSheet.create({
   },
   sheetCancelText: {
     fontSize: 15,
-    fontWeight: '600',
-    color: '#1A1A1A',
+    fontWeight: '700',
   },
   modalContent: {
     width: '100%',
     height: '75%',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     padding: 24,
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 10,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -762,9 +724,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   modalHeaderTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1A1A1A',
+    fontSize: 22,
+    fontWeight: '800',
   },
   closeIconBtn: {
     padding: 4,
@@ -777,28 +738,24 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 26,
     marginBottom: 6,
-    color: '#1A1A1A',
   },
   modalDateText: {
     fontSize: 12,
     marginBottom: 16,
-    color: '#666666',
   },
   modalDivider: {
     height: 1,
     width: '100%',
     marginBottom: 16,
-    backgroundColor: '#EEEEEE',
   },
   modalMessageText: {
     fontSize: 15,
     lineHeight: 22,
-    color: '#1A1A1A',
   },
   modalCloseButton: {
-    backgroundColor: '#000000',
-    height: 50,
-    borderRadius: 14,
+    backgroundColor: COLORS.emeraldGreen,
+    height: 52,
+    borderRadius: 99,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 16,
@@ -807,20 +764,18 @@ const styles = StyleSheet.create({
   modalCloseButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '800',
   },
   skeletonCard: {
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 24,
+    padding: 20,
     marginBottom: 12,
-    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#EAEAEA',
   },
   skeletonIcon: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: 12,
     backgroundColor: '#E0E0E0',
   },
   skeletonText: {

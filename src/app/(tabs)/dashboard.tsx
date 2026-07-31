@@ -1,14 +1,17 @@
 // src/app/(tabs)/dashboard.tsx
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   Dimensions,
   Image,
+  Linking,
   Modal,
   Platform,
   RefreshControl,
@@ -17,24 +20,18 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
+import { COLORS as CENTRAL_COLORS, useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../lib/supabase';
 import { getUnreadNotificationCount } from '../../services/notifications';
 import { getAssignedVendors, getCurrentRiderProfile, updateAvailabilityStatus } from '../../services/rider';
 
 const { height } = Dimensions.get('window');
 
-const COLORS = {
-  emeraldGreen: '#10B981',
-  emeraldLight: '#ECFDF5',
-  jetBlack: '#0B0F19',
-  white: '#FFFFFF',
-  offWhite: '#F8FAFC',
-  borderLight: '#E2E8F0',
-  textMuted: '#64748B',
-  danger: '#EF4444',
-  cardBg: '#FFFFFF',
+// Local Color Extensions
+const LOCAL_COLORS = {
+  ...CENTRAL_COLORS,
   amberBgLight: '#FFFBEB',
   amberBorderLight: '#F59E0B',
   amberTextLight: '#92400E',
@@ -43,23 +40,25 @@ const COLORS = {
   blueText: '#1E40AF',
 };
 
-// 4-Hour Fixed Slots with Motivating Titles
+// Shift Slot Definitions
 interface SlotTemplate {
   id: string;
   name: string;
   subtitle: string;
   startHour: number;
   endHour: number;
+  iconName: keyof typeof Ionicons.glyphMap;
 }
 
 const SHIFT_TEMPLATES: SlotTemplate[] = [
-  { id: '1', name: '🌅 Morning Hustle', subtitle: 'Breakfast & Early Rush', startHour: 6, endHour: 10 },
-  { id: '2', name: '🚀 Peak Conqueror', subtitle: 'Prime Lunch Demand', startHour: 10, endHour: 14 },
-  { id: '3', name: '🔥 Unstoppable Momentum', subtitle: 'Tea & Evening Snack Orders', startHour: 14, endHour: 18 },
-  { id: '4', name: '⭐ Night Champion', subtitle: 'Dinner Peak Orders', startHour: 18, endHour: 22 },
-  { id: '5', name: '🌙 Midnight Legend', subtitle: 'Late Night Cravings', startHour: 22, endHour: 2 },
+  { id: '1', name: 'Morning Hustle', subtitle: 'Breakfast & Early Rush', startHour: 6, endHour: 10, iconName: 'sunny-outline' },
+  { id: '2', name: 'Peak Conqueror', subtitle: 'Prime Lunch Demand', startHour: 10, endHour: 14, iconName: 'rocket-outline' },
+  { id: '3', name: 'Unstoppable Momentum', subtitle: 'Tea & Evening Snack Orders', startHour: 14, endHour: 18, iconName: 'flash-outline' },
+  { id: '4', name: 'Night Champion', subtitle: 'Dinner Peak Orders', startHour: 18, endHour: 22, iconName: 'star-outline' },
+  { id: '5', name: 'Midnight Legend', subtitle: 'Late Night Cravings', startHour: 22, endHour: 2, iconName: 'moon-outline' },
 ];
 
+// Emergency Incident Definitions & Helplines (Preserved 1:1)
 type IncidentTypeKey =
   | 'Accident'
   | 'Road Block'
@@ -84,10 +83,45 @@ const INCIDENT_TYPES: IncidentCard[] = [
   { type: 'Other', title: 'Other Issue', desc: 'Describe another issue', icon: '❓' },
 ];
 
-type SosModalView = 'SELECT_INCIDENT' | 'INCIDENT_FORM' | 'ACTIVE_SOS';
+const EMERGENCY_HELPLINES = [
+  { label: 'National Emergency', number: '112', icon: '🚨', subtitle: 'All-in-one Response' },
+  { label: 'Ambulance & Medical', number: '108', icon: '🚑', subtitle: 'Medical Emergency' },
+  { label: 'Police Control', number: '100', icon: '👮', subtitle: 'Immediate Assistance' },
+  { label: 'Fire Department', number: '101', icon: '🔥', subtitle: 'Fire Emergency' },
+  { label: 'Women Helpline', number: '181', icon: '👮', subtitle: 'Immediate Assistance' },
+];
+
+const FUEL_TYPES = ['Petrol', 'Diesel', 'Electric'];
+
+const BREAKDOWN_TYPES = [
+  "Engine won't start",
+  'Tyre puncture',
+  'Chain issue',
+  'Clutch issue',
+  'Brake issue',
+  'Battery issue',
+  'Overheating',
+  'Bike suddenly stopped',
+  'Other',
+];
+
+const ASSISTANCE_TYPES = [
+  'Medical assistance',
+  'Police assistance',
+  'Vehicle towing',
+  'Flat tyre help',
+  'Battery jump start',
+  'Fuel delivery',
+  'Need another rider',
+  'Other',
+];
+
+type SosModalView = 'SELECT_INCIDENT' | 'INCIDENT_FORM' | 'ACTIVE_SOS' | 'HISTORY_LIST' | 'HISTORY_DETAIL';
 
 export default function DashboardScreen() {
   const router = useRouter();
+  const { isDarkMode, theme } = useTheme();
+
   const [rider, setRider] = useState<any>(null);
   const [activeShift, setActiveShift] = useState<any>(null);
   const [scheduledShifts, setScheduledShifts] = useState<any[]>([]);
@@ -102,30 +136,64 @@ export default function DashboardScreen() {
 
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState<number>(0);
   const bellScale = useRef(new Animated.Value(1)).current;
+  const avatarScale = useRef(new Animated.Value(1)).current;
 
   // Calendar & Shift Modal
   const [shiftModalVisible, setShiftModalVisible] = useState<boolean>(false);
-  const [selectedDayOffset, setSelectedDayOffset] = useState<number>(0); // 0 = Today, 1 = Tomorrow, 2 = Day After Tomorrow
+  const [selectedDayOffset, setSelectedDayOffset] = useState<number>(0);
   const [shiftTimeRemaining, setShiftTimeRemaining] = useState<number>(0);
   const [restTimeRemaining, setRestTimeRemaining] = useState<number>(0);
 
-  // SOS States
+  // --- SOS INTERNAL STATE MANAGEMENT ---
   const [sosModalVisible, setSosModalVisible] = useState<boolean>(false);
   const [sosModalView, setSosModalView] = useState<SosModalView>('SELECT_INCIDENT');
   const [selectedSosOption, setSelectedSosOption] = useState<IncidentCard | null>(null);
   const [attachedPhotoUri, setAttachedPhotoUri] = useState<string | null>(null);
-  const [customInputText, setCustomInputText] = useState<string>('');
-  const [activeSosReport, setActiveSosReport] = useState<any>(null);
-  const [currentGps, setCurrentGps] = useState<any>(null);
+  const [uploadingSos, setUploadingSos] = useState<boolean>(false);
+  const [sosSuccess, setSosSuccess] = useState<boolean>(false);
 
-  const [greeting, setGreeting] = useState({ text: '', subtitle: '', icon: '' });
+  // Extended SOS Form Field States
+  const [accidentTarget, setAccidentTarget] = useState<'I had an accident' | 'Someone else had an accident' | null>(null);
+  const [fuelType, setFuelType] = useState<string | null>(null);
+  const [breakdownType, setBreakdownType] = useState<string | null>(null);
+  const [assistanceType, setAssistanceType] = useState<string | null>(null);
+  const [customInputText, setCustomInputText] = useState<string>('');
+
+  // Active Unresolved SOS Report Data
+  const [activeSosReport, setActiveSosReport] = useState<any>(null);
+
+  // SOS History States
+  const [sosHistoryList, setSosHistoryList] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [selectedHistoryReport, setSelectedHistoryReport] = useState<any | null>(null);
+  const [signedPhotoUrl, setSignedPhotoUrl] = useState<string | null>(null);
+
+  const [currentGps, setCurrentGps] = useState<{
+    latitude: number;
+    longitude: number;
+    location_accuracy: number | null;
+    timestamp: string;
+  } | null>(null);
+  const [activeOrderContext, setActiveOrderContext] = useState<any>(null);
+
+  const [showTutorial, setShowTutorial] = useState<boolean>(false);
+  const [tutorialStep, setTutorialStep] = useState<number>(0);
+
+  const [greeting, setGreeting] = useState({
+    text: '',
+    subtitle: '',
+    iconName: 'hand-left-outline' as keyof typeof Ionicons.glyphMap,
+  });
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
   const onlineBtnScale = useRef(new Animated.Value(1)).current;
 
+  // Realtime & Debounce references
   const riderRef = useRef<any>(null);
   const dashboardChannelRef = useRef<any>(null);
+  const sosChannelRef = useRef<any>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -143,13 +211,13 @@ export default function DashboardScreen() {
   const updateGreeting = () => {
     const hours = new Date().getHours();
     if (hours >= 5 && hours < 12) {
-      setGreeting({ text: 'Good Morning', subtitle: "Ready to conquer today's deliveries?", icon: '👋' });
+      setGreeting({ text: 'Good Morning', subtitle: "Ready to conquer today's deliveries?", iconName: 'sunny-outline' });
     } else if (hours >= 12 && hours < 17) {
-      setGreeting({ text: 'Good Afternoon', subtitle: 'Keep the momentum going strong.', icon: '☀️' });
+      setGreeting({ text: 'Good Afternoon', subtitle: 'Keep the momentum going strong.', iconName: 'partly-sunny-outline' });
     } else if (hours >= 17 && hours < 21) {
-      setGreeting({ text: 'Good Evening', subtitle: "Finish today's shifts on a high note.", icon: '🌇' });
+      setGreeting({ text: 'Good Evening', subtitle: "Finish today's shifts on a high note.", iconName: 'cloud-outline' });
     } else {
-      setGreeting({ text: 'Good Night', subtitle: 'Drive safely and rest up.', icon: '🌙' });
+      setGreeting({ text: 'Good Night', subtitle: 'Drive safely and rest up.', iconName: 'moon-outline' });
     }
   };
 
@@ -169,32 +237,112 @@ export default function DashboardScreen() {
     }
   };
 
+  const makeEmergencyCall = (phoneNumber: string) => {
+    Linking.openURL(`tel:${phoneNumber}`).catch(() => {
+      Alert.alert('Call Failed', `Unable to make call to ${phoneNumber}. Please dial manually.`);
+    });
+  };
+
   useEffect(() => {
     updateGreeting();
     loadDashboardData();
-    const interval = setInterval(updateGreeting, 60000);
-    return () => clearInterval(interval);
+    checkTutorialStatus();
+
+    const greetingInterval = setInterval(() => {
+      updateGreeting();
+    }, 60000);
+
+    return () => clearInterval(greetingInterval);
   }, []);
 
-  // Realtime Subscriptions
+  // Dashboard Realtime Subscriptions
   useEffect(() => {
     if (!rider?.id) return;
     const riderId = rider.id;
 
-    if (dashboardChannelRef.current) supabase.removeChannel(dashboardChannelRef.current);
+    if (dashboardChannelRef.current) {
+      supabase.removeChannel(dashboardChannelRef.current);
+      dashboardChannelRef.current = null;
+    }
 
     const channel = supabase
       .channel(`public:dashboard:rider:${riderId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => debouncedReloadDashboard())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'rider_shifts' }, () => debouncedReloadDashboard())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => debouncedReloadDashboard())
       .subscribe();
 
     dashboardChannelRef.current = channel;
 
     return () => {
-      if (dashboardChannelRef.current) supabase.removeChannel(dashboardChannelRef.current);
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      if (dashboardChannelRef.current) {
+        supabase.removeChannel(dashboardChannelRef.current);
+        dashboardChannelRef.current = null;
+      }
     };
   }, [rider?.id, debouncedReloadDashboard]);
+
+  // SOS Realtime Subscription (Preserved 1:1)
+  useEffect(() => {
+    if (!rider?.id) return;
+    const riderId = rider.id;
+
+    if (sosChannelRef.current) {
+      supabase.removeChannel(sosChannelRef.current);
+      sosChannelRef.current = null;
+    }
+
+    const channel = supabase
+      .channel(`public:rider_emergency_reports:rider:${riderId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'rider_emergency_reports',
+          filter: `rider_id=eq.${riderId}`,
+        },
+        (payload) => {
+          const updatedReport = payload.new as any;
+          if (!updatedReport) return;
+
+          if (
+            !updatedReport.resolved_at &&
+            !['completed', 'resolved', 'cancelled'].includes(updatedReport.status?.toLowerCase())
+          ) {
+            setActiveSosReport(updatedReport);
+          } else {
+            setActiveSosReport((prev: any) => (prev?.id === updatedReport.id ? null : prev));
+          }
+
+          setSosHistoryList((prevList) => {
+            const exists = prevList.some((r) => r.id === updatedReport.id);
+            if (exists) {
+              return prevList.map((r) => (r.id === updatedReport.id ? updatedReport : r));
+            }
+            return [updatedReport, ...prevList];
+          });
+
+          setSelectedHistoryReport((prevSelected: any) => {
+            if (prevSelected && prevSelected.id === updatedReport.id) {
+              return updatedReport;
+            }
+            return prevSelected;
+          });
+        }
+      )
+      .subscribe();
+
+    sosChannelRef.current = channel;
+
+    return () => {
+      if (sosChannelRef.current) {
+        supabase.removeChannel(sosChannelRef.current);
+        sosChannelRef.current = null;
+      }
+    };
+  }, [rider?.id]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -222,6 +370,24 @@ export default function DashboardScreen() {
     setRefreshing(false);
   }, []);
 
+  async function checkTutorialStatus() {
+    try {
+      const value = await AsyncStorage.getItem('@rivo_tutorial_completed');
+      if (value === null) setShowTutorial(true);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function completeTutorial() {
+    try {
+      await AsyncStorage.setItem('@rivo_tutorial_completed', 'true');
+      setShowTutorial(false);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
   const handleKycSafetySync = async (profileData: any) => {
     const isOnline = profileData.availability_status?.toLowerCase() === 'available';
     if (isOnline && profileData.kyc_status !== 'verified') {
@@ -237,6 +403,76 @@ export default function DashboardScreen() {
     }
     setRider(profileData);
   };
+
+  async function checkActiveUnresolvedSos(riderId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('rider_emergency_reports')
+        .select('*')
+        .eq('rider_id', riderId)
+        .is('resolved_at', null)
+        .not('status', 'in', '("completed","resolved","cancelled")')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (error) {
+        console.error('Error checking active unresolved SOS:', error);
+        return null;
+      }
+
+      if (data && data.length > 0) {
+        return data[0];
+      }
+      return null;
+    } catch (e) {
+      console.error('Unexpected error checking SOS:', e);
+      return null;
+    }
+  }
+
+  async function fetchSosHistory(riderId: string) {
+    setLoadingHistory(true);
+    setHistoryError(null);
+    try {
+      const { data, error } = await supabase
+        .from('rider_emergency_reports')
+        .select('*')
+        .eq('rider_id', riderId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setSosHistoryList(data || []);
+    } catch (err: any) {
+      console.error('Failed to load SOS history:', err);
+      setHistoryError(err.message || 'Unable to load SOS history.');
+    } finally {
+      setLoadingHistory(false);
+    }
+  }
+
+  async function resolveSignedPhotoUrl(photoPath: string | null) {
+    if (!photoPath) {
+      setSignedPhotoUrl(null);
+      return;
+    }
+
+    if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) {
+      setSignedPhotoUrl(photoPath);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.storage
+        .from('rider-sos')
+        .createSignedUrl(photoPath, 3600);
+
+      if (error) throw error;
+      setSignedPhotoUrl(data?.signedUrl || null);
+    } catch (err) {
+      console.error('Error generating signed URL:', err);
+      setSignedPhotoUrl(null);
+    }
+  }
 
   async function loadDashboardData(isRefresh = false) {
     try {
@@ -277,7 +513,6 @@ export default function DashboardScreen() {
 
       await handleKycSafetySync(enhancedProfile);
 
-      // Load Active Shift
       const { data: shiftData } = await supabase
         .from('rider_shifts')
         .select('*')
@@ -292,7 +527,6 @@ export default function DashboardScreen() {
         setActiveShift(null);
       }
 
-      // Load Scheduled Future Shifts
       const { data: scheduled } = await supabase
         .from('rider_shifts')
         .select('*')
@@ -302,7 +536,6 @@ export default function DashboardScreen() {
 
       setScheduledShifts(scheduled || []);
 
-      // Check if any scheduled shift is due right now
       const now = new Date();
       const due = (scheduled || []).find((s) => new Date(s.shift_start) <= now && new Date(s.shift_end) > now);
       setDueReservedShift(due || null);
@@ -325,6 +558,23 @@ export default function DashboardScreen() {
         })
       );
       setVendors(enhancedVendors);
+
+      const { data: activeOrders } = await supabase
+        .from('orders')
+        .select('id, order_number, vendor_id, vendors(shop_name)')
+        .eq('rider_id', profileData.id)
+        .not('order_status', 'ilike', 'delivered')
+        .not('order_status', 'ilike', 'cancel%')
+        .limit(1);
+
+      if (activeOrders && activeOrders.length > 0) {
+        setActiveOrderContext(activeOrders[0]);
+      } else {
+        setActiveOrderContext(null);
+      }
+
+      const unresolvedReport = await checkActiveUnresolvedSos(profileData.id);
+      setActiveSosReport(unresolvedReport);
 
       const { data: reviewsData } = await supabase
         .from('reviews')
@@ -405,10 +655,9 @@ export default function DashboardScreen() {
     }
   }
 
-  // Handle Select / Reserve Shift Slot
   async function handleReserveShiftSlot(template: SlotTemplate, dateOffset: number) {
     if (rider?.kyc_status !== 'verified') {
-      alert('Complete your KYC verification first.');
+      Alert.alert('KYC Required', 'Complete your KYC verification first.');
       return;
     }
 
@@ -519,8 +768,12 @@ export default function DashboardScreen() {
 
   async function toggleAvailability() {
     if (!rider) return;
-    if (rider.kyc_status !== 'verified') {
-      alert('Complete KYC verification first.');
+    if (rider.kyc_status === 'pending') {
+      Alert.alert('Verification Pending', 'Your account is under verification.');
+      return;
+    }
+    if (rider.kyc_status === 'rejected') {
+      Alert.alert('KYC Required', 'Complete your KYC verification first.');
       return;
     }
 
@@ -546,16 +799,24 @@ export default function DashboardScreen() {
   async function pickImageAttachment() {
     const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
     if (!permissionResult.granted) {
-      alert('Camera permissions are required.');
+      Alert.alert('Permission Required', 'Camera permissions are required for emergency evidence verification.');
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.6 });
-    if (!result.canceled) setAttachedPhotoUri(result.assets[0].uri);
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      quality: 0.6,
+    });
+    if (!result.canceled) {
+      setAttachedPhotoUri(result.assets[0].uri);
+    }
   }
 
   async function captureGpsLocation() {
     const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') return null;
+    if (status !== 'granted') {
+      Alert.alert('Location Required', 'Location permission is strictly required to send emergency support to your exact coordinates.');
+      return null;
+    }
     try {
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       const coords = {
@@ -567,23 +828,21 @@ export default function DashboardScreen() {
       setCurrentGps(coords);
       return coords;
     } catch (err) {
+      console.error('Error fetching GPS coordinates:', err);
+      Alert.alert('Location Error', 'Could not capture current GPS location. Please ensure location services are enabled on your device.');
       return null;
     }
   }
 
   async function handleSosOpen() {
     if (!rider?.id) return;
-    setSosModalVisible(true);
-    const { data } = await supabase
-      .from('rider_emergency_reports')
-      .select('*')
-      .eq('rider_id', rider.id)
-      .is('resolved_at', null)
-      .order('created_at', { ascending: false })
-      .limit(1);
 
-    if (data && data.length > 0) {
-      setActiveSosReport(data[0]);
+    setSosModalVisible(true);
+
+    const unresolved = await checkActiveUnresolvedSos(rider.id);
+    setActiveSosReport(unresolved);
+
+    if (unresolved) {
       setSosModalView('ACTIVE_SOS');
     } else {
       setSosModalView('SELECT_INCIDENT');
@@ -591,11 +850,191 @@ export default function DashboardScreen() {
     }
   }
 
+  const isSosFormValid = (): boolean => {
+    if (!selectedSosOption) return false;
+
+    switch (selectedSosOption.type) {
+      case 'Accident':
+        if (!accidentTarget) return false;
+        if (accidentTarget === 'Someone else had an accident' && !customInputText.trim()) return false;
+        if (!attachedPhotoUri) return false;
+        break;
+      case 'Road Block':
+        if (!attachedPhotoUri) return false;
+        break;
+      case 'Out of Fuel':
+        if (!fuelType) return false;
+        break;
+      case 'Vehicle Breakdown':
+        if (!breakdownType) return false;
+        if (breakdownType === 'Other' && !customInputText.trim()) return false;
+        break;
+      case 'Need Assistance':
+        if (!assistanceType) return false;
+        if (assistanceType === 'Other' && !customInputText.trim()) return false;
+        break;
+      case 'Other':
+        if (!customInputText.trim()) return false;
+        break;
+      default:
+        break;
+    }
+
+    return true;
+  };
+
+  async function submitSosReport() {
+    if (!selectedSosOption) return;
+
+    if (!isSosFormValid()) {
+      Alert.alert('Incomplete Form', 'Please complete all required fields and upload evidence photo if mandatory.');
+      return;
+    }
+
+    let gpsCoords = currentGps;
+    if (!gpsCoords) {
+      gpsCoords = await captureGpsLocation();
+      if (!gpsCoords) return;
+    }
+
+    setUploadingSos(true);
+    try {
+      let uploadedStoragePath = '';
+      if (attachedPhotoUri) {
+        try {
+          const response = await fetch(attachedPhotoUri);
+          const blob = await response.blob();
+
+          const fileExt = attachedPhotoUri.split('.').pop() || 'jpg';
+          const fileName = `${rider.id}/${Date.now()}.${fileExt}`;
+
+          const { data: storageData, error: storageErr } = await supabase.storage
+            .from('rider-sos')
+            .upload(fileName, blob, {
+              contentType: `image/${fileExt}`,
+              upsert: true,
+            });
+
+          if (storageErr) throw storageErr;
+          if (storageData) {
+            uploadedStoragePath = storageData.path;
+          }
+        } catch (uploadErr) {
+          console.error('Error uploading photo proof to rider-sos bucket:', uploadErr);
+          throw new Error('Failed to upload evidence photo. Please try again.');
+        }
+      }
+
+      const payload: Record<string, any> = {
+        rider_id: rider.id,
+        issue_type: selectedSosOption.type,
+        description: customInputText.trim() || selectedSosOption.desc,
+        photo_url: uploadedStoragePath || null,
+        latitude: gpsCoords.latitude,
+        longitude: gpsCoords.longitude,
+        location_accuracy: gpsCoords.location_accuracy,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        vendor_id: activeOrderContext?.vendor_id || null,
+        vendor_name: activeOrderContext?.vendors?.shop_name || null,
+        order_id: activeOrderContext?.id || null,
+        order_number: activeOrderContext?.order_number || null,
+      };
+
+      if (accidentTarget) payload.accident_target = accidentTarget;
+      if (fuelType) payload.fuel_type = fuelType;
+      if (breakdownType) payload.breakdown_type = breakdownType;
+      if (assistanceType) payload.assistance_type = assistanceType;
+      if (customInputText.trim()) payload.custom_description = customInputText.trim();
+
+      const { data: insertedReport, error: insertErr } = await supabase
+        .from('rider_emergency_reports')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (insertErr) throw insertErr;
+
+      setUploadingSos(false);
+      setSosSuccess(true);
+      setActiveSosReport(insertedReport);
+
+      setTimeout(() => {
+        setSosSuccess(false);
+        setSosModalView('ACTIVE_SOS');
+      }, 2500);
+    } catch (e: any) {
+      console.error('[SOS Submission Error]:', e);
+      Alert.alert('Submission Error', e.message || 'Failed to send emergency alert. Please try again or contact dispatch.');
+      setUploadingSos(false);
+    }
+  }
+
+  function resetSosModalState() {
+    setSosModalVisible(false);
+    setSosModalView('SELECT_INCIDENT');
+    setSelectedSosOption(null);
+    setAttachedPhotoUri(null);
+    setAccidentTarget(null);
+    setFuelType(null);
+    setBreakdownType(null);
+    setAssistanceType(null);
+    setCustomInputText('');
+    setUploadingSos(false);
+    setSosSuccess(false);
+    setSelectedHistoryReport(null);
+    setSignedPhotoUrl(null);
+  }
+
   const formatTimer = (secs: number) => {
     const h = Math.floor(secs / 3600);
     const m = Math.floor((secs % 3600) / 60);
     const s = secs % 60;
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const getAvatarFallback = (name: string) => {
+    if (!name) return 'RV';
+    const parts = name.trim().split(/\s+/);
+    return parts.length >= 2 ? `${parts[0][0]}${parts[1][0]}`.toUpperCase() : `${name.substring(0, 2)}`.toUpperCase();
+  };
+
+  const getIncidentIcon = (type: string) => {
+    const found = INCIDENT_TYPES.find((i) => i.type.toLowerCase() === type?.toLowerCase());
+    return found ? found.icon : '🚨';
+  };
+
+  const getStatusBadgeStyle = (status: string) => {
+    const st = (status || 'pending').toLowerCase();
+    switch (st) {
+      case 'acknowledged':
+        return {
+          bg: '#DBEAFE',
+          text: '#1E40AF',
+          label: 'Acknowledged',
+        };
+      case 'resolved':
+      case 'completed':
+        return {
+          bg: '#D1FAE5',
+          text: '#065F46',
+          label: 'Resolved',
+        };
+      case 'cancelled':
+        return {
+          bg: '#FEE2E2',
+          text: '#991B1B',
+          label: 'Cancelled',
+        };
+      case 'pending':
+      default:
+        return {
+          bg: '#FEF3C7',
+          text: '#92400E',
+          label: 'Pending',
+        };
+    }
   };
 
   const getFormattedDayLabel = (offset: number) => {
@@ -622,10 +1061,10 @@ export default function DashboardScreen() {
 
   if (errorProfile) {
     return (
-      <View style={styles.centerContainer}>
+      <View style={[styles.centerContainer, { backgroundColor: theme.bg }]}>
         <Text style={styles.errorTitle}>Sync Interrupted</Text>
         <TouchableOpacity onPress={() => supabase.auth.signOut()} style={styles.errorButton}>
-          <Text style={{ color: COLORS.white, fontWeight: 'bold' }}>Login Again</Text>
+          <Text style={{ color: LOCAL_COLORS.white, fontWeight: '700' }}>Login Again</Text>
         </TouchableOpacity>
       </View>
     );
@@ -636,244 +1075,363 @@ export default function DashboardScreen() {
   const isFullyEligible = isAvailable && hasShift;
   const averageRating = reviews.length > 0 ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1) : rider?.rating || '5.0';
 
+  const tutorialSteps = [
+    { title: 'Dashboard V2', desc: 'Monitor metrics, stores, and active shift timers smoothly.' },
+    { title: 'Fulfillment Nodes', desc: 'Track live store locations and total assigned pending count.' },
+    { title: 'Operational Status', desc: 'Securely switch online or offline to manage incoming dispatches.' },
+    { title: 'SOS Emergency Support', desc: 'Report vehicle logs or road barriers instantly to active support.' },
+  ];
+
   return (
-    <View style={{ flex: 1, backgroundColor: COLORS.offWhite }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
       {/* HEADER */}
-      <View style={styles.headerContainer}>
+      <View style={[styles.headerContainer, { backgroundColor: theme.headerBg, borderColor: theme.border }]}>
         <View style={styles.headerTopRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.brandTitle}>{greeting.icon} {greeting.text}</Text>
-            <Text style={styles.riderName}>{loading ? 'Loading...' : (rider?.rider_name || 'Rivo Partner')}</Text>
-            <Text style={styles.riderSubtitle}>{greeting.subtitle}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name={greeting.iconName} size={16} color={LOCAL_COLORS.emeraldGreen} />
+              <Text style={styles.brandTitle}>{greeting.text}</Text>
+            </View>
+            <Text style={[styles.riderName, { color: theme.text }]}>{loading ? 'Loading...' : (rider?.rider_name || 'Rivo Partner')}</Text>
+            <Text style={[styles.riderSubtitle, { color: theme.textMuted }]}>{greeting.subtitle}</Text>
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-            <TouchableOpacity activeOpacity={0.8} onPress={() => router.push('/notifications')}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => {
+                Animated.sequence([
+                  Animated.timing(bellScale, { toValue: 0.85, duration: 80, useNativeDriver: true }),
+                  Animated.timing(bellScale, { toValue: 1, duration: 80, useNativeDriver: true }),
+                ]).start(() => {
+                  router.push('/notifications');
+                });
+              }}
+            >
               <Animated.View style={[styles.bellContainer, { transform: [{ scale: bellScale }] }]}>
-                <Ionicons name="notifications-outline" size={24} color={COLORS.jetBlack} />
+                <Ionicons name="notifications-outline" size={24} color={theme.text} />
                 {unreadNotificationsCount > 0 && <View style={styles.badgeIndicator} />}
               </Animated.View>
             </TouchableOpacity>
 
-            <TouchableOpacity activeOpacity={0.85} onPress={() => router.push('/profile')}>
-              {rider?.profile_photo_url ? (
-                <Image source={{ uri: rider.profile_photo_url }} style={styles.avatar} />
-              ) : (
-                <View style={styles.avatarFallback}>
-                  <Text style={styles.avatarFallbackText}>{(rider?.rider_name || 'R').substring(0, 2).toUpperCase()}</Text>
-                </View>
-              )}
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => {
+                Animated.sequence([
+                  Animated.timing(avatarScale, { toValue: 0.88, duration: 80, useNativeDriver: true }),
+                  Animated.timing(avatarScale, { toValue: 1, duration: 80, useNativeDriver: true }),
+                ]).start(() => {
+                  router.push('/profile');
+                });
+              }}
+            >
+              <Animated.View style={{ transform: [{ scale: avatarScale }] }}>
+                {!loading &&
+                  (rider?.profile_photo_url ? (
+                    <Image source={{ uri: rider.profile_photo_url }} style={styles.avatar} />
+                  ) : (
+                    <View style={styles.avatarFallback}>
+                      <Text style={styles.avatarFallbackText}>{getAvatarFallback(rider?.rider_name || '')}</Text>
+                    </View>
+                  ))}
+              </Animated.View>
             </TouchableOpacity>
           </View>
         </View>
       </View>
 
-      <ScrollView
-        style={{ flex: 1 }}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.emeraldGreen} colors={[COLORS.emeraldGreen]} />}
-      >
-        <Animated.View style={{ padding: 16, opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+      {loading ? (
+        <View style={styles.centerLayout}>
+          <ActivityIndicator size="large" color={LOCAL_COLORS.emeraldGreen} />
+        </View>
+      ) : (
+        <ScrollView
+          style={{ flex: 1 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={LOCAL_COLORS.emeraldGreen} colors={[LOCAL_COLORS.emeraldGreen]} />
+          }
+        >
+          <Animated.View style={{ padding: 16, opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+            {/* KYC Alerts */}
+            {rider?.kyc_status === 'pending' && (
+              <View style={[styles.kycAlertCard, { backgroundColor: isDarkMode ? '#451A03' : LOCAL_COLORS.amberBgLight, borderLeftColor: LOCAL_COLORS.amberBorderLight }]}>
+                <Text style={[styles.kycAlertTitle, { color: isDarkMode ? '#FDE68A' : LOCAL_COLORS.amberTextLight }]}>🛡️ Verification in Progress</Text>
+                <Text style={[styles.kycAlertDesc, { color: theme.textMuted }]}>
+                  Your KYC documents are currently under review. You'll be able to receive deliveries once verified.
+                </Text>
+              </View>
+            )}
 
-          {/* 1. DUE RESERVED SHIFT ALERT BANNER */}
-          {dueReservedShift && (
-            <View style={styles.reservedAlertBanner}>
-              <Text style={{ fontSize: 24, marginRight: 10 }}>⏰</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.reservedAlertTitle}>Your Reserved Shift is Ready!</Text>
-                <Text style={styles.reservedAlertSub}>You reserved a shift for right now. Do you want to start now?</Text>
-                <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-                  <TouchableOpacity onPress={() => handleStartReservedShift(dueReservedShift.id)} style={styles.btnStartNow}>
-                    <Text style={{ color: COLORS.white, fontWeight: '700', fontSize: 12 }}>Start Shift Now</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleCancelReservedShift(dueReservedShift.id)} style={styles.btnCancelShift}>
-                    <Text style={{ color: COLORS.danger, fontWeight: '700', fontSize: 12 }}>Cancel</Text>
-                  </TouchableOpacity>
+            {rider?.kyc_status === 'rejected' && (
+              <View style={[styles.kycAlertCard, { backgroundColor: isDarkMode ? '#2D1414' : '#FEF2F2', borderLeftColor: LOCAL_COLORS.danger }]}>
+                <Text style={[styles.kycAlertTitle, { color: LOCAL_COLORS.danger }]}>❌ Verification Required</Text>
+                <Text style={[styles.kycAlertDesc, { color: theme.textMuted, marginBottom: 12 }]}>
+                  Your KYC verification was rejected. Please update documents in your Profile.
+                </Text>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => router.push('/profile')}
+                  style={[styles.kycActionBtn, { backgroundColor: LOCAL_COLORS.danger }]}
+                >
+                  <Text style={styles.kycActionBtnText}>Update Documents</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* 1. DUE RESERVED SHIFT ALERT BANNER */}
+            {dueReservedShift && (
+              <View style={[styles.reservedAlertBanner, { backgroundColor: isDarkMode ? '#172554' : LOCAL_COLORS.blueBg }]}>
+                <Ionicons name="time-outline" size={24} color={LOCAL_COLORS.blueText} style={{ marginRight: 10 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.reservedAlertTitle}>Your Reserved Shift is Ready!</Text>
+                  <Text style={[styles.reservedAlertSub, { color: theme.textMuted }]}>You reserved a shift for right now. Do you want to start now?</Text>
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                    <TouchableOpacity onPress={() => handleStartReservedShift(dueReservedShift.id)} style={styles.btnStartNow}>
+                      <Text style={{ color: LOCAL_COLORS.white, fontWeight: '700', fontSize: 12 }}>Start Shift Now</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleCancelReservedShift(dueReservedShift.id)} style={styles.btnCancelShift}>
+                      <Text style={{ color: LOCAL_COLORS.danger, fontWeight: '700', fontSize: 12 }}>Cancel</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
-            </View>
-          )}
+            )}
 
-          {/* 2. OPERATIONAL STATUS PILL */}
-          <Animated.View style={{ transform: [{ scale: onlineBtnScale }], marginBottom: 14 }}>
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={toggleAvailability}
-              style={[
-                styles.statusLargePill,
-                {
-                  backgroundColor: isFullyEligible ? COLORS.emeraldLight : isAvailable ? COLORS.amberBgLight : COLORS.offWhite,
-                  borderColor: isFullyEligible ? COLORS.emeraldGreen : isAvailable ? COLORS.amberBorderLight : COLORS.borderLight,
-                },
-              ]}
-            >
-              <View style={[styles.statusIndicatorDot, { backgroundColor: isFullyEligible ? COLORS.emeraldGreen : isAvailable ? COLORS.amberBorderLight : '#9CA3AF' }]} />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.statusPillTitle, { color: isFullyEligible ? '#065F46' : isAvailable ? COLORS.amberTextLight : COLORS.jetBlack }]}>
-                  {isFullyEligible ? '🟢 Online — Shift Active' : isAvailable ? '🟡 Online — No Active Shift' : '⚫ Offline'}
-                </Text>
-                <Text style={styles.statusPillSubtitle}>
-                  {isFullyEligible ? 'Receiving Delivery Requests' : isAvailable ? 'Select or reserve a shift to get orders' : 'Tap to go Online'}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </Animated.View>
-
-          {/* 3. SHIFT EXTENSION PROMPT (<= 30 MIN REMAINING) */}
-          {shiftTimeRemaining > 0 && shiftTimeRemaining <= 1800 && (
-            <View style={styles.extensionCard}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.extensionTitle}>⚡ Shift Ending in {Math.ceil(shiftTimeRemaining / 60)} Mins!</Text>
-                <Text style={styles.extensionSub}>Want to keep working? Reserve the next shift slot now!</Text>
-              </View>
-              <TouchableOpacity onPress={() => setShiftModalVisible(true)} style={styles.extensionBtn}>
-                <Text style={{ color: COLORS.white, fontWeight: '700', fontSize: 12 }}>Reserve Next</Text>
+            {/* 2. OPERATIONAL STATUS PILL */}
+            <Animated.View style={{ transform: [{ scale: onlineBtnScale }], marginBottom: 16 }}>
+              <TouchableOpacity
+                activeOpacity={rider?.kyc_status === 'verified' ? 0.9 : 1}
+                onPress={toggleAvailability}
+                style={[
+                  styles.statusLargePill,
+                  {
+                    backgroundColor: isFullyEligible ? (isDarkMode ? '#064E3B' : '#ECFDF5') : isAvailable ? (isDarkMode ? '#451A03' : LOCAL_COLORS.amberBgLight) : theme.cardBg,
+                    borderColor: isFullyEligible ? LOCAL_COLORS.emeraldGreen : isAvailable ? LOCAL_COLORS.amberBorderLight : theme.border,
+                    opacity: rider?.kyc_status === 'verified' ? 1 : 0.6,
+                  },
+                ]}
+              >
+                <View style={[styles.statusIndicatorDot, { backgroundColor: isFullyEligible ? LOCAL_COLORS.emeraldGreen : isAvailable ? LOCAL_COLORS.amberBorderLight : '#9CA3AF' }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.statusPillTitle, { color: isFullyEligible ? (isDarkMode ? '#A7F3D0' : '#065F46') : isAvailable ? (isDarkMode ? '#FDE68A' : LOCAL_COLORS.amberTextLight) : theme.text }]}>
+                    {isFullyEligible ? '🟢 Online — Shift Active' : isAvailable ? '🟡 Online — No Active Shift' : '⚫ Offline'}
+                  </Text>
+                  <Text style={[styles.statusPillSubtitle, { color: theme.textMuted }]}>
+                    {isFullyEligible ? 'Receiving Delivery Requests' : isAvailable ? 'Not Receiving Orders — Select or Reserve Shift' : 'Tap to go Online'}
+                  </Text>
+                </View>
               </TouchableOpacity>
-            </View>
-          )}
+            </Animated.View>
 
-          {/* 4. POST-SHIFT REST TIMER */}
-          {restTimeRemaining > 0 && !activeShift && (
-            <View style={styles.restCard}>
-              <Text style={{ fontSize: 20, marginRight: 8 }}>☕</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.restTitle}>10-Minute Rest Window</Text>
-                <Text style={styles.restSub}>Take a breather before your next slot ({formatTimer(restTimeRemaining)})</Text>
-              </View>
-              <TouchableOpacity onPress={() => setShiftModalVisible(true)} style={styles.restBtn}>
-                <Text style={{ color: COLORS.blueText, fontWeight: '700', fontSize: 12 }}>Book Next</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* 5. METRICS SUMMARY GRID */}
-          <View style={styles.gridContainer}>
-            <View style={styles.gridItem}>
-              <Text style={styles.metricLabel}>💰 Today's Earnings</Text>
-              <Text style={[styles.metricValue, { color: COLORS.emeraldGreen }]}>₹{rider?.earnings_today || 0}</Text>
-            </View>
-            <View style={styles.gridItem}>
-              <Text style={styles.metricLabel}>📦 Today's Orders</Text>
-              <Text style={styles.metricValue}>{rider?.orders_completed || 0}</Text>
-            </View>
-          </View>
-
-          <View style={styles.gridContainer}>
-            <View style={styles.gridItem}>
-              <Text style={styles.metricLabel}>💼 Lifetime Earnings</Text>
-              <Text style={styles.metricValue}>₹{rider?.total_earnings || 0}</Text>
-            </View>
-            <View style={styles.gridItem}>
-              <Text style={styles.metricLabel}>⭐ Rating</Text>
-              <Text style={[styles.metricValue, { color: '#F59E0B' }]}>{averageRating} / 5.0</Text>
-            </View>
-          </View>
-
-          {/* 6. CURRENT SHIFT CARD */}
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>⏱️ Active Shift Status</Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 14, alignItems: 'center' }}>
-              <View>
-                <Text style={styles.metricLabel}>Shift Time Remaining</Text>
-                <Text style={[styles.timerText, { color: shiftTimeRemaining > 0 ? COLORS.emeraldGreen : COLORS.jetBlack }]}>
-                  {shiftTimeRemaining > 0 ? formatTimer(shiftTimeRemaining) : '00:00:00'}
-                </Text>
-              </View>
-
-              {shiftTimeRemaining > 0 ? (
-                <TouchableOpacity onPress={promptEndShiftConfirmation} style={[styles.actionBtn, { backgroundColor: COLORS.danger }]}>
-                  <Text style={styles.actionBtnText}>End Shift</Text>
+            {/* 3. SHIFT EXTENSION PROMPT */}
+            {shiftTimeRemaining > 0 && shiftTimeRemaining <= 1800 && (
+              <View style={[styles.extensionCard, { backgroundColor: isDarkMode ? '#451A03' : LOCAL_COLORS.amberBgLight }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.extensionTitle}>Shift Ending in {Math.ceil(shiftTimeRemaining / 60)} Mins!</Text>
+                  <Text style={[styles.extensionSub, { color: theme.textMuted }]}>Want to keep working? Reserve the next shift slot now!</Text>
+                </View>
+                <TouchableOpacity onPress={() => setShiftModalVisible(true)} style={styles.extensionBtn}>
+                  <Text style={{ color: LOCAL_COLORS.white, fontWeight: '700', fontSize: 12 }}>Reserve Next</Text>
                 </TouchableOpacity>
+              </View>
+            )}
+
+            {/* 4. POST-SHIFT REST TIMER */}
+            {restTimeRemaining > 0 && !activeShift && (
+              <View style={[styles.restCard, { backgroundColor: isDarkMode ? '#172554' : LOCAL_COLORS.blueBg }]}>
+                <Ionicons name="cafe-outline" size={20} color={LOCAL_COLORS.blueText} style={{ marginRight: 8 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.restTitle}>10-Minute Rest Window</Text>
+                  <Text style={[styles.restSub, { color: theme.textMuted }]}>Take a breather before your next slot ({formatTimer(restTimeRemaining)})</Text>
+                </View>
+                <TouchableOpacity onPress={() => setShiftModalVisible(true)} style={styles.restBtn}>
+                  <Text style={{ color: LOCAL_COLORS.blueText, fontWeight: '700', fontSize: 12 }}>Book Next</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* 5. STATS GRID */}
+            <View style={styles.gridContainer}>
+              <View style={[styles.gridItem, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+                <Text style={[styles.metricLabel, { color: theme.textMuted }]}>💰 Today's Earnings</Text>
+                <Text style={[styles.metricValue, { color: LOCAL_COLORS.emeraldGreen }]}>₹{rider?.earnings_today || 0}</Text>
+              </View>
+              <View style={[styles.gridItem, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+                <Text style={[styles.metricLabel, { color: theme.textMuted }]}>📦 Today's Deliveries</Text>
+                <Text style={[styles.metricValue, { color: theme.text }]}>{rider?.orders_completed || 0}</Text>
+              </View>
+            </View>
+
+            <View style={styles.gridContainer}>
+              <View style={[styles.gridItem, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+                <Text style={[styles.metricLabel, { color: theme.textMuted }]}>💼 Lifetime Earnings</Text>
+                <Text style={[styles.metricValue, { color: theme.text }]}>₹{rider?.total_earnings || 0}</Text>
+              </View>
+              <View style={[styles.gridItem, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+                <Text style={[styles.metricLabel, { color: theme.textMuted }]}>⭐ Rating</Text>
+                <Text style={[styles.metricValue, { color: '#F59E0B' }]}>{averageRating} / 5.0</Text>
+              </View>
+            </View>
+
+            {/* 6. CURRENT SHIFT CARD */}
+            <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>⏱️ Active Shift Status</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 14, alignItems: 'center' }}>
+                <View>
+                  <Text style={[styles.metricLabel, { color: theme.textMuted }]}>Shift Time Remaining</Text>
+                  <Text style={[styles.timerText, { color: shiftTimeRemaining > 0 ? LOCAL_COLORS.emeraldGreen : theme.text }]}>
+                    {shiftTimeRemaining > 0 ? formatTimer(shiftTimeRemaining) : '00:00:00'}
+                  </Text>
+                </View>
+
+                {shiftTimeRemaining > 0 ? (
+                  <TouchableOpacity onPress={promptEndShiftConfirmation} style={[styles.actionBtn, { backgroundColor: LOCAL_COLORS.danger }]}>
+                    <Text style={styles.actionBtnText}>End Shift</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (rider?.kyc_status !== 'verified') {
+                        Alert.alert('KYC Required', 'Complete your KYC verification first.');
+                      } else if (!isAvailable) {
+                        Alert.alert('Offline', 'You must be Online to select a shift. Turn your status to Online first.');
+                      } else {
+                        setShiftModalVisible(true);
+                      }
+                    }}
+                    style={[styles.actionBtn, { backgroundColor: isAvailable ? LOCAL_COLORS.emeraldGreen : '#9CA3AF' }]}
+                  >
+                    <Text style={styles.actionBtnText}>Select / Reserve Shift</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {/* 7. UPCOMING RESERVED SHIFTS */}
+            {scheduledShifts.length > 0 && (
+              <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                  <Ionicons name="calendar-outline" size={18} color={theme.text} />
+                  <Text style={[styles.sectionTitle, { color: theme.text }]}>Reserved Upcoming Shifts</Text>
+                </View>
+                {scheduledShifts.map((s) => (
+                  <View key={s.id} style={[styles.reservedRow, { borderBottomColor: theme.border }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.reservedShiftTime, { color: theme.text }]}>
+                        {new Date(s.shift_start).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      </Text>
+                      <Text style={{ fontSize: 12, color: theme.textMuted }}>
+                        {new Date(s.shift_start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(s.shift_end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    </View>
+                    <TouchableOpacity onPress={() => handleCancelReservedShift(s.id)}>
+                      <Ionicons name="trash-outline" size={18} color={LOCAL_COLORS.danger} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* 8. ASSIGNED STORES */}
+            <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+              <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 4 }]}>🏪 Assigned Stores</Text>
+              {vendors.length > 0 ? (
+                vendors.map((vendor) => (
+                  <View key={vendor.id} style={[styles.vendorRow, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.vendorName, { color: theme.text }]}>{vendor.shop_name || 'Fulfillment Point'}</Text>
+                      <Text style={styles.vendorStatusTag}>🟢 Open</Text>
+                    </View>
+                    <View style={[styles.orderBadge, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+                      <Text style={[styles.orderBadgeText, { color: theme.text }]}>{vendor.pendingOrdersCount || 0} Active Orders</Text>
+                    </View>
+                  </View>
+                ))
               ) : (
-                <TouchableOpacity onPress={() => setShiftModalVisible(true)} style={[styles.actionBtn, { backgroundColor: COLORS.emeraldGreen }]}>
-                  <Text style={styles.actionBtnText}>Select / Reserve Shift</Text>
-                </TouchableOpacity>
+                <View style={styles.emptyStateContainer}>
+                  <Text style={styles.emptyStateIcon}>🏪</Text>
+                  <Text style={[styles.emptyStateTitle, { color: theme.text }]}>No stores assigned.</Text>
+                  <Text style={[styles.emptyStateDesc, { color: theme.textMuted }]}>New assignments will appear here.</Text>
+                </View>
               )}
             </View>
-          </View>
 
-          {/* 7. UPCOMING RESERVED SHIFTS */}
-          {scheduledShifts.length > 0 && (
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>📅 Reserved Upcoming Shifts</Text>
-              {scheduledShifts.map((s) => (
-                <View key={s.id} style={styles.reservedRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.reservedShiftTime}>
-                      {new Date(s.shift_start).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                    </Text>
-                    <Text style={{ fontSize: 12, color: COLORS.textMuted }}>
-                      {new Date(s.shift_start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(s.shift_end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </Text>
+            {/* 9. RECENT DELIVERIES */}
+            <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+              <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 4 }]}>📋 Recent Deliveries</Text>
+              {recentDeliveries.length > 0 ? (
+                recentDeliveries.map((delivery) => (
+                  <View key={delivery.id} style={[styles.deliveryRow, { borderColor: theme.border }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.deliveryNumber, { color: theme.text }]}>#{delivery.order_number || delivery.id.substring(0, 8)}</Text>
+                      <Text style={[styles.deliveryStore, { color: theme.textMuted }]}>{delivery.vendor?.shop_name || 'Rivo Store Point'}</Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={styles.deliveryAmount}>+₹{delivery.total_amount || 0}</Text>
+                      <Text style={styles.deliveryStatusSuccess}>✔ Delivered</Text>
+                    </View>
                   </View>
-                  <TouchableOpacity onPress={() => handleCancelReservedShift(s.id)}>
-                    <Ionicons name="trash-outline" size={18} color={COLORS.danger} />
-                  </TouchableOpacity>
+                ))
+              ) : (
+                <View style={styles.emptyStateContainer}>
+                  <Text style={styles.emptyStateIcon}>📦</Text>
+                  <Text style={[styles.emptyStateTitle, { color: theme.text }]}>No recent deliveries.</Text>
+                  <Text style={[styles.emptyStateDesc, { color: theme.textMuted }]}>Complete your first order today.</Text>
                 </View>
-              ))}
+              )}
             </View>
-          )}
 
-          {/* 8. ASSIGNED VENDORS */}
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>🏪 Assigned  Stores</Text>
-            {vendors.length > 0 ? (
-              vendors.map((vendor) => (
-                <View key={vendor.id} style={styles.vendorRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.vendorName}>{vendor.shop_name || 'Fulfillment Point'}</Text>
-                    <Text style={styles.vendorStatusTag}>🟢 Open for Dispatch</Text>
+            {/* 10. CUSTOMER REVIEWS */}
+            <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+              <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 4 }]}>💬 Customer Reviews</Text>
+              {reviews.length > 0 ? (
+                reviews.slice(0, 2).map((rev) => (
+                  <View key={rev.id} style={[styles.reviewItem, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <Text style={{ color: '#F59E0B', fontWeight: '700', fontSize: 14 }}>{'★'.repeat(rev.rating)}</Text>
+                      <Text style={{ color: theme.textMuted, fontSize: 10 }}>{new Date(rev.created_at).toLocaleDateString()}</Text>
+                    </View>
+                    {rev.comment ? <Text style={[styles.reviewComment, { color: theme.text }]}>{rev.comment}</Text> : null}
                   </View>
-                  <View style={styles.orderBadge}>
-                    <Text style={styles.orderBadgeText}>{vendor.pendingOrdersCount || 0} Orders</Text>
-                  </View>
+                ))
+              ) : (
+                <View style={styles.emptyStateContainer}>
+                  <Text style={styles.emptyStateIcon}>⭐</Text>
+                  <Text style={[styles.emptyStateTitle, { color: theme.text }]}>No reviews yet</Text>
+                  <Text style={[styles.emptyStateDesc, { color: theme.textMuted }]}>Complete deliveries to receive ratings.</Text>
                 </View>
-              ))
-            ) : (
-              <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 8 }}>No assigned stores currently active.</Text>
-            )}
-          </View>
+              )}
+            </View>
 
-          {/* 9. RECENT DELIVERIES */}
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>📋 Recent Completed Deliveries</Text>
-            {recentDeliveries.length > 0 ? (
-              recentDeliveries.map((delivery) => (
-                <View key={delivery.id} style={styles.deliveryRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.deliveryNumber}>#{delivery.order_number || delivery.id.substring(0, 8)}</Text>
-                    <Text style={{ fontSize: 12, color: COLORS.textMuted }}>{delivery.vendor?.shop_name}</Text>
-                  </View>
-                  <Text style={styles.deliveryAmount}>+₹{delivery.total_amount || 0}</Text>
-                </View>
-              ))
-            ) : (
-              <Text style={{ color: COLORS.textMuted, fontSize: 13, marginTop: 8 }}>No recent deliveries yet.</Text>
-            )}
-          </View>
-
-          {/* 10. EMERGENCY SOS */}
-          <View style={[styles.card, { borderColor: COLORS.danger }]}>
-            <Text style={[styles.sectionTitle, { color: COLORS.danger }]}>🚨 Emergency SOS Support</Text>
-            <Text style={{ fontSize: 12, color: COLORS.textMuted, marginVertical: 8 }}>
-              Quickly dispatch road blockages, vehicle breakdowns, or collision incidents to support.
-            </Text>
-            <TouchableOpacity onPress={handleSosOpen} style={[styles.actionBtn, { backgroundColor: COLORS.danger, alignItems: 'center' }]}>
-              <Text style={styles.actionBtnText}>Open SOS Panel</Text>
-            </TouchableOpacity>
-          </View>
-
-        </Animated.View>
-      </ScrollView>
+            {/* 11. EMERGENCY SOS CARD (PRESERVED) */}
+            <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: LOCAL_COLORS.danger, borderWidth: 1, borderRadius: 20 }]}>
+              <Text style={[styles.sectionTitle, { color: LOCAL_COLORS.danger }]}>🚨 Emergency SOS</Text>
+              <Text style={[styles.metricLabel, { color: theme.textMuted, marginTop: 4, marginBottom: 14 }]}>
+                {activeSosReport
+                  ? 'Emergency request active. Support has been notified.'
+                  : 'Report road barriers or collisions to live emergency support.'}
+              </Text>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={handleSosOpen}
+                style={[styles.actionBtn, { backgroundColor: activeSosReport ? '#9CA3AF' : LOCAL_COLORS.danger, alignItems: 'center', borderRadius: 12 }]}
+              >
+                <Text style={styles.actionBtnText}>{activeSosReport ? 'View Active SOS' : 'Open SOS'}</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </ScrollView>
+      )}
 
       {/* CALENDAR SHIFT RESERVATION MODAL */}
       <Modal animationType="slide" transparent={true} visible={shiftModalVisible} onRequestClose={() => setShiftModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={{ flex: 1 }} onPress={() => setShiftModalVisible(false)} />
-          <View style={styles.modalContent}>
-            <View style={styles.modalIndicator} />
-            <Text style={styles.modalTitle}>Reserve Shift Calendar</Text>
-            <Text style={styles.modalSubtitle}>Book shifts up to 2 days in advance (4-hour slots).</Text>
+          <View style={[styles.modalContent, { backgroundColor: theme.cardBg }]}>
+            <View style={[styles.modalIndicator, { backgroundColor: theme.border }]} />
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Reserve Shift Calendar</Text>
+            <Text style={[styles.modalSubtitle, { color: theme.textMuted }]}>Book shifts up to 2 days in advance (4-hour slots).</Text>
 
             {/* 3-DAY SELECTOR TABS */}
             <View style={styles.dayTabContainer}>
@@ -881,9 +1439,13 @@ export default function DashboardScreen() {
                 <TouchableOpacity
                   key={offset}
                   onPress={() => setSelectedDayOffset(offset)}
-                  style={[styles.dayTab, selectedDayOffset === offset && styles.dayTabActive]}
+                  style={[
+                    styles.dayTab,
+                    { backgroundColor: theme.bg, borderColor: theme.border },
+                    selectedDayOffset === offset && styles.dayTabActive,
+                  ]}
                 >
-                  <Text style={[styles.dayTabLabel, selectedDayOffset === offset && styles.dayTabLabelActive]}>
+                  <Text style={[styles.dayTabLabel, { color: theme.textMuted }, selectedDayOffset === offset && styles.dayTabLabelActive]}>
                     {getFormattedDayLabel(offset)}
                   </Text>
                 </TouchableOpacity>
@@ -902,16 +1464,19 @@ export default function DashboardScreen() {
                       key={slot.id}
                       disabled={isReserved}
                       onPress={() => handleReserveShiftSlot(slot, selectedDayOffset)}
-                      style={[styles.shiftTemplateCard, isReserved && { opacity: 0.6 }]}
+                      style={[styles.shiftTemplateCard, { backgroundColor: theme.bg, borderColor: theme.border }, isReserved && { opacity: 0.6 }]}
                     >
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.shiftTemplateTitle}>{slot.name}</Text>
-                        <Text style={styles.shiftTemplateSub}>{slot.subtitle}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Ionicons name={slot.iconName} size={16} color={LOCAL_COLORS.emeraldGreen} />
+                          <Text style={[styles.shiftTemplateTitle, { color: theme.text }]}>{slot.name}</Text>
+                        </View>
+                        <Text style={[styles.shiftTemplateSub, { color: theme.textMuted }]}>{slot.subtitle}</Text>
                         <Text style={styles.shiftTimeRange}>
                           {slot.startHour.toString().padStart(2, '0')}:00 – {slot.endHour.toString().padStart(2, '0')}:00
                         </Text>
                       </View>
-                      <View style={[styles.reserveBadge, isReserved && { backgroundColor: '#9CA3AF' }, isToday && !isReserved && { backgroundColor: COLORS.emeraldGreen }]}>
+                      <View style={[styles.reserveBadge, isReserved && { backgroundColor: '#9CA3AF' }, isToday && !isReserved && { backgroundColor: LOCAL_COLORS.emeraldGreen }]}>
                         <Text style={styles.reserveBadgeText}>
                           {isReserved ? 'Reserved' : isToday ? 'Start Shift' : 'Reserve Slot'}
                         </Text>
@@ -925,98 +1490,836 @@ export default function DashboardScreen() {
         </View>
       </Modal>
 
-      {/* SOS MODAL */}
-      <Modal animationType="slide" transparent={true} visible={sosModalVisible} onRequestClose={() => setSosModalVisible(false)}>
+      {/* MULTI-VIEW INTERNAL EMERGENCY SOS MODAL (PRESERVED 1:1) */}
+      <Modal animationType="slide" transparent={true} visible={sosModalVisible} onRequestClose={() => resetSosModalState()}>
         <View style={styles.modalOverlay}>
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => setSosModalVisible(false)} />
-          <View style={styles.modalContent}>
-            <View style={styles.modalIndicator} />
-            <Text style={styles.modalTitle}>🚨 Incident Emergency Support</Text>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => resetSosModalState()} />
+          <View style={[styles.modalContent, { backgroundColor: theme.cardBg }]}>
+            <View style={[styles.modalIndicator, { backgroundColor: theme.border }]} />
 
-            {sosModalView === 'SELECT_INCIDENT' && (
-              <ScrollView style={{ maxHeight: 360 }}>
-                <View style={{ gap: 10, marginTop: 12 }}>
-                  {INCIDENT_TYPES.map((item) => (
+            {/* HEADER NAVIGATION BUTTONS INSIDE SOS MODAL */}
+            <View style={styles.modalHeaderRow}>
+              {sosModalView === 'HISTORY_DETAIL' ? (
+                <TouchableOpacity
+                  style={styles.modalBackBtn}
+                  onPress={() => {
+                    setSelectedHistoryReport(null);
+                    setSignedPhotoUrl(null);
+                    setSosModalView('HISTORY_LIST');
+                  }}
+                >
+                  <Ionicons name="arrow-back" size={18} color={theme.text} />
+                  <Text style={[styles.modalBackBtnText, { color: theme.text }]}>Back</Text>
+                </TouchableOpacity>
+              ) : sosModalView === 'HISTORY_LIST' ? (
+                <TouchableOpacity
+                  style={styles.modalBackBtn}
+                  onPress={() => {
+                    if (activeSosReport) {
+                      setSosModalView('ACTIVE_SOS');
+                    } else {
+                      setSosModalView('SELECT_INCIDENT');
+                    }
+                  }}
+                >
+                  <Ionicons name="arrow-back" size={18} color={theme.text} />
+                  <Text style={[styles.modalBackBtnText, { color: theme.text }]}>Back</Text>
+                </TouchableOpacity>
+              ) : sosModalView === 'INCIDENT_FORM' ? (
+                <TouchableOpacity
+                  style={styles.modalBackBtn}
+                  onPress={() => {
+                    setSelectedSosOption(null);
+                    setSosModalView('SELECT_INCIDENT');
+                  }}
+                >
+                  <Ionicons name="arrow-back" size={18} color={theme.text} />
+                  <Text style={[styles.modalBackBtnText, { color: theme.text }]}>Back</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={{ flex: 1 }} />
+              )}
+
+              <TouchableOpacity onPress={() => resetSosModalState()} style={styles.closeIconButton}>
+                <Ionicons name="close" size={20} color={theme.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* VIEW 1: ACTIVE SOS VIEW */}
+            {sosModalView === 'ACTIVE_SOS' && activeSosReport && (
+              <ScrollView style={{ maxHeight: height * 0.7 }} showsVerticalScrollIndicator={false}>
+                <View style={{ paddingVertical: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                    <Text style={{ fontSize: 28 }}>🚨</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.modalTitle, { color: LOCAL_COLORS.danger }]}>Emergency Request Active</Text>
+                      <Text style={[styles.modalSubtitle, { color: theme.textMuted, marginTop: 2, marginBottom: 0 }]}>
+                        Support has been notified and is reviewing your report.
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={[styles.summaryCard, { backgroundColor: theme.bg, borderColor: theme.border, marginVertical: 12 }]}>
+                    <View style={styles.sosMetaRow}>
+                      <Text style={[styles.sosMetaLabel, { color: theme.textMuted }]}>Issue Type</Text>
+                      <Text style={[styles.sosMetaValue, { color: theme.text }]}>{activeSosReport.issue_type}</Text>
+                    </View>
+                    <View style={styles.sosMetaRow}>
+                      <Text style={[styles.sosMetaLabel, { color: theme.textMuted }]}>Submitted At</Text>
+                      <Text style={[styles.sosMetaValue, { color: theme.text }]}>
+                        {new Date(activeSosReport.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    </View>
+                    <View style={styles.sosMetaRow}>
+                      <Text style={[styles.sosMetaLabel, { color: theme.textMuted }]}>Status</Text>
+                      {(() => {
+                        const b = getStatusBadgeStyle(activeSosReport.status);
+                        return (
+                          <View style={{ backgroundColor: b.bg, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                            <Text style={{ color: b.text, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' }}>
+                              {b.label}
+                            </Text>
+                          </View>
+                        );
+                      })()}
+                    </View>
+                  </View>
+
+                  <Text style={{ fontSize: 12, color: theme.textMuted, textAlign: 'center', marginVertical: 8 }}>
+                    Please remain in a safe location until dispatch contacts you or resolves the issue.
+                  </Text>
+
+                  {/* DIRECT EMERGENCY HELPLINE CALL SECTION */}
+                  <View style={[styles.helplineSection, { backgroundColor: theme.bg, borderColor: theme.border, marginVertical: 12 }]}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: theme.text, marginBottom: 8 }}>📞 Direct Emergency Helplines</Text>
+                    <View style={{ gap: 8 }}>
+                      {EMERGENCY_HELPLINES.map((h) => (
+                        <TouchableOpacity
+                          key={h.number}
+                          activeOpacity={0.8}
+                          onPress={() => makeEmergencyCall(h.number)}
+                          style={[styles.helplineCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}
+                        >
+                          <Text style={{ fontSize: 20, marginRight: 10 }}>{h.icon}</Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: theme.text }}>{h.label}</Text>
+                            <Text style={{ fontSize: 11, color: theme.textMuted }}>{h.subtitle}</Text>
+                          </View>
+                          <View style={styles.callPill}>
+                            <Ionicons name="call" size={12} color={LOCAL_COLORS.white} style={{ marginRight: 4 }} />
+                            <Text style={styles.callPillText}>{h.number}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  {/* BOTTOM PAST REQUESTS LINK */}
+                  <View style={[styles.pastRequestsBanner, { backgroundColor: theme.bg, borderColor: theme.border, marginTop: 8 }]}>
+                    <Text style={{ fontSize: 18, marginBottom: 4 }}>📜 Past Requests</Text>
+                    <Text style={{ fontSize: 12, color: theme.textMuted, marginBottom: 12, lineHeight: 16 }}>
+                      View your previous emergency requests, track their status and read admin updates.
+                    </Text>
                     <TouchableOpacity
-                      key={item.type}
-                      onPress={() => {
-                        setSelectedSosOption(item);
-                        setSosModalView('INCIDENT_FORM');
+                      activeOpacity={0.8}
+                      onPress={async () => {
+                        setSosModalView('HISTORY_LIST');
+                        if (rider?.id) fetchSosHistory(rider.id);
                       }}
-                      style={styles.incidentRow}
+                      style={[styles.historyActionBtn, { backgroundColor: LOCAL_COLORS.emeraldGreen }]}
                     >
-                      <Text style={{ fontSize: 24, marginRight: 12 }}>{item.icon}</Text>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontWeight: '700', fontSize: 14 }}>{item.title}</Text>
-                        <Text style={{ fontSize: 12, color: COLORS.textMuted }}>{item.desc}</Text>
-                      </View>
-                      <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+                      <Text style={{ color: LOCAL_COLORS.white, fontWeight: '700', fontSize: 13 }}>View History</Text>
                     </TouchableOpacity>
-                  ))}
+                  </View>
                 </View>
               </ScrollView>
             )}
 
-            {sosModalView === 'INCIDENT_FORM' && selectedSosOption && (
-              <View style={{ paddingVertical: 12 }}>
-                <Text style={{ fontWeight: '700', fontSize: 15, marginBottom: 8 }}>{selectedSosOption.icon} {selectedSosOption.title}</Text>
-                <TextInput
-                  style={styles.sosInput}
-                  placeholder="Describe emergency details..."
-                  placeholderTextColor={COLORS.textMuted}
-                  value={customInputText}
-                  onChangeText={setCustomInputText}
-                  multiline
-                />
-                <TouchableOpacity onPress={pickImageAttachment} style={styles.photoPickerBtn}>
-                  <Text style={{ fontWeight: '700', color: COLORS.jetBlack, fontSize: 12 }}>
-                    {attachedPhotoUri ? '✅ Evidence Photo Attached' : '📷 Add Proof Photo'}
-                  </Text>
-                </TouchableOpacity>
+            {/* VIEW 2: INCIDENT SELECTION CARDS VIEW */}
+            {sosModalView === 'SELECT_INCIDENT' && (
+              <ScrollView style={{ maxHeight: height * 0.7 }} showsVerticalScrollIndicator={false}>
+                <View style={{ paddingBottom: 10 }}>
+                  <Text style={[styles.modalTitle, { color: theme.text }]}>Emergency Assistance</Text>
+                  <Text style={[styles.modalSubtitle, { color: theme.textMuted }]}>Select the incident template that matches your emergency.</Text>
 
-                <TouchableOpacity
-                  onPress={() => setSosModalVisible(false)}
-                  style={[styles.actionBtn, { backgroundColor: COLORS.danger, marginTop: 12, alignItems: 'center' }]}
-                >
-                  <Text style={styles.actionBtnText}>Send SOS Alert</Text>
-                </TouchableOpacity>
-              </View>
+                  {!currentGps && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                      <ActivityIndicator size="small" color={LOCAL_COLORS.emeraldGreen} />
+                      <Text style={{ fontSize: 12, color: theme.textMuted }}>Acquiring GPS location in background...</Text>
+                    </View>
+                  )}
+
+                  <View style={styles.sosCardsContainer}>
+                    {INCIDENT_TYPES.map((item) => (
+                      <TouchableOpacity
+                        key={item.type}
+                        onPress={() => {
+                          setSelectedSosOption(item);
+                          setSosModalView('INCIDENT_FORM');
+                        }}
+                        style={[styles.incidentCardItem, { backgroundColor: theme.bg, borderColor: theme.border }]}
+                      >
+                        <Text style={{ fontSize: 26, marginRight: 12 }}>{item.icon}</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.incidentCardTitle, { color: theme.text }]}>{item.title}</Text>
+                          <Text style={[styles.incidentCardSub, { color: theme.textMuted }]}>{item.desc}</Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {/* DIRECT EMERGENCY HELPLINES CALL QUICK ACTIONS */}
+                  <View style={[styles.helplineSection, { backgroundColor: theme.bg, borderColor: theme.border, marginTop: 16 }]}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: theme.text, marginBottom: 8 }}>📞 Quick Call Emergency Helplines</Text>
+                    <View style={{ gap: 8 }}>
+                      {EMERGENCY_HELPLINES.map((h) => (
+                        <TouchableOpacity
+                          key={h.number}
+                          activeOpacity={0.8}
+                          onPress={() => makeEmergencyCall(h.number)}
+                          style={[styles.helplineCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}
+                        >
+                          <Text style={{ fontSize: 20, marginRight: 10 }}>{h.icon}</Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: theme.text }}>{h.label}</Text>
+                            <Text style={{ fontSize: 11, color: theme.textMuted }}>{h.subtitle}</Text>
+                          </View>
+                          <View style={styles.callPill}>
+                            <Ionicons name="call" size={12} color={LOCAL_COLORS.white} style={{ marginRight: 4 }} />
+                            <Text style={styles.callPillText}>{h.number}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  {/* BOTTOM PAST REQUESTS SECTION */}
+                  <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 16 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text, marginBottom: 4 }}>📜 Past Requests</Text>
+                    <Text style={{ fontSize: 12, color: theme.textMuted, marginBottom: 12, lineHeight: 16 }}>
+                      View your previous emergency requests, track their status and read admin updates.
+                    </Text>
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={async () => {
+                        setSosModalView('HISTORY_LIST');
+                        if (rider?.id) fetchSosHistory(rider.id);
+                      }}
+                      style={[styles.historyActionBtn, { backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border }]}
+                    >
+                      <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>View History</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </ScrollView>
+            )}
+
+            {/* VIEW 3: INCIDENT FORM VIEW */}
+            {sosModalView === 'INCIDENT_FORM' && selectedSosOption && (
+              <ScrollView style={{ maxHeight: height * 0.7 }} showsVerticalScrollIndicator={false}>
+                {sosSuccess ? (
+                  <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 52, marginBottom: 10 }}>✅</Text>
+                    <Text style={[styles.modalTitle, { color: theme.text, textAlign: 'center' }]}>SOS Sent</Text>
+                    <Text style={[styles.modalSubtitle, { color: theme.textMuted, textAlign: 'center', marginTop: 8, lineHeight: 20 }]}>
+                      Your location and evidence have been shared.{'\n'}Support has been notified.{'\n'}Remain in a safe location if possible.
+                    </Text>
+                  </View>
+                ) : uploadingSos ? (
+                  <View style={{ paddingVertical: 36, alignItems: 'center' }}>
+                    <ActivityIndicator size="large" color={LOCAL_COLORS.danger} style={{ marginBottom: 16 }} />
+                    <Text style={[styles.modalTitle, { color: theme.text, fontSize: 18 }]}>Sending Emergency Alert...</Text>
+                    <View style={{ marginTop: 10, gap: 4, alignItems: 'center' }}>
+                      <Text style={{ fontSize: 13, color: theme.textMuted }}>Uploading photo proof...</Text>
+                      <Text style={{ fontSize: 13, color: theme.textMuted }}>Sharing live GPS coordinates...</Text>
+                      <Text style={{ fontSize: 13, color: theme.textMuted }}>Notifying support dispatch...</Text>
+                      <Text style={{ fontSize: 12, color: LOCAL_COLORS.danger, fontWeight: '700', marginTop: 6 }}>Please wait...</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={{ paddingVertical: 6 }}>
+                    <Text style={[styles.modalTitle, { color: theme.text }]}>
+                      {selectedSosOption.icon} {selectedSosOption.title}
+                    </Text>
+                    <Text style={[styles.modalSubtitle, { color: theme.textMuted }]}>Provide details regarding this incident.</Text>
+
+                    {/* ACCIDENT */}
+                    {selectedSosOption.type === 'Accident' && (
+                      <View style={{ marginBottom: 16 }}>
+                        <Text style={[styles.inputLabel, { color: theme.text }]}>Who had the accident? (*)</Text>
+                        <View style={{ gap: 8, marginTop: 8 }}>
+                          {(['I had an accident', 'Someone else had an accident'] as const).map((opt) => (
+                            <TouchableOpacity
+                              key={opt}
+                              onPress={() => setAccidentTarget(opt)}
+                              style={[
+                                styles.optionSelectorBtn,
+                                {
+                                  backgroundColor: theme.bg,
+                                  borderColor: accidentTarget === opt ? LOCAL_COLORS.emeraldGreen : theme.border,
+                                },
+                              ]}
+                            >
+                              <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }}>
+                                {accidentTarget === opt ? '🔘 ' : '⚪ '} {opt}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+
+                        {accidentTarget === 'Someone else had an accident' && (
+                          <View style={{ marginTop: 14 }}>
+                            <Text style={[styles.inputLabel, { color: theme.text }]}>Describe what happened (*)</Text>
+                            <TextInput
+                              style={[
+                                styles.formTextInput,
+                                { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text, marginTop: 6 },
+                              ]}
+                              placeholder="Provide details about the incident..."
+                              placeholderTextColor={theme.textMuted}
+                              value={customInputText}
+                              onChangeText={setCustomInputText}
+                              multiline
+                            />
+                          </View>
+                        )}
+                      </View>
+                    )}
+
+                    {/* ROAD BLOCK */}
+                    {selectedSosOption.type === 'Road Block' && (
+                      <View style={{ marginBottom: 16 }}>
+                        <Text style={{ fontSize: 13, color: theme.textMuted }}>
+                          Automatic GPS capturing enabled. Proof photo is mandatory.
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* OUT OF FUEL */}
+                    {selectedSosOption.type === 'Out of Fuel' && (
+                      <View style={{ marginBottom: 16 }}>
+                        <Text style={[styles.inputLabel, { color: theme.text }]}>Fuel Type (*)</Text>
+                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                          {FUEL_TYPES.map((type) => (
+                            <TouchableOpacity
+                              key={type}
+                              onPress={() => setFuelType(type)}
+                              style={[
+                                styles.chipBtn,
+                                {
+                                  backgroundColor: fuelType === type ? LOCAL_COLORS.emeraldGreen : theme.bg,
+                                  borderColor: fuelType === type ? LOCAL_COLORS.emeraldGreen : theme.border,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={{
+                                  color: fuelType === type ? LOCAL_COLORS.white : theme.text,
+                                  fontWeight: '700',
+                                  fontSize: 12,
+                                }}
+                              >
+                                {type}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+
+                        <Text style={[styles.inputLabel, { color: theme.text, marginTop: 14 }]}>Optional Notes</Text>
+                        <TextInput
+                          style={[
+                            styles.formTextInput,
+                            { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text, marginTop: 6 },
+                          ]}
+                          placeholder="Additional details (e.g., nearest landmark)..."
+                          placeholderTextColor={theme.textMuted}
+                          value={customInputText}
+                          onChangeText={setCustomInputText}
+                          multiline
+                        />
+                      </View>
+                    )}
+
+                    {/* VEHICLE BREAKDOWN */}
+                    {selectedSosOption.type === 'Vehicle Breakdown' && (
+                      <View style={{ marginBottom: 16 }}>
+                        <Text style={[styles.inputLabel, { color: theme.text }]}>Breakdown Issue (*)</Text>
+                        <View style={{ gap: 8, marginTop: 8 }}>
+                          {BREAKDOWN_TYPES.map((item) => (
+                            <TouchableOpacity
+                              key={item}
+                              onPress={() => setBreakdownType(item)}
+                              style={[
+                                styles.optionSelectorBtn,
+                                {
+                                  backgroundColor: theme.bg,
+                                  borderColor: breakdownType === item ? LOCAL_COLORS.emeraldGreen : theme.border,
+                                },
+                              ]}
+                            >
+                              <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }}>
+                                {breakdownType === item ? '🔘 ' : '⚪ '} {item}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+
+                        {breakdownType === 'Other' && (
+                          <View style={{ marginTop: 14 }}>
+                            <Text style={[styles.inputLabel, { color: theme.text }]}>Describe the problem (*)</Text>
+                            <TextInput
+                              style={[
+                                styles.formTextInput,
+                                { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text, marginTop: 6 },
+                              ]}
+                              placeholder="Specify mechanical breakdown details..."
+                              placeholderTextColor={theme.textMuted}
+                              value={customInputText}
+                              onChangeText={setCustomInputText}
+                              multiline
+                            />
+                          </View>
+                        )}
+                      </View>
+                    )}
+
+                    {/* NEED ASSISTANCE */}
+                    {selectedSosOption.type === 'Need Assistance' && (
+                      <View style={{ marginBottom: 16 }}>
+                        <Text style={[styles.inputLabel, { color: theme.text }]}>Assistance Type (*)</Text>
+                        <View style={{ gap: 8, marginTop: 8 }}>
+                          {ASSISTANCE_TYPES.map((item) => (
+                            <TouchableOpacity
+                              key={item}
+                              onPress={() => setAssistanceType(item)}
+                              style={[
+                                styles.optionSelectorBtn,
+                                {
+                                  backgroundColor: theme.bg,
+                                  borderColor: assistanceType === item ? LOCAL_COLORS.emeraldGreen : theme.border,
+                                },
+                              ]}
+                            >
+                              <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }}>
+                                {assistanceType === item ? '🔘 ' : '⚪ '} {item}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+
+                        {assistanceType === 'Other' && (
+                          <View style={{ marginTop: 14 }}>
+                            <Text style={[styles.inputLabel, { color: theme.text }]}>Describe assistance required (*)</Text>
+                            <TextInput
+                              style={[
+                                styles.formTextInput,
+                                { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text, marginTop: 6 },
+                              ]}
+                              placeholder="Detail what assistance you need..."
+                              placeholderTextColor={theme.textMuted}
+                              value={customInputText}
+                              onChangeText={setCustomInputText}
+                              multiline
+                            />
+                          </View>
+                        )}
+                      </View>
+                    )}
+
+                    {/* OTHER ISSUE */}
+                    {selectedSosOption.type === 'Other' && (
+                      <View style={{ marginBottom: 16 }}>
+                        <Text style={[styles.inputLabel, { color: theme.text }]}>Describe emergency issue (*)</Text>
+                        <TextInput
+                          style={[
+                            styles.formTextInput,
+                            { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text, marginTop: 6 },
+                          ]}
+                          placeholder="Detail the emergency situation..."
+                          placeholderTextColor={theme.textMuted}
+                          value={customInputText}
+                          onChangeText={setCustomInputText}
+                          multiline
+                        />
+                      </View>
+                    )}
+
+                    <View style={[styles.summaryCard, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+                      <View style={{ gap: 6 }}>
+                        <Text style={{ fontSize: 12, color: currentGps ? LOCAL_COLORS.emeraldGreen : LOCAL_COLORS.danger, fontWeight: '600' }}>
+                          {currentGps
+                            ? `📍 GPS Captured (${currentGps.latitude.toFixed(4)}, ${currentGps.longitude.toFixed(4)})`
+                            : '⏳ Fetching GPS location...'}
+                        </Text>
+
+                        {selectedSosOption.type === 'Accident' || selectedSosOption.type === 'Road Block' ? (
+                          <Text style={{ fontSize: 12, color: attachedPhotoUri ? LOCAL_COLORS.emeraldGreen : LOCAL_COLORS.danger, fontWeight: '600' }}>
+                            {attachedPhotoUri ? '📷 Proof Photo Attached' : '⚠️ Proof Photo Required (*)'}
+                          </Text>
+                        ) : (
+                          <Text style={{ fontSize: 12, color: attachedPhotoUri ? LOCAL_COLORS.emeraldGreen : theme.textMuted, fontWeight: '600' }}>
+                            {attachedPhotoUri ? '📷 Proof Photo Attached' : '📷 Proof Photo Optional'}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={pickImageAttachment}
+                      style={[
+                        styles.photoPickerBtn,
+                        {
+                          backgroundColor: theme.bg,
+                          borderColor:
+                            selectedSosOption.type === 'Accident' || selectedSosOption.type === 'Road Block'
+                              ? attachedPhotoUri
+                                ? LOCAL_COLORS.emeraldGreen
+                                : LOCAL_COLORS.danger
+                              : attachedPhotoUri
+                              ? LOCAL_COLORS.emeraldGreen
+                              : theme.border,
+                          borderRadius: 14,
+                          marginVertical: 12,
+                        },
+                      ]}
+                    >
+                      <Text style={{ fontWeight: '700', color: attachedPhotoUri ? LOCAL_COLORS.emeraldGreen : theme.text, fontSize: 13 }}>
+                        {attachedPhotoUri ? '✅ Photo Attached (Tap to retake)' : '📷 Capture Evidence Photo'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setSelectedSosOption(null);
+                          setSosModalView('SELECT_INCIDENT');
+                        }}
+                        style={[styles.closeModalBtn, { flex: 1, marginTop: 0, backgroundColor: theme.border, borderRadius: 14 }]}
+                      >
+                        <Text style={{ fontWeight: '700', color: theme.text }}>Cancel</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        disabled={!isSosFormValid()}
+                        onPress={submitSosReport}
+                        style={[
+                          styles.actionBtn,
+                          {
+                            flex: 1.5,
+                            backgroundColor: isSosFormValid() ? LOCAL_COLORS.danger : '#9CA3AF',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            borderRadius: 14,
+                          },
+                        ]}
+                      >
+                        <Text style={styles.actionBtnText}>Submit SOS Alert</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+              </ScrollView>
+            )}
+
+            {/* VIEW 4: PAST REQUESTS HISTORY LIST */}
+            {sosModalView === 'HISTORY_LIST' && (
+              <ScrollView style={{ maxHeight: height * 0.7 }} showsVerticalScrollIndicator={false}>
+                <View style={{ paddingBottom: 10 }}>
+                  <Text style={[styles.modalTitle, { color: theme.text }]}>📜 Past Emergency Requests</Text>
+                  <Text style={[styles.modalSubtitle, { color: theme.textMuted }]}>
+                    Track your reported incidents, status changes, and admin updates.
+                  </Text>
+
+                  {loadingHistory ? (
+                    <View style={{ paddingVertical: 30, alignItems: 'center' }}>
+                      <ActivityIndicator size="large" color={LOCAL_COLORS.emeraldGreen} />
+                      <Text style={{ fontSize: 13, color: theme.textMuted, marginTop: 10 }}>Loading request logs...</Text>
+                    </View>
+                  ) : historyError ? (
+                    <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+                      <Text style={{ fontSize: 13, color: LOCAL_COLORS.danger, textAlign: 'center' }}>{historyError}</Text>
+                      <TouchableOpacity
+                        onPress={() => rider?.id && fetchSosHistory(rider.id)}
+                        style={{ marginTop: 10, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: theme.bg, borderRadius: 8, borderWidth: 1, borderColor: theme.border }}
+                      >
+                        <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>Retry</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : sosHistoryList.length === 0 ? (
+                    <View style={styles.emptyHistoryContainer}>
+                      <Text style={{ fontSize: 40, marginBottom: 8 }}>🛡️</Text>
+                      <Text style={[styles.emptyStateTitle, { color: theme.text }]}>No emergency requests yet.</Text>
+                      <Text style={[styles.emptyStateDesc, { color: theme.textMuted }]}>
+                        When you submit an SOS alert, it will be saved here for tracking.
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={{ gap: 10, marginTop: 6 }}>
+                      {sosHistoryList.map((item) => {
+                        const icon = getIncidentIcon(item.issue_type);
+                        const badge = getStatusBadgeStyle(item.status);
+                        const createdDate = new Date(item.created_at);
+
+                        return (
+                          <TouchableOpacity
+                            key={item.id}
+                            activeOpacity={0.8}
+                            onPress={() => {
+                              setSelectedHistoryReport(item);
+                              resolveSignedPhotoUrl(item.photo_url);
+                              setSosModalView('HISTORY_DETAIL');
+                            }}
+                            style={[styles.historyCardItem, { backgroundColor: theme.bg, borderColor: theme.border }]}
+                          >
+                            <Text style={{ fontSize: 24, marginRight: 12 }}>{icon}</Text>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.historyCardTitle, { color: theme.text }]}>{item.issue_type}</Text>
+                              <Text style={[styles.historyCardTime, { color: theme.textMuted }]}>
+                                {createdDate.toLocaleDateString()} at {createdDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </Text>
+                            </View>
+                            <View style={[styles.historyStatusBadge, { backgroundColor: badge.bg }]}>
+                              <Text style={[styles.historyStatusText, { color: badge.text }]}>{badge.label}</Text>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+              </ScrollView>
+            )}
+
+            {/* VIEW 5: REQUEST DETAIL VIEW */}
+            {sosModalView === 'HISTORY_DETAIL' && selectedHistoryReport && (
+              <ScrollView style={{ maxHeight: height * 0.7 }} showsVerticalScrollIndicator={false}>
+                <View style={{ paddingBottom: 16 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                      <Text style={{ fontSize: 28 }}>{getIncidentIcon(selectedHistoryReport.issue_type)}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.modalTitle, { color: theme.text, fontSize: 18 }]}>{selectedHistoryReport.issue_type}</Text>
+                        <Text style={{ fontSize: 11, color: theme.textMuted }}>
+                          Submitted: {new Date(selectedHistoryReport.created_at).toLocaleString()}
+                        </Text>
+                      </View>
+                    </View>
+                    {(() => {
+                      const badge = getStatusBadgeStyle(selectedHistoryReport.status);
+                      return (
+                        <View style={[styles.historyStatusBadge, { backgroundColor: badge.bg, paddingHorizontal: 10, paddingVertical: 4 }]}>
+                          <Text style={[styles.historyStatusText, { color: badge.text }]}>{badge.label}</Text>
+                        </View>
+                      );
+                    })()}
+                  </View>
+
+                  {/* STATUS TIMELINE */}
+                  <View style={[styles.timelineCard, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: theme.text, marginBottom: 12 }}>Status Timeline</Text>
+                    <View style={styles.timelineRow}>
+                      {/* Step 1: Submitted */}
+                      <View style={styles.timelineStep}>
+                        <View style={[styles.timelineDot, { backgroundColor: LOCAL_COLORS.emeraldGreen }]} />
+                        <Text style={[styles.timelineLabel, { color: theme.text }]}>Submitted</Text>
+                        <Text style={[styles.timelineTime, { color: theme.textMuted }]}>
+                          {new Date(selectedHistoryReport.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                      </View>
+
+                      {/* Step 2: Acknowledged */}
+                      {selectedHistoryReport.acknowledged_at && (
+                        <>
+                          <View style={[styles.timelineConnector, { backgroundColor: LOCAL_COLORS.emeraldGreen }]} />
+                          <View style={styles.timelineStep}>
+                            <View style={[styles.timelineDot, { backgroundColor: LOCAL_COLORS.emeraldGreen }]} />
+                            <Text style={[styles.timelineLabel, { color: theme.text }]}>Acknowledged</Text>
+                            <Text style={[styles.timelineTime, { color: theme.textMuted }]}>
+                              {new Date(selectedHistoryReport.acknowledged_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </Text>
+                          </View>
+                        </>
+                      )}
+
+                      {/* Step 3: Resolved */}
+                      {selectedHistoryReport.resolved_at && (
+                        <>
+                          <View style={[styles.timelineConnector, { backgroundColor: LOCAL_COLORS.emeraldGreen }]} />
+                          <View style={styles.timelineStep}>
+                            <View style={[styles.timelineDot, { backgroundColor: LOCAL_COLORS.emeraldGreen }]} />
+                            <Text style={[styles.timelineLabel, { color: theme.text }]}>Resolved</Text>
+                            <Text style={[styles.timelineTime, { color: theme.textMuted }]}>
+                              {new Date(selectedHistoryReport.resolved_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </Text>
+                          </View>
+                        </>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* DETAILS CARD */}
+                  <View style={[styles.detailCard, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+                    {selectedHistoryReport.vendor_name && (
+                      <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>Vendor</Text>
+                        <Text style={[styles.detailValue, { color: theme.text }]}>{selectedHistoryReport.vendor_name}</Text>
+                      </View>
+                    )}
+
+                    {selectedHistoryReport.order_number && (
+                      <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>Order Number</Text>
+                        <Text style={[styles.detailValue, { color: theme.text }]}>#{selectedHistoryReport.order_number}</Text>
+                      </View>
+                    )}
+
+                    {selectedHistoryReport.accident_target && (
+                      <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>Accident Target</Text>
+                        <Text style={[styles.detailValue, { color: theme.text }]}>{selectedHistoryReport.accident_target}</Text>
+                      </View>
+                    )}
+
+                    {selectedHistoryReport.fuel_type && (
+                      <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>Fuel Type</Text>
+                        <Text style={[styles.detailValue, { color: theme.text }]}>{selectedHistoryReport.fuel_type}</Text>
+                      </View>
+                    )}
+
+                    {selectedHistoryReport.breakdown_type && (
+                      <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>Breakdown Type</Text>
+                        <Text style={[styles.detailValue, { color: theme.text }]}>{selectedHistoryReport.breakdown_type}</Text>
+                      </View>
+                    )}
+
+                    {selectedHistoryReport.assistance_type && (
+                      <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>Assistance Type</Text>
+                        <Text style={[styles.detailValue, { color: theme.text }]}>{selectedHistoryReport.assistance_type}</Text>
+                      </View>
+                    )}
+
+                    {selectedHistoryReport.latitude && selectedHistoryReport.longitude && (
+                      <View style={styles.detailRow}>
+                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>GPS Location</Text>
+                        <Text style={[styles.detailValue, { color: theme.text }]}>
+                          {selectedHistoryReport.latitude.toFixed(4)}, {selectedHistoryReport.longitude.toFixed(4)}
+                        </Text>
+                      </View>
+                    )}
+
+                    {selectedHistoryReport.description && (
+                      <View style={{ marginTop: 6 }}>
+                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>Description</Text>
+                        <Text style={[styles.detailValueText, { color: theme.text }]}>{selectedHistoryReport.description}</Text>
+                      </View>
+                    )}
+
+                    {selectedHistoryReport.custom_description && (
+                      <View style={{ marginTop: 6 }}>
+                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>Notes</Text>
+                        <Text style={[styles.detailValueText, { color: theme.text }]}>{selectedHistoryReport.custom_description}</Text>
+                      </View>
+                    )}
+
+                    {selectedHistoryReport.resolution_notes && (
+                      <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: theme.border }}>
+                        <Text style={[styles.detailLabel, { color: LOCAL_COLORS.emeraldGreen, fontWeight: '700' }]}>Admin Resolution Notes</Text>
+                        <Text style={[styles.detailValueText, { color: theme.text, marginTop: 2 }]}>{selectedHistoryReport.resolution_notes}</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* EVIDENCE PHOTO DISPLAY */}
+                  {signedPhotoUrl ? (
+                    <View style={{ marginTop: 12 }}>
+                      <Text style={[styles.detailLabel, { color: theme.textMuted, marginBottom: 6 }]}>Evidence Photo</Text>
+                      <Image source={{ uri: signedPhotoUrl }} style={styles.fullEvidenceImage} resizeMode="cover" />
+                    </View>
+                  ) : selectedHistoryReport.photo_url ? (
+                    <View style={{ marginTop: 12, padding: 12, backgroundColor: theme.bg, borderRadius: 12, alignItems: 'center' }}>
+                      <ActivityIndicator size="small" color={LOCAL_COLORS.emeraldGreen} />
+                      <Text style={{ fontSize: 11, color: theme.textMuted, marginTop: 4 }}>Loading photo proof...</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </ScrollView>
             )}
           </View>
         </View>
       </Modal>
 
+      {/* TUTORIAL OVERLAY */}
+      {showTutorial && (
+        <View style={styles.tutorialOverlay}>
+          <View style={[styles.tutorialCard, { backgroundColor: theme.cardBg, borderRadius: 24 }]}>
+            <Text style={styles.tutorialBadge}>WIZARD GUIDE {tutorialStep + 1} / 4</Text>
+            <Text style={[styles.tutorialTitle, { color: theme.text }]}>{tutorialSteps[tutorialStep].title}</Text>
+            <Text style={[styles.tutorialDesc, { color: theme.textMuted }]}>{tutorialSteps[tutorialStep].desc}</Text>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 32, alignItems: 'center' }}>
+              {tutorialStep > 0 ? (
+                <TouchableOpacity onPress={() => setTutorialStep((p) => p - 1)} style={styles.tutorialBackBtn}>
+                  <Text style={{ color: theme.textMuted, fontWeight: '600' }}>Back</Text>
+                </TouchableOpacity>
+              ) : (
+                <View />
+              )}
+
+              <TouchableOpacity
+                onPress={() => {
+                  if (tutorialStep < 3) {
+                    setTutorialStep((p) => p + 1);
+                  } else {
+                    completeTutorial();
+                  }
+                }}
+                style={[styles.tutorialNextBtn, { backgroundColor: LOCAL_COLORS.emeraldGreen, borderRadius: 99 }]}
+              >
+                <Text style={{ color: LOCAL_COLORS.white, fontWeight: '800' }}>
+                  {tutorialStep === 3 ? 'Finish' : 'Next'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  centerLayout: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   centerContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
-    backgroundColor: COLORS.offWhite,
   },
   errorTitle: {
-    color: COLORS.danger,
+    color: LOCAL_COLORS.danger,
     fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 8,
   },
   errorButton: {
-    backgroundColor: COLORS.jetBlack,
+    backgroundColor: LOCAL_COLORS.jetBlack,
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 99,
   },
   headerContainer: {
-    paddingHorizontal: 20,
     paddingTop: Platform.OS === 'ios' ? 56 : 36,
     paddingBottom: 20,
-    backgroundColor: COLORS.white,
+    paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
   },
   headerTopRow: {
     flexDirection: 'row',
@@ -1024,44 +2327,46 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   brandTitle: {
-    color: COLORS.emeraldGreen,
+    color: LOCAL_COLORS.emeraldGreen,
     fontSize: 13,
     fontWeight: '700',
-    marginBottom: 2,
+    letterSpacing: 0.5,
   },
   riderName: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
-    color: COLORS.jetBlack,
+    letterSpacing: -0.5,
   },
   riderSubtitle: {
-    fontSize: 12,
-    color: COLORS.textMuted,
+    fontSize: 13,
+    fontWeight: '500',
     marginTop: 2,
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     borderWidth: 2,
-    borderColor: COLORS.emeraldGreen,
+    borderColor: LOCAL_COLORS.emeraldGreen,
   },
   avatarFallback: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.emeraldGreen,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: LOCAL_COLORS.emeraldGreen,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarFallbackText: {
-    color: COLORS.white,
+    color: LOCAL_COLORS.white,
     fontWeight: '800',
-    fontSize: 14,
+    fontSize: 15,
   },
   bellContainer: {
     padding: 4,
     position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   badgeIndicator: {
     position: 'absolute',
@@ -1070,35 +2375,62 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: COLORS.danger,
+    backgroundColor: LOCAL_COLORS.danger,
+  },
+  kycAlertCard: {
+    padding: 16,
+    borderRadius: 16,
+    borderLeftWidth: 5,
+    marginBottom: 16,
+    elevation: 1.5,
+  },
+  kycAlertTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  kycAlertDesc: {
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  kycActionBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+    marginTop: 10,
+  },
+  kycActionBtnText: {
+    color: LOCAL_COLORS.white,
+    fontSize: 13,
+    fontWeight: '700',
   },
   statusLargePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderRadius: 20,
     borderWidth: 1.5,
   },
   statusIndicatorDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    marginRight: 12,
+    marginRight: 16,
   },
   statusPillTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '800',
   },
   statusPillSubtitle: {
     fontSize: 12,
-    color: COLORS.textMuted,
+    fontWeight: '600',
     marginTop: 2,
   },
   reservedAlertBanner: {
     flexDirection: 'row',
-    backgroundColor: COLORS.blueBg,
-    borderColor: COLORS.blueBorder,
+    borderColor: LOCAL_COLORS.blueBorder,
     borderWidth: 1,
     padding: 14,
     borderRadius: 16,
@@ -1108,15 +2440,14 @@ const styles = StyleSheet.create({
   reservedAlertTitle: {
     fontWeight: '800',
     fontSize: 14,
-    color: COLORS.blueText,
+    color: LOCAL_COLORS.blueText,
   },
   reservedAlertSub: {
     fontSize: 12,
-    color: COLORS.textMuted,
     marginTop: 2,
   },
   btnStartNow: {
-    backgroundColor: COLORS.blueBorder,
+    backgroundColor: LOCAL_COLORS.blueBorder,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
@@ -1128,8 +2459,7 @@ const styles = StyleSheet.create({
   extensionCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.amberBgLight,
-    borderColor: COLORS.amberBorderLight,
+    borderColor: LOCAL_COLORS.amberBorderLight,
     borderWidth: 1,
     padding: 14,
     borderRadius: 16,
@@ -1138,15 +2468,14 @@ const styles = StyleSheet.create({
   extensionTitle: {
     fontWeight: '800',
     fontSize: 13,
-    color: COLORS.amberTextLight,
+    color: LOCAL_COLORS.amberTextLight,
   },
   extensionSub: {
     fontSize: 11,
-    color: COLORS.textMuted,
     marginTop: 2,
   },
   extensionBtn: {
-    backgroundColor: COLORS.amberBorderLight,
+    backgroundColor: LOCAL_COLORS.amberBorderLight,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
@@ -1154,8 +2483,7 @@ const styles = StyleSheet.create({
   restCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.blueBg,
-    borderColor: COLORS.blueBorder,
+    borderColor: LOCAL_COLORS.blueBorder,
     borderWidth: 1,
     padding: 12,
     borderRadius: 16,
@@ -1164,46 +2492,45 @@ const styles = StyleSheet.create({
   restTitle: {
     fontWeight: '800',
     fontSize: 13,
-    color: COLORS.blueText,
+    color: LOCAL_COLORS.blueText,
   },
   restSub: {
     fontSize: 11,
-    color: COLORS.textMuted,
   },
   restBtn: {
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   card: {
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    padding: 18,
-    marginBottom: 14,
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: COLORS.borderLight,
+    elevation: 1.5,
   },
   sectionTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: COLORS.jetBlack,
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: -0.3,
   },
   metricLabel: {
     fontSize: 12,
-    color: COLORS.textMuted,
     fontWeight: '600',
+    letterSpacing: -0.1,
   },
   timerText: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: '800',
     marginTop: 4,
+    letterSpacing: -0.5,
   },
   actionBtn: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 12,
   },
   actionBtnText: {
-    color: COLORS.white,
+    color: LOCAL_COLORS.white,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -1214,108 +2541,157 @@ const styles = StyleSheet.create({
   },
   gridItem: {
     flex: 1,
-    backgroundColor: COLORS.white,
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 16,
     borderWidth: 1,
-    borderColor: COLORS.borderLight,
+    elevation: 1,
   },
   metricValue: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
-    marginTop: 4,
-    color: COLORS.jetBlack,
+    marginTop: 6,
+    letterSpacing: -0.5,
   },
   reservedRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
   },
   reservedShiftTime: {
     fontWeight: '700',
     fontSize: 13,
-    color: COLORS.jetBlack,
   },
   vendorRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    padding: 14,
+    borderRadius: 14,
+    marginTop: 10,
+    borderWidth: 1,
   },
   vendorName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.jetBlack,
+    fontSize: 15,
+    fontWeight: '600',
   },
   vendorStatusTag: {
     fontSize: 11,
-    color: COLORS.emeraldGreen,
     fontWeight: '600',
+    color: LOCAL_COLORS.emeraldGreen,
     marginTop: 2,
   },
   orderBadge: {
-    backgroundColor: COLORS.offWhite,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: COLORS.borderLight,
   },
   orderBadgeText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
+  },
+  reviewItem: {
+    padding: 14,
+    borderRadius: 14,
+    marginTop: 10,
+    borderWidth: 1,
+  },
+  reviewComment: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2,
   },
   deliveryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
   },
   deliveryNumber: {
+    fontSize: 15,
     fontWeight: '700',
-    fontSize: 14,
+  },
+  deliveryStore: {
+    fontSize: 12,
+    marginTop: 2,
   },
   deliveryAmount: {
-    fontWeight: '800',
-    color: COLORS.emeraldGreen,
+    color: LOCAL_COLORS.emeraldGreen,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  deliveryStatusSuccess: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: LOCAL_COLORS.emeraldGreen,
+    marginTop: 2,
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+  },
+  emptyStateIcon: {
+    fontSize: 28,
+    marginBottom: 8,
+  },
+  emptyStateTitle: {
     fontSize: 14,
+    fontWeight: '700',
+  },
+  emptyStateDesc: {
+    fontSize: 12,
+    marginTop: 2,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     padding: 20,
-    maxHeight: height * 0.8,
+    maxHeight: height * 0.85,
   },
   modalIndicator: {
     width: 36,
     height: 4,
-    borderRadius: 2,
-    backgroundColor: COLORS.borderLight,
+    borderRadius: 99,
     alignSelf: 'center',
     marginBottom: 12,
   },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  modalBackBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingRight: 8,
+  },
+  modalBackBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  closeIconButton: {
+    padding: 4,
+  },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '800',
-    color: COLORS.jetBlack,
+    letterSpacing: -0.5,
   },
   modalSubtitle: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-    marginTop: 2,
-    marginBottom: 12,
+    fontSize: 13,
+    marginTop: 4,
+    marginBottom: 14,
   },
   dayTabContainer: {
     flexDirection: 'row',
@@ -1326,81 +2702,287 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 10,
     borderRadius: 12,
-    backgroundColor: COLORS.offWhite,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.borderLight,
   },
   dayTabActive: {
-    backgroundColor: COLORS.emeraldGreen,
-    borderColor: COLORS.emeraldGreen,
+    backgroundColor: LOCAL_COLORS.emeraldGreen,
+    borderColor: LOCAL_COLORS.emeraldGreen,
   },
   dayTabLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: COLORS.textMuted,
   },
   dayTabLabelActive: {
-    color: COLORS.white,
+    color: LOCAL_COLORS.white,
   },
   shiftTemplateCard: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 14,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    backgroundColor: COLORS.offWhite,
   },
   shiftTemplateTitle: {
     fontWeight: '800',
     fontSize: 14,
-    color: COLORS.jetBlack,
   },
   shiftTemplateSub: {
     fontSize: 11,
-    color: COLORS.textMuted,
     marginTop: 1,
   },
   shiftTimeRange: {
     fontSize: 11,
-    color: COLORS.emeraldGreen,
+    color: LOCAL_COLORS.emeraldGreen,
     fontWeight: '700',
     marginTop: 4,
   },
   reserveBadge: {
-    backgroundColor: COLORS.blueBorder,
+    backgroundColor: LOCAL_COLORS.blueBorder,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
   },
   reserveBadgeText: {
-    color: COLORS.white,
+    color: LOCAL_COLORS.white,
     fontWeight: '800',
     fontSize: 12,
   },
-  incidentRow: {
+  sosCardsContainer: {
+    gap: 10,
+  },
+  incidentCardItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  incidentCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  incidentCardSub: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  summaryCard: {
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  photoPickerBtn: {
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+  },
+  formTextInput: {
+    borderWidth: 1,
+    padding: 14,
+    fontSize: 14,
+    minHeight: 50,
+    borderRadius: 14,
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  optionSelectorBtn: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  chipBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  closeModalBtn: {
+    padding: 16,
+    alignItems: 'center',
+  },
+  sosMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  sosMetaLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  sosMetaValue: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  pastRequestsBanner: {
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  historyActionBtn: {
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyHistoryContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 36,
+  },
+  historyCardItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  historyCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  historyCardTime: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  historyStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  historyStatusText: {
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  timelineCard: {
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  timelineStep: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  timelineDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginBottom: 4,
+  },
+  timelineConnector: {
+    height: 2,
+    flex: 1,
+    marginBottom: 14,
+  },
+  timelineLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  timelineTime: {
+    fontSize: 9,
+    marginTop: 2,
+  },
+  detailCard: {
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  detailLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  detailValue: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  detailValueText: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2,
+  },
+  fullEvidenceImage: {
+    width: '100%',
+    height: 180,
+    borderRadius: 14,
+  },
+  helplineSection: {
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  helplineCard: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: COLORS.borderLight,
   },
-  sosInput: {
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 13,
-    minHeight: 80,
-  },
-  photoPickerBtn: {
-    padding: 12,
+  callPill: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    borderRadius: 12,
-    marginTop: 10,
+    backgroundColor: LOCAL_COLORS.danger,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  callPillText: {
+    color: LOCAL_COLORS.white,
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  tutorialOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(11, 15, 25, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+    zIndex: 9999,
+  },
+  tutorialCard: {
+    padding: 24,
+    width: '100%',
+  },
+  tutorialBadge: {
+    color: LOCAL_COLORS.emeraldGreen,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  tutorialTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+  tutorialDesc: {
+    fontSize: 14,
+    marginTop: 12,
+    lineHeight: 22,
+  },
+  tutorialBackBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  tutorialNextBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
   },
 });

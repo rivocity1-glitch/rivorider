@@ -1,4 +1,5 @@
 // src/app/(tabs)/settlements.tsx
+import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -12,9 +13,9 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
+import { COLORS, useTheme } from "../../context/ThemeContext";
 import { supabase } from "../../lib/supabase";
 
-// Define TypeScript interfaces based on DB schema
 interface Settlement {
   id: string;
   rider_id: string;
@@ -28,6 +29,14 @@ interface Settlement {
   delivery_count: number;
 }
 
+interface Order {
+  id: string;
+  created_at: string;
+  delivered_at: string | null;
+  rider_earning: number | null;
+  settled_rider: boolean | null;
+}
+
 interface SummaryStats {
   availableBalance: number;
   unsettledCount: number;
@@ -38,24 +47,9 @@ interface SummaryStats {
   isDaysEligible: boolean;
 }
 
-const COLORS = {
-  emeraldGreen: '#10B981',
-  limeGreen: '#10B981',
-  jetBlack: '#0B0F19',
-  white: '#FFFFFF',
-  offWhite: '#F3F4F6',
-  borderLight: '#E5E7EB',
-  textMuted: '#6B7280',
-  danger: '#EF4444',
-  cardBg: '#FFFFFF',
-  border: '#E5E7EB',
-  // Dark mode specialized values
-  darkCard: '#1F2937',
-  darkBorder: '#374151',
-  darkMuted: '#9CA3AF',
-};
-
 export default function Settlements() {
+  const { isDarkMode, theme } = useTheme();
+
   const [riderId, setRiderId] = useState<string | null>(null);
   const [stats, setStats] = useState<SummaryStats>({
     availableBalance: 0,
@@ -71,42 +65,9 @@ export default function Settlements() {
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState<boolean>(false);
 
-  // Theme Sync System
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
-  const themeToggleAnim = useRef(new Animated.Value(isDarkMode ? 1 : 0)).current;
-
-  // Layout Entrance Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
-
-  // Press feedback animations scale registry
   const actionButtonScale = useRef(new Animated.Value(1)).current;
-
-  const theme = {
-    bg: isDarkMode ? COLORS.jetBlack : COLORS.offWhite,
-    cardBg: isDarkMode ? COLORS.darkCard : COLORS.white,
-    text: isDarkMode ? COLORS.white : COLORS.jetBlack,
-    textMuted: isDarkMode ? COLORS.darkMuted : COLORS.textMuted,
-    border: isDarkMode ? COLORS.darkBorder : COLORS.borderLight,
-    headerBg: isDarkMode ? COLORS.darkCard : COLORS.white,
-  };
-
-  useEffect(() => {
-    Animated.timing(themeToggleAnim, {
-      toValue: isDarkMode ? 1 : 0,
-      duration: 250,
-      useNativeDriver: false,
-    }).start();
-  }, [isDarkMode]);
-
-  const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-  };
-
-  const translateX = themeToggleAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [2, 26],
-  });
 
   const animateButtonPressIn = () => {
     Animated.timing(actionButtonScale, { toValue: 0.96, duration: 80, useNativeDriver: true }).start();
@@ -125,7 +86,6 @@ export default function Settlements() {
     ]).start();
   };
 
-  // Safe Date & Time Formatter
   const formatDateTime = (dateString: string) => {
     if (!dateString) return { date: '', time: '' };
     try {
@@ -138,54 +98,45 @@ export default function Settlements() {
       let hours = dateObj.getHours();
       const minutes = dateObj.getMinutes().toString().padStart(2, '0');
       const ampm = hours >= 12 ? 'PM' : 'AM';
-      hours = hours % 12;
-      hours = hours ? hours : 12;
+      hours = hours % 12 || 12;
       const hourStr = hours.toString().padStart(2, '0');
 
       return {
-        formattedDate: `📅 ${day} ${month} ${year}`,
-        formattedTime: `🕒 ${hourStr}:${minutes} ${ampm}`
+        formattedDate: `${day} ${month} ${year}`,
+        formattedTime: `${hourStr}:${minutes} ${ampm}`
       };
     } catch (e) {
       return { formattedDate: dateString, formattedTime: '' };
     }
   };
 
-  // Core Data Fetching Function
   const fetchData = useCallback(async (currentRiderId: string, isSilent = false) => {
     try {
       if (!isSilent) setLoading(true);
-      // 1. Fetch Orders to calculate Available Balance & Today's Earnings using order_status
+
       const { data: deliveredOrders, error: ordersError } = await supabase
         .from("orders")
-        .select("id, created_at")
+        .select("id, created_at, delivered_at, rider_earning, settled_rider")
         .eq("rider_id", currentRiderId)
         .eq("order_status", "delivered")
-        .order("created_at", { ascending: true }); // Ascending order ensures oldest orders come first
+        .order("created_at", { ascending: true });
 
       if (ordersError) throw ordersError;
 
-      // Fetch already settled delivery counts
-      const { data: settledSum, error: settledSumError } = await supabase
-        .from("rider_settlements")
-        .select("delivery_count")
-        .eq("rider_id", currentRiderId)
-        .not("status", "eq", "rejected");
+      const allDelivered: Order[] = deliveredOrders || [];
 
-      if (settledSumError) throw settledSumError;
+      const unsettledOrders = allDelivered.filter((o) => !o.settled_rider);
+      const availableBalance = unsettledOrders.reduce(
+        (acc, curr) => acc + (Number(curr.rider_earning) || 0),
+        0
+      );
+      const unsettledCount = unsettledOrders.length;
 
-      const totalDeliveredCount = deliveredOrders?.length || 0;
-      const totalSettledCount = (settledSum || []).reduce((acc, curr) => acc + (curr.delivery_count || 0), 0);
-      
-      const unsettledCount = Math.max(0, totalDeliveredCount - totalSettledCount);
-      const availableBalance = unsettledCount * 20;
-
-      // Find the oldest delivered order that hasn't been included in a settlement
       let isDaysEligible = false;
-      if (deliveredOrders && totalDeliveredCount > totalSettledCount) {
-        const oldestUnsettledOrder = deliveredOrders[totalSettledCount];
-        if (oldestUnsettledOrder && oldestUnsettledOrder.created_at) {
-          const oldestOrderTime = new Date(oldestUnsettledOrder.created_at).getTime();
+      if (unsettledOrders.length > 0) {
+        const eligibleOrder = unsettledOrders.find(o => o.delivered_at !== null);
+        if (eligibleOrder && eligibleOrder.delivered_at) {
+          const oldestOrderTime = new Date(eligibleOrder.delivered_at).getTime();
           const currentTime = new Date().getTime();
           const daysDiff = (currentTime - oldestOrderTime) / (1000 * 60 * 60 * 24);
           if (daysDiff >= 7) {
@@ -194,16 +145,12 @@ export default function Settlements() {
         }
       }
 
-      // Calculate Today's Earnings
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
-      const todayOrdersCount = (deliveredOrders || []).filter(order => {
-        const orderDate = new Date(order.created_at);
-        return orderDate >= todayStart;
-      }).length;
-      const todayEarnings = todayOrdersCount * 20;
+      const todayEarnings = allDelivered
+        .filter((order) => order.delivered_at && new Date(order.delivered_at) >= todayStart)
+        .reduce((acc, curr) => acc + (Number(curr.rider_earning) || 0), 0);
 
-      // 2. Fetch Settlement History & Calculate Aggregates
       const { data: settlements, error: settlementsError } = await supabase
         .from("rider_settlements")
         .select("*")
@@ -247,7 +194,6 @@ export default function Settlements() {
     }
   }, []);
 
-  // Initialize Auth User and Fetch corresponding Rider profile
   useEffect(() => {
     async function initializeRider() {
       try {
@@ -280,7 +226,6 @@ export default function Settlements() {
     initializeRider();
   }, [fetchData]);
 
-  // Set up Realtime Listeners once riderId is resolved
   useEffect(() => {
     if (!riderId) return;
 
@@ -305,14 +250,12 @@ export default function Settlements() {
     };
   }, [riderId, fetchData]);
 
-  // Pull to Refresh Handler
   const handlePullToRefresh = () => {
     if (!riderId) return;
     setRefreshing(true);
     fetchData(riderId, true);
   };
 
-  // Request Settlement Submission
   const handleRequestSettlement = async () => {
     if (!riderId || stats.availableBalance < 500 || !stats.isDaysEligible || stats.hasPendingSettlement) return;
 
@@ -334,7 +277,7 @@ export default function Settlements() {
 
       if (error) throw error;
 
-      Alert.alert("Success", "Settlement Request Submitted Successfully");
+      Alert.alert("Success", "Withdrawal Request Submitted Successfully");
       fetchData(riderId, true);
     } catch (error: any) {
       console.error("Error submitting settlement request:", error);
@@ -347,17 +290,16 @@ export default function Settlements() {
   const getStatusBadgeConfig = (status: string) => {
     switch (status) {
       case "pending":
-        return { bg: '#FFEFE6', text: '#FF7A00', label: '🟠 Requested' };
+        return { bg: isDarkMode ? '#451A03' : '#FFEFE6', text: '#FF7A00', label: 'Pending' };
       case "paid":
-        return { bg: '#E6F4EA', text: '#10B981', label: '🟢 Paid' };
+        return { bg: isDarkMode ? '#064E3B' : '#DCFCE7', text: '#16A34A', label: 'Paid' };
       case "rejected":
-        return { bg: '#FEE2E2', text: '#EF4444', label: '🔴 Rejected' };
+        return { bg: isDarkMode ? '#450A0A' : '#FEE2E2', text: '#FF3B30', label: 'Rejected' };
       default:
-        return { bg: '#F3F4F6', text: '#6B7280', label: status.toUpperCase() };
+        return { bg: isDarkMode ? '#262626' : '#F3F4F6', text: '#888888', label: status.toUpperCase() };
     }
   };
 
-  // Dynamic status message logic
   const getStatusMessage = () => {
     if (stats.hasPendingSettlement) {
       return "Your withdrawal request is being processed.";
@@ -373,32 +315,28 @@ export default function Settlements() {
 
   const isActionDisabled = stats.availableBalance < 500 || !stats.isDaysEligible || stats.hasPendingSettlement || submitting || loading || !riderId;
 
-  // Premium Skeleton Card component mapping
   const SkeletonCard = () => (
     <View style={[styles.orderCard, { backgroundColor: theme.cardBg, borderColor: theme.border, opacity: 0.6 }]}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
-        <View style={{ width: '40%', height: 16, backgroundColor: isDarkMode ? '#374151' : '#E5E7EB', borderRadius: 4 }} />
-        <View style={{ width: '25%', height: 20, backgroundColor: isDarkMode ? '#374151' : '#E5E7EB', borderRadius: 8 }} />
+        <View style={{ width: '40%', height: 16, backgroundColor: '#E2E8F0', borderRadius: 4 }} />
+        <View style={{ width: '25%', height: 20, backgroundColor: '#E2E8F0', borderRadius: 8 }} />
       </View>
-      <View style={{ width: '70%', height: 14, backgroundColor: isDarkMode ? '#374151' : '#E5E7EB', borderRadius: 4, marginBottom: 6 }} />
-      <View style={{ width: '50%', height: 14, backgroundColor: isDarkMode ? '#374151' : '#E5E7EB', borderRadius: 4 }} />
+      <View style={{ width: '70%', height: 14, backgroundColor: '#E2E8F0', borderRadius: 4, marginBottom: 6 }} />
+      <View style={{ width: '50%', height: 14, backgroundColor: '#E2E8F0', borderRadius: 4 }} />
     </View>
   );
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      {/* PREMIUM STYLE HEADER */}
       <View style={[styles.header, { backgroundColor: theme.headerBg, borderColor: theme.border }]}>
         <View style={styles.headerTopRow}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.headerTitle, { color: theme.text }]}>💰 Earnings & Settlements</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="wallet-outline" size={22} color={theme.text} />
+              <Text style={[styles.headerTitle, { color: theme.text }]}>Earnings & Withdrawals</Text>
+            </View>
             <Text style={[styles.headerSubtitle, { color: theme.textMuted }]}>Track earnings and request payouts.</Text>
           </View>
-          <TouchableOpacity activeOpacity={0.9} onPress={toggleTheme} style={[styles.switchTrack, { backgroundColor: isDarkMode ? '#374151' : '#E5E7EB' }]}>
-            <Animated.View style={[styles.switchThumb, { transform: [{ translateX }] }]}>
-              <Text style={{ fontSize: 11, textAlign: 'center' }}>{isDarkMode ? '🌙' : '☀️'}</Text>
-            </Animated.View>
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -424,13 +362,13 @@ export default function Settlements() {
             
             {/* HERO CARD */}
             <View style={[styles.balanceCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
-              <Text style={[styles.balanceLabel, { color: theme.textMuted }]}>AVAILABLE BALANCE</Text>
+              <Text style={[styles.balanceLabel, { color: theme.textMuted }]}>AVAILABLE TO WITHDRAW</Text>
               <Text style={[styles.balanceValue, { color: theme.text }]}>₹{stats.availableBalance.toLocaleString("en-IN")}</Text>
               
               <View style={[styles.badgeContainerStatus, { backgroundColor: theme.bg }]}>
                 <View style={[styles.statusIndicatorDot, { backgroundColor: stats.hasPendingSettlement ? '#FF7A00' : COLORS.emeraldGreen }]} />
                 <Text style={[styles.balanceSubtext, { color: theme.text }]}>
-                  {stats.hasPendingSettlement ? 'Settlement in progress' : 'Ready for settlement'}
+                  {stats.hasPendingSettlement ? 'Withdrawal in progress' : 'Ready for withdrawal'}
                 </Text>
               </View>
             </View>
@@ -438,27 +376,35 @@ export default function Settlements() {
             {/* STATISTICS GRID */}
             <View style={styles.gridRow}>
               <View style={[styles.statCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
-                <View style={styles.iconStatWrapper}><Text style={{ fontSize: 16 }}>📈</Text></View>
+                <View style={styles.iconStatWrapper}>
+                  <Ionicons name="trending-up-outline" size={18} color={COLORS.emeraldGreen} />
+                </View>
                 <Text style={[styles.statLabel, { color: theme.textMuted }]}>TODAY'S EARNINGS</Text>
                 <Text style={[styles.statValue, { color: theme.text }]}>₹{stats.todayEarnings.toLocaleString("en-IN")}</Text>
               </View>
 
               <View style={[styles.statCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
-                <View style={styles.iconStatWrapper}><Text style={{ fontSize: 16 }}>💰</Text></View>
-                <Text style={[styles.statLabel, { color: theme.textMuted }]}>AVAILABLE BALANCE</Text>
+                <View style={styles.iconStatWrapper}>
+                  <Ionicons name="card-outline" size={18} color={COLORS.emeraldGreen} />
+                </View>
+                <Text style={[styles.statLabel, { color: theme.textMuted }]}>AVAILABLE TO WITHDRAW</Text>
                 <Text style={[styles.statValue, { color: COLORS.emeraldGreen }]}>₹{stats.availableBalance.toLocaleString("en-IN")}</Text>
               </View>
             </View>
 
             <View style={styles.gridRow}>
               <View style={[styles.statCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
-                <View style={styles.iconStatWrapper}><Text style={{ fontSize: 16 }}>⏳</Text></View>
-                <Text style={[styles.statLabel, { color: theme.textMuted }]}>PENDING SETTLEMENT</Text>
+                <View style={styles.iconStatWrapper}>
+                  <Ionicons name="time-outline" size={18} color="#FF7A00" />
+                </View>
+                <Text style={[styles.statLabel, { color: theme.textMuted }]}>PENDING WITHDRAWAL</Text>
                 <Text style={[styles.statValue, { color: '#FF7A00' }]}>₹{stats.pendingSettlement.toLocaleString("en-IN")}</Text>
               </View>
 
               <View style={[styles.statCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
-                <View style={styles.iconStatWrapper}><Text style={{ fontSize: 16 }}>✅</Text></View>
+                <View style={styles.iconStatWrapper}>
+                  <Ionicons name="checkmark-circle-outline" size={18} color={theme.text} />
+                </View>
                 <Text style={[styles.statLabel, { color: theme.textMuted }]}>TOTAL PAID</Text>
                 <Text style={[styles.statValue, { color: theme.text }]}>₹{stats.totalPaid.toLocaleString("en-IN")}</Text>
               </View>
@@ -478,14 +424,14 @@ export default function Settlements() {
                   disabled={isActionDisabled}
                   style={[
                     styles.button, 
-                    isActionDisabled ? styles.buttonDisabled : { backgroundColor: COLORS.emeraldGreen }
+                    isActionDisabled ? { backgroundColor: isDarkMode ? '#333333' : '#E5E7EB' } : { backgroundColor: COLORS.emeraldGreen }
                   ]}
                 >
                   {submitting ? (
                     <ActivityIndicator color="#ffffff" size="small" />
                   ) : (
                     <Text style={[styles.buttonText, isActionDisabled && styles.buttonTextDisabled]}>
-                      Withdraw Earnings
+                      Request Withdrawal
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -498,12 +444,12 @@ export default function Settlements() {
 
             {/* HISTORY RECORD SECTIONS */}
             <View style={styles.historySection}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Settlement History</Text>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Withdrawal History</Text>
 
               {history.length === 0 ? (
                 <View style={styles.emptyStateContainer}>
-                  <Text style={{ fontSize: 36, marginBottom: 8 }}>💰</Text>
-                  <Text style={[styles.emptyStateTitle, { color: theme.text }]}>No settlements yet</Text>
+                  <Ionicons name="receipt-outline" size={48} color={theme.textMuted} style={{ marginBottom: 8 }} />
+                  <Text style={[styles.emptyStateTitle, { color: theme.text }]}>No withdrawals yet</Text>
                   <Text style={[styles.emptyStateDesc, { color: theme.textMuted }]}>
                     Your completed payouts will appear here.
                   </Text>
@@ -518,7 +464,6 @@ export default function Settlements() {
                     <View key={item.id} style={[styles.orderCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
                       <View style={styles.cardHeader}>
                         <View>
-                          <Text style={[styles.historyCardTitleText, { color: theme.text }]}>Settlement</Text>
                           <Text style={[styles.cardAmount, { color: theme.text }]}>₹{item.amount.toLocaleString("en-IN")}</Text>
                         </View>
                         
@@ -533,16 +478,11 @@ export default function Settlements() {
 
                       <View style={styles.cardDetailsRow}>
                         <View>
-                          <Text style={[styles.detailsLabel, { color: theme.textMuted }]}>DELIVERIES</Text>
-                          <Text style={[styles.detailsValue, { color: theme.text }]}>{item.delivery_count} Orders</Text>
-                        </View>
-                        <View style={{ alignItems: 'flex-end' }}>
                           <Text style={[styles.detailsLabel, { color: theme.textMuted }]}>REQUESTED ON</Text>
                           <Text style={[styles.detailsValue, { color: theme.text }]}>{createdTimeInfo.formattedDate} {createdTimeInfo.formattedTime}</Text>
                         </View>
                       </View>
 
-                      {/* Metadata Conditional Rendering */}
                       {item.status === "paid" && (
                         <View style={[styles.cardFooter, { borderTopColor: theme.border }]}>
                           <View style={styles.cardDetailsRow}>
@@ -581,10 +521,12 @@ export default function Settlements() {
 
 const styles = StyleSheet.create({
   header: {
-    paddingTop: Platform.OS === 'ios' ? 56 : 36,
-    paddingBottom: 20,
+    paddingTop: Platform.OS === 'ios' ? 64 : 44,
+    paddingBottom: 24,
     paddingHorizontal: 20,
     borderBottomWidth: 1,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
   },
   headerTopRow: {
     flexDirection: 'row',
@@ -592,47 +534,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    letterSpacing: -0.5,
+    fontSize: 26,
+    fontWeight: '700',
   },
   headerSubtitle: {
-    fontSize: 13,
-    marginTop: 3,
-  },
-  switchTrack: {
-    width: 50,
-    height: 26,
-    borderRadius: 99,
-    padding: 2,
-    justifyContent: 'center',
-  },
-  switchThumb: {
-    width: 22,
-    height: 22,
-    borderRadius: 99,
-    backgroundColor: COLORS.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1.5 },
-    shadowOpacity: 0.22,
-    shadowRadius: 2,
+    fontSize: 12,
+    marginTop: 2,
   },
   scrollContainer: {
     padding: 16,
   },
   balanceCard: {
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 20,
     marginBottom: 16,
     borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.03,
-    shadowRadius: 10,
-    elevation: 1.5,
   },
   balanceLabel: {
     fontSize: 11,
@@ -666,7 +582,7 @@ const styles = StyleSheet.create({
   },
   heroCardSkeleton: {
     height: 120,
-    borderRadius: 20,
+    borderRadius: 24,
     borderWidth: 1,
     marginBottom: 16,
   },
@@ -677,14 +593,9 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    borderRadius: 20,
-    padding: 16,
+    borderRadius: 24,
+    padding: 20,
     borderWidth: 1,
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.02,
-    shadowRadius: 6,
   },
   iconStatWrapper: {
     marginBottom: 8,
@@ -701,7 +612,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   actionPanel: {
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 20,
     marginBottom: 20,
     borderWidth: 1,
@@ -713,14 +624,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   button: {
-    height: 56,
-    borderRadius: 18,
+    height: 52,
+    borderRadius: 99,
     alignItems: "center",
     justifyContent: "center",
     width: '100%',
-  },
-  buttonDisabled: {
-    backgroundColor: '#E5E7EB',
   },
   buttonText: {
     fontSize: 15,
@@ -728,7 +636,7 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
   buttonTextDisabled: {
-    color: '#9CA3AF',
+    color: '#888888',
   },
   approvalWaitSubtext: {
     fontSize: 12,
@@ -760,24 +668,15 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   orderCard: {
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 20,
-    marginBottom: 14,
+    marginBottom: 16,
     borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.03,
-    shadowRadius: 10,
-    elevation: 1.5,
   },
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-  },
-  historyCardTitleText: {
-    fontSize: 14,
-    fontWeight: '600',
   },
   cardAmount: {
     fontSize: 20,
@@ -788,7 +687,7 @@ const styles = StyleSheet.create({
   statusBadge: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 10,
+    borderRadius: 12,
   },
   statusText: {
     fontSize: 11,

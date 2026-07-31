@@ -6,7 +6,6 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
-  Dimensions,
   Image,
   Linking,
   Platform,
@@ -18,24 +17,8 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { COLORS, useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../lib/supabase';
-
-const { width } = Dimensions.get('window');
-
-const COLORS = {
-  emeraldGreen: '#10B981',
-  jetBlack: '#0B0F19',
-  white: '#FFFFFF',
-  offWhite: '#F3F4F6',
-  borderLight: '#E5E7EB',
-  textMuted: '#6B7280',
-  danger: '#EF4444',
-  cardBg: '#FFFFFF',
-  border: '#E5E7EB',
-  darkCard: '#1F2937',
-  darkBorder: '#374151',
-  darkMuted: '#9CA3AF',
-};
 
 interface Rider {
   id: string;
@@ -80,6 +63,8 @@ interface RiderProfile {
 }
 
 export default function ProfileScreen() {
+  const { isDarkMode, toggleTheme, theme } = useTheme();
+  
   const [loading, setLoading] = useState(true);
   const [submittingKyc, setSubmittingKyc] = useState(false);
   const [savingBankDetails, setSavingBankDetails] = useState(false);
@@ -90,16 +75,12 @@ export default function ProfileScreen() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
 
-  // Theme Sync System
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const themeToggleAnim = useRef(new Animated.Value(isDarkMode ? 1 : 0)).current;
 
-  // Animated values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideUpAnim = useRef(new Animated.Value(20)).current;
   const logoutBtnScale = useRef(new Animated.Value(1)).current;
 
-  // KYC Form State
   const [selfieUrl, setSelfieUrl] = useState('');
   const [aadhaarNumber, setAadhaarNumber] = useState('');
   const [aadhaarUrl, setAadhaarUrl] = useState('');
@@ -108,21 +89,11 @@ export default function ProfileScreen() {
   const [dlNumber, setDlNumber] = useState('');
   const [dlUrl, setDlUrl] = useState('');
 
-  // Bank Form State
   const [accountHolder, setAccountHolder] = useState('');
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [ifsc, setIfsc] = useState('');
   const [upi, setUpi] = useState('');
-
-  const theme = {
-    bg: isDarkMode ? COLORS.jetBlack : COLORS.offWhite,
-    cardBg: isDarkMode ? COLORS.darkCard : COLORS.white,
-    text: isDarkMode ? COLORS.white : COLORS.jetBlack,
-    textMuted: isDarkMode ? COLORS.darkMuted : COLORS.textMuted,
-    border: isDarkMode ? COLORS.darkBorder : COLORS.borderLight,
-    headerBg: isDarkMode ? COLORS.darkCard : COLORS.white,
-  };
 
   useEffect(() => {
     fetchProfileData();
@@ -136,10 +107,6 @@ export default function ProfileScreen() {
     }).start();
   }, [isDarkMode]);
 
-  const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-  };
-
   const translateX = themeToggleAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [2, 26],
@@ -149,28 +116,15 @@ export default function ProfileScreen() {
     fadeAnim.setValue(0);
     slideUpAnim.setValue(20);
     Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 400,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideUpAnim, {
-        toValue: 0,
-        duration: 400,
-        useNativeDriver: true,
-      }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.timing(slideUpAnim, { toValue: 0, duration: 400, useNativeDriver: true }),
     ]).start();
   };
 
   const animateButton = (scaleRef: Animated.Value, toVal: number) => {
-    Animated.timing(scaleRef, {
-      toValue: toVal,
-      duration: 80,
-      useNativeDriver: true,
-    }).start();
+    Animated.timing(scaleRef, { toValue: toVal, duration: 80, useNativeDriver: true }).start();
   };
 
-  // Fix old bucket URLs automatically to avatars
   const normalizePhotoUrl = (url?: string) => {
     if (!url) return '';
     return url.replace('/rider-profiles/', '/avatars/');
@@ -208,7 +162,7 @@ export default function ProfileScreen() {
         .single();
 
       if (riderError) throw riderError;
-      
+
       const normalizedRider = {
         ...riderData,
         profile_photo_url: normalizePhotoUrl(riderData.profile_photo_url),
@@ -221,26 +175,23 @@ export default function ProfileScreen() {
         .eq('rider_id', riderData.id)
         .single();
 
-      if (profileError && profileError.code !== 'PGRST116') {
-        throw profileError;
-      }
+      if (profileError && profileError.code !== 'PGRST116') throw profileError;
 
       setProfile(profileData || null);
       populateFields(normalizedRider, profileData || null);
       startAnimations();
     } catch (err: any) {
-      setError(err.message || 'An unexpected error occurred while loading profile data.');
+      setError(err.message || 'An error occurred while loading profile.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Profile Selfie Capture (Always available for all riders)
   const handleCaptureSelfie = async () => {
     try {
       const cameraPerm = await ImagePicker.requestCameraPermissionsAsync();
       if (!cameraPerm.granted) {
-        Alert.alert('Permission Denied', 'Camera permission is required to capture a selfie.');
+        Alert.alert('Permission Denied', 'Camera permission is required.');
         return;
       }
 
@@ -256,7 +207,7 @@ export default function ProfileScreen() {
         await uploadSelfie(result.assets[0].uri);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to capture camera photo.');
+      Alert.alert('Error', 'Failed to capture photo.');
     }
   };
 
@@ -296,15 +247,14 @@ export default function ProfileScreen() {
 
       setSelfieUrl(publicUrl);
       setRider({ ...rider, profile_photo_url: publicUrl });
-      Alert.alert('Success', 'Selfie captured and updated successfully.');
+      Alert.alert('Success', 'Selfie updated successfully.');
     } catch (err: any) {
-      Alert.alert('Upload Failed', err.message || 'Could not upload selfie image.');
+      Alert.alert('Upload Failed', err.message || 'Could not upload selfie.');
     } finally {
       setUploadingPhoto(false);
     }
   };
 
-  // General Document Photo Pick/Capture
   const handleUploadDocument = (type: 'aadhaar' | 'pan' | 'dl') => {
     Alert.alert(
       'Upload Document',
@@ -323,7 +273,7 @@ export default function ProfileScreen() {
       const libPerm = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (!camPerm.granted || !libPerm.granted) {
-        Alert.alert('Permission Denied', 'Camera and gallery permissions are required.');
+        Alert.alert('Permission Denied', 'Permissions are required.');
         return;
       }
 
@@ -337,7 +287,7 @@ export default function ProfileScreen() {
         await uploadDocumentFile(type, result.assets[0].uri);
       }
     } catch (e) {
-      Alert.alert('Error', 'An error occurred while picking document photo.');
+      Alert.alert('Error', 'An error occurred picking document photo.');
     }
   };
 
@@ -383,7 +333,6 @@ export default function ProfileScreen() {
   const isEvOrNonMotorized = ['ev', 'electric', 'bicycle', 'cycle', 'ev gearbike']
     .some(type => (rider?.vehicle_type || '').toLowerCase().includes(type));
 
-  // Edit and Save Bank Details
   const handleSaveBankDetails = async () => {
     if (!rider) return;
 
@@ -426,25 +375,24 @@ export default function ProfileScreen() {
     }
   };
 
-  // Submit Verification Data
   const handleSubmitKYC = async () => {
     if (!rider) return;
 
-    if (!selfieUrl) return Alert.alert('Missing Selfie', 'Please capture a live profile selfie first.');
-    if (!aadhaarNumber.trim()) return Alert.alert('Missing Details', 'Please enter your Aadhaar number.');
-    if (!aadhaarUrl) return Alert.alert('Missing Document', 'Please upload your Aadhaar front photo.');
-    if (!panNumber.trim()) return Alert.alert('Missing Details', 'Please enter your PAN number.');
-    if (!panUrl) return Alert.alert('Missing Document', 'Please upload your PAN card photo.');
+    if (!selfieUrl) return Alert.alert('Missing Selfie', 'Capture a live profile selfie first.');
+    if (!aadhaarNumber.trim()) return Alert.alert('Missing Details', 'Enter your Aadhaar number.');
+    if (!aadhaarUrl) return Alert.alert('Missing Document', 'Upload your Aadhaar front photo.');
+    if (!panNumber.trim()) return Alert.alert('Missing Details', 'Enter your PAN number.');
+    if (!panUrl) return Alert.alert('Missing Document', 'Upload your PAN card photo.');
 
     if (!isEvOrNonMotorized) {
-      if (!dlNumber.trim()) return Alert.alert('Missing Details', 'Driving Licence number is required for petrol/fuel vehicles.');
-      if (!dlUrl) return Alert.alert('Missing Document', 'Please upload your Driving Licence photo.');
+      if (!dlNumber.trim()) return Alert.alert('Missing Details', 'Driving Licence is required for petrol vehicles.');
+      if (!dlUrl) return Alert.alert('Missing Document', 'Upload your Driving Licence photo.');
     }
 
-    if (!accountHolder.trim()) return Alert.alert('Missing Details', 'Please enter Account Holder Name.');
-    if (!bankName.trim()) return Alert.alert('Missing Details', 'Please enter Bank Name.');
-    if (!accountNumber.trim()) return Alert.alert('Missing Details', 'Please enter Account Number.');
-    if (!ifsc.trim()) return Alert.alert('Missing Details', 'Please enter Bank IFSC Code.');
+    if (!accountHolder.trim()) return Alert.alert('Missing Details', 'Enter Account Holder Name.');
+    if (!bankName.trim()) return Alert.alert('Missing Details', 'Enter Bank Name.');
+    if (!accountNumber.trim()) return Alert.alert('Missing Details', 'Enter Account Number.');
+    if (!ifsc.trim()) return Alert.alert('Missing Details', 'Enter Bank IFSC Code.');
 
     try {
       setSubmittingKyc(true);
@@ -472,19 +420,13 @@ export default function ProfileScreen() {
 
       const { error: riderError } = await supabase
         .from('riders')
-        .update({
-          kyc_status: 'pending',
-          status: 'inactive',
-        })
+        .update({ kyc_status: 'pending', status: 'inactive' })
         .eq('id', rider.id);
 
       if (riderError) throw riderError;
 
       setRider({ ...rider, kyc_status: 'pending', status: 'inactive' });
-      Alert.alert(
-        'Submission Successful',
-        'Your KYC has been submitted successfully.\nOur team will review your documents shortly.'
-      );
+      Alert.alert('Submission Successful', 'Your KYC has been submitted for review.');
     } catch (err: any) {
       Alert.alert('Submission Failed', err.message || 'Could not submit verification documents.');
     } finally {
@@ -528,9 +470,9 @@ export default function ProfileScreen() {
     return (
       <View style={[styles.errorContainer, { backgroundColor: theme.bg }]}>
         <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
-        <Ionicons name="alert-circle-outline" size={64} color="#EF4444" />
+        <Ionicons name="alert-circle-outline" size={64} color={COLORS.danger} />
         <Text style={[styles.errorTitle, { color: theme.text }]}>Oops! Something went wrong</Text>
-        <Text style={[styles.errorMessage, { color: theme.textMuted }]}>{error || 'Failed to fetch rider account profile.'}</Text>
+        <Text style={[styles.errorMessage, { color: theme.textMuted }]}>{error || 'Failed to fetch profile.'}</Text>
         <TouchableOpacity style={styles.retryButton} onPress={fetchProfileData}>
           <Text style={styles.retryText}>Retry</Text>
         </TouchableOpacity>
@@ -545,13 +487,13 @@ export default function ProfileScreen() {
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={theme.headerBg} />
       
-      {/* HEADER SECTION */}
+      {/* HEADER WITH MASTER APP THEME SWITCH */}
       <View style={[styles.header, { backgroundColor: theme.headerBg, borderColor: theme.border }]}>
         <View style={styles.headerTopRow}>
           <Text style={[styles.headerTitle, { color: theme.text }]}>Profile & KYC</Text>
-          <TouchableOpacity activeOpacity={0.9} onPress={toggleTheme} style={[styles.switchTrack, { backgroundColor: isDarkMode ? '#374151' : '#E5E7EB' }]}>
+          <TouchableOpacity activeOpacity={0.9} onPress={toggleTheme} style={[styles.switchTrack, { backgroundColor: isDarkMode ? '#333' : '#E0E0E0' }]}>
             <Animated.View style={[styles.switchThumb, { transform: [{ translateX }] }]}>
-              <Text style={{ fontSize: 11, textAlign: 'center' }}>{isDarkMode ? '🌙' : '☀️'}</Text>
+              <Ionicons name={isDarkMode ? "moon-outline" : "sunny-outline"} size={12} color={COLORS.jetBlack} />
             </Animated.View>
           </TouchableOpacity>
         </View>
@@ -560,7 +502,7 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <Animated.View style={[styles.body, { opacity: fadeAnim, transform: [{ translateY: slideUpAnim }] }]}>
           
-          {/* 1. PROFILE PHOTO (SELFIE HERO - ALWAYS EDITABLE) */}
+          {/* PROFILE PHOTO CARD */}
           <View style={[styles.profileHeroCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
             <View style={{ alignItems: 'center' }}>
               <TouchableOpacity
@@ -573,7 +515,7 @@ export default function ProfileScreen() {
                   <Image source={{ uri: selfieUrl }} style={styles.largeAvatar} />
                 ) : (
                   <View style={[styles.largeAvatar, styles.avatarPlaceholder, { backgroundColor: theme.bg }]}>
-                    <Ionicons name="camera" size={40} color={theme.textMuted} />
+                    <Ionicons name="camera-outline" size={40} color={theme.textMuted} />
                   </View>
                 )}
                 {uploadingPhoto && (
@@ -602,7 +544,7 @@ export default function ProfileScreen() {
           {kycStatus === 'pending' && (
             <View style={[styles.card, { backgroundColor: isDarkMode ? '#272314' : '#FEF3C7', borderColor: isDarkMode ? '#453507' : '#FDE68A' }]}>
               <View style={styles.cardHeader}>
-                <Ionicons name="time" size={22} color="#D97706" style={{ marginRight: 8 }} />
+                <Ionicons name="time-outline" size={22} color="#D97706" style={{ marginRight: 8 }} />
                 <Text style={[styles.cardTitle, { fontSize: 16, color: '#B45309' }]}>Documents Under Review</Text>
               </View>
               <Text style={[styles.infoLabel, { color: isDarkMode ? '#FCD34D' : '#92400E', lineHeight: 20 }]}>
@@ -614,22 +556,22 @@ export default function ProfileScreen() {
           {kycStatus === 'rejected' && (
             <View style={[styles.card, { backgroundColor: isDarkMode ? '#3B1212' : '#FEE2E2', borderColor: isDarkMode ? '#6B1D1D' : '#FCA5A5' }]}>
               <View style={styles.cardHeader}>
-                <Ionicons name="close-circle" size={22} color={COLORS.danger} style={{ marginRight: 8 }} />
+                <Ionicons name="close-circle-outline" size={22} color={COLORS.danger} style={{ marginRight: 8 }} />
                 <Text style={[styles.cardTitle, { fontSize: 16, color: '#B91C1C' }]}>Verification Rejected</Text>
               </View>
               <Text style={[styles.infoLabel, { color: '#B91C1C', lineHeight: 20, marginBottom: 8 }]}>
                 Reason: {profile?.rejection_reason || 'Document proofs were unreadable or mismatched.'}
               </Text>
               <Text style={[styles.infoLabel, { color: '#7F1D1D', fontSize: 12 }]}>
-                Please update the details below and resubmit for verification.
+                Please update details below and resubmit.
               </Text>
             </View>
           )}
 
           {kycStatus === 'verified' && (
-            <View style={[styles.card, { backgroundColor: isDarkMode ? '#062E20' : '#E6F4EA', borderColor: isDarkMode ? '#044E34' : '#A7F3D0' }]}>
+            <View style={[styles.card, { backgroundColor: isDarkMode ? '#062E20' : '#DCFCE7', borderColor: isDarkMode ? '#044E34' : '#A7F3D0' }]}>
               <View style={styles.cardHeader}>
-                <Ionicons name="checkmark-circle" size={22} color="#10B981" style={{ marginRight: 8 }} />
+                <Ionicons name="checkmark-circle-outline" size={22} color={COLORS.emeraldGreen} style={{ marginRight: 8 }} />
                 <Text style={[styles.cardTitle, { fontSize: 16, color: '#047857' }]}>Account Verified</Text>
               </View>
               <Text style={[styles.infoLabel, { color: isDarkMode ? '#A7F3D0' : '#065F46', lineHeight: 20 }]}>
@@ -638,10 +580,10 @@ export default function ProfileScreen() {
             </View>
           )}
 
-          {/* 2. IDENTITY VERIFICATION CARD */}
+          {/* IDENTITY VERIFICATION CARD */}
           <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
             <View style={styles.cardHeader}>
-              <Ionicons name="shield-checkmark" size={18} color={COLORS.emeraldGreen} style={{ marginRight: 8 }} />
+              <Ionicons name="shield-checkmark-outline" size={18} color={COLORS.emeraldGreen} style={{ marginRight: 8 }} />
               <Text style={[styles.cardTitle, { color: theme.text }]}>Identity Verification</Text>
             </View>
 
@@ -677,7 +619,7 @@ export default function ProfileScreen() {
                   </>
                 )}
               </TouchableOpacity>
-              {aadhaarUrl ? <Ionicons name="checkmark-circle" size={20} color={COLORS.emeraldGreen} style={{ marginLeft: 8 }} /> : null}
+              {aadhaarUrl ? <Ionicons name="checkmark-circle-outline" size={20} color={COLORS.emeraldGreen} style={{ marginLeft: 8 }} /> : null}
             </View>
             {aadhaarUrl ? <Image source={{ uri: aadhaarUrl }} style={styles.docPreviewImage} /> : null}
 
@@ -715,7 +657,7 @@ export default function ProfileScreen() {
                   </>
                 )}
               </TouchableOpacity>
-              {panUrl ? <Ionicons name="checkmark-circle" size={20} color={COLORS.emeraldGreen} style={{ marginLeft: 8 }} /> : null}
+              {panUrl ? <Ionicons name="checkmark-circle-outline" size={20} color={COLORS.emeraldGreen} style={{ marginLeft: 8 }} /> : null}
             </View>
             {panUrl ? <Image source={{ uri: panUrl }} style={styles.docPreviewImage} /> : null}
 
@@ -754,12 +696,12 @@ export default function ProfileScreen() {
                   </>
                 )}
               </TouchableOpacity>
-              {dlUrl ? <Ionicons name="checkmark-circle" size={20} color={COLORS.emeraldGreen} style={{ marginLeft: 8 }} /> : null}
+              {dlUrl ? <Ionicons name="checkmark-circle-outline" size={20} color={COLORS.emeraldGreen} style={{ marginLeft: 8 }} /> : null}
             </View>
             {dlUrl ? <Image source={{ uri: dlUrl }} style={styles.docPreviewImage} /> : null}
           </View>
 
-          {/* 3. BANK DETAILS CARD */}
+          {/* BANK DETAILS CARD */}
           <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <View style={styles.cardHeader}>
@@ -860,7 +802,7 @@ export default function ProfileScreen() {
             )}
           </View>
 
-          {/* SUBMIT KYC ACTION BUTTON */}
+          {/* SUBMIT KYC BUTTON */}
           {isEditable && (
             <TouchableOpacity
               style={[styles.submitButton, { backgroundColor: COLORS.emeraldGreen }]}
@@ -877,22 +819,22 @@ export default function ProfileScreen() {
           )}
 
           {/* SUPPORT CARD */}
-          <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border, marginTop: 12 }]}>
+          <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border, marginTop: 4 }]}>
             <View style={styles.cardHeader}>
-              <Ionicons name="help-circle" size={17} color={COLORS.emeraldGreen} style={{ marginRight: 8 }} />
+              <Ionicons name="help-circle-outline" size={17} color={COLORS.emeraldGreen} style={{ marginRight: 8 }} />
               <Text style={[styles.cardTitle, { color: theme.text }]}>Support</Text>
             </View>
             
             <TouchableOpacity style={styles.supportAction} onPress={handleOpenEmail} activeOpacity={0.7}>
               <View style={styles.supportLeft}>
-                <Ionicons name="mail" size={16} color={theme.textMuted} style={{ marginRight: 10 }} />
+                <Ionicons name="mail-outline" size={16} color={theme.textMuted} style={{ marginRight: 10 }} />
                 <Text style={[styles.supportText, { color: theme.text }]}>Email Support</Text>
               </View>
               <Text style={[styles.supportSubText, { color: theme.textMuted }]}>rivocityhelp1@gmail.com</Text>
             </TouchableOpacity>
           </View>
 
-          {/* LOGOUT SYSTEM */}
+          {/* LOGOUT BUTTON */}
           <Animated.View style={{ transform: [{ scale: logoutBtnScale }] }}>
             <TouchableOpacity 
               style={[styles.logoutButton, { borderColor: COLORS.danger + '30' }]} 
@@ -901,7 +843,7 @@ export default function ProfileScreen() {
               onPressOut={() => animateButton(logoutBtnScale, 1)}
               activeOpacity={0.9}
             >
-              <Ionicons name="log-out" size={18} color={COLORS.danger} style={{ marginRight: 6 }} />
+              <Ionicons name="log-out-outline" size={18} color={COLORS.danger} style={{ marginRight: 6 }} />
               <Text style={styles.logoutText}>Log Out</Text>
             </TouchableOpacity>
           </Animated.View>
@@ -920,10 +862,12 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   header: {
-    paddingTop: Platform.OS === 'ios' ? 56 : 36,
-    paddingBottom: 20,
+    paddingTop: Platform.OS === 'ios' ? 64 : 44,
+    paddingBottom: 24,
     paddingHorizontal: 20,
     borderBottomWidth: 1,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
   },
   headerTopRow: {
     flexDirection: 'row',
@@ -931,9 +875,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    letterSpacing: -0.5,
+    fontSize: 26,
+    fontWeight: '700',
   },
   switchTrack: {
     width: 50,
@@ -949,13 +892,12 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 3,
   },
   body: {
     padding: 16,
   },
   profileHeroCard: {
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 20,
     marginBottom: 16,
     borderWidth: 1,
@@ -1022,7 +964,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   card: {
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 20,
     marginBottom: 16,
     borderWidth: 1,
@@ -1053,10 +995,10 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 14,
-    paddingHorizontal: 14,
+    borderRadius: 16,
+    paddingHorizontal: 16,
     marginBottom: 12,
-    height: 48,
+    height: 52,
     borderWidth: 1,
   },
   inputIcon: {
@@ -1064,7 +1006,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
   },
   uppercaseText: {
@@ -1081,7 +1023,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
   },
   docUploadBtnText: {
@@ -1091,7 +1033,7 @@ const styles = StyleSheet.create({
   docPreviewImage: {
     width: '100%',
     height: 140,
-    borderRadius: 12,
+    borderRadius: 16,
     marginTop: 10,
     resizeMode: 'cover',
   },
@@ -1106,8 +1048,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   saveBankBtn: {
-    paddingVertical: 12,
-    borderRadius: 12,
+    height: 52,
+    borderRadius: 99,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,
@@ -1115,11 +1057,11 @@ const styles = StyleSheet.create({
   saveBankBtnText: {
     color: COLORS.white,
     fontWeight: '800',
-    fontSize: 14,
+    fontSize: 15,
   },
   submitButton: {
-    paddingVertical: 16,
-    borderRadius: 16,
+    height: 52,
+    borderRadius: 99,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -1153,8 +1095,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#FEE2E2',
     borderWidth: 1,
-    paddingVertical: 14,
-    borderRadius: 16,
+    height: 52,
+    borderRadius: 99,
     marginTop: 8,
   },
   logoutText: {
@@ -1184,7 +1126,7 @@ const styles = StyleSheet.create({
   },
   skeletonCard: {
     height: 140,
-    borderRadius: 20,
+    borderRadius: 24,
     marginBottom: 16,
   },
   errorContainer: {
@@ -1208,7 +1150,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.emeraldGreen,
     paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: 99,
   },
   retryText: {
     color: COLORS.white,
