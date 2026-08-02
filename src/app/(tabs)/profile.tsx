@@ -8,6 +8,7 @@ import {
   Animated,
   Image,
   Linking,
+  Modal,
   Platform,
   ScrollView,
   StatusBar,
@@ -37,6 +38,11 @@ interface Rider {
   account_number?: string;
   ifsc_code?: string;
   upi_id?: string;
+  gender?: string;
+  blood_group?: string;
+  selfie_photo_url?: string;
+  selfie_locked?: boolean;
+  selfie_uploaded_at?: string;
   created_at?: string;
 }
 
@@ -45,6 +51,7 @@ interface RiderProfile {
   rider_id: string;
   aadhaar_number?: string;
   aadhaar_front_url?: string;
+  aadhaar_back_url?: string;
   pan_number?: string;
   pan_card_url?: string;
   driving_license_number?: string;
@@ -61,6 +68,9 @@ interface RiderProfile {
   pin_code?: string;
   emergency_contact?: string;
 }
+
+const GENDER_OPTIONS = ['Male', 'Female', 'Other'];
+const BLOOD_GROUP_OPTIONS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
 export default function ProfileScreen() {
   const { isDarkMode, toggleTheme, theme } = useTheme();
@@ -81,9 +91,13 @@ export default function ProfileScreen() {
   const slideUpAnim = useRef(new Animated.Value(20)).current;
   const logoutBtnScale = useRef(new Animated.Value(1)).current;
 
+  const [gender, setGender] = useState('');
+  const [bloodGroup, setBloodGroup] = useState('');
   const [selfieUrl, setSelfieUrl] = useState('');
+
   const [aadhaarNumber, setAadhaarNumber] = useState('');
   const [aadhaarUrl, setAadhaarUrl] = useState('');
+  const [aadhaarBackUrl, setAadhaarBackUrl] = useState('');
   const [panNumber, setPanNumber] = useState('');
   const [panUrl, setPanUrl] = useState('');
   const [dlNumber, setDlNumber] = useState('');
@@ -94,6 +108,9 @@ export default function ProfileScreen() {
   const [accountNumber, setAccountNumber] = useState('');
   const [ifsc, setIfsc] = useState('');
   const [upi, setUpi] = useState('');
+
+  // Dropdown UI Modal States
+  const [activeDropdown, setActiveDropdown] = useState<'gender' | 'bloodGroup' | null>(null);
 
   useEffect(() => {
     fetchProfileData();
@@ -131,10 +148,14 @@ export default function ProfileScreen() {
   };
 
   const populateFields = (riderData: Rider, profileData: RiderProfile | null) => {
-    setSelfieUrl(normalizePhotoUrl(riderData.profile_photo_url));
+    setGender(riderData.gender || '');
+    setBloodGroup(riderData.blood_group || '');
+    setSelfieUrl(normalizePhotoUrl(riderData.selfie_photo_url || riderData.profile_photo_url));
+
     if (profileData) {
       setAadhaarNumber(profileData.aadhaar_number || '');
       setAadhaarUrl(profileData.aadhaar_front_url || '');
+      setAadhaarBackUrl(profileData.aadhaar_back_url || '');
       setPanNumber(profileData.pan_number || '');
       setPanUrl(profileData.pan_card_url || '');
       setDlNumber(profileData.driving_license_number || '');
@@ -163,8 +184,9 @@ export default function ProfileScreen() {
 
       if (riderError) throw riderError;
 
-      const normalizedRider = {
+      const normalizedRider: Rider = {
         ...riderData,
+        selfie_photo_url: normalizePhotoUrl(riderData.selfie_photo_url),
         profile_photo_url: normalizePhotoUrl(riderData.profile_photo_url),
       };
       setRider(normalizedRider);
@@ -188,6 +210,11 @@ export default function ProfileScreen() {
   };
 
   const handleCaptureSelfie = async () => {
+    if (rider?.selfie_locked) {
+      Alert.alert('Selfie Verified', 'Selfie verified. Contact support if it needs to be changed.');
+      return;
+    }
+
     try {
       const cameraPerm = await ImagePicker.requestCameraPermissionsAsync();
       if (!cameraPerm.granted) {
@@ -207,7 +234,7 @@ export default function ProfileScreen() {
         await uploadSelfie(result.assets[0].uri);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to capture photo.');
+      Alert.alert('Error', 'Failed to capture live photo.');
     }
   };
 
@@ -226,7 +253,7 @@ export default function ProfileScreen() {
       });
 
       const fileExt = uri.split('.').pop() || 'jpg';
-      const fileName = `${rider.id}/avatar-${Date.now()}.${fileExt}`;
+      const fileName = `${rider.id}/selfie-${Date.now()}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
@@ -238,16 +265,28 @@ export default function ProfileScreen() {
         .from('avatars')
         .getPublicUrl(fileName);
 
+      const nowIso = new Date().toISOString();
       const { error: updateError } = await supabase
         .from('riders')
-        .update({ profile_photo_url: publicUrl })
+        .update({ 
+          selfie_photo_url: publicUrl,
+          profile_photo_url: publicUrl,
+          selfie_locked: true,
+          selfie_uploaded_at: nowIso 
+        })
         .eq('id', rider.id);
 
       if (updateError) throw updateError;
 
       setSelfieUrl(publicUrl);
-      setRider({ ...rider, profile_photo_url: publicUrl });
-      Alert.alert('Success', 'Selfie updated successfully.');
+      setRider({ 
+        ...rider, 
+        selfie_photo_url: publicUrl,
+        profile_photo_url: publicUrl, 
+        selfie_locked: true,
+        selfie_uploaded_at: nowIso 
+      });
+      Alert.alert('Success', 'Live selfie captured and locked successfully.');
     } catch (err: any) {
       Alert.alert('Upload Failed', err.message || 'Could not upload selfie.');
     } finally {
@@ -255,7 +294,7 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleUploadDocument = (type: 'aadhaar' | 'pan' | 'dl') => {
+  const handleUploadDocument = (type: 'aadhaar' | 'aadhaar_back' | 'pan' | 'dl') => {
     Alert.alert(
       'Upload Document',
       'Select camera or library to capture document',
@@ -267,7 +306,7 @@ export default function ProfileScreen() {
     );
   };
 
-  const captureDocumentPhoto = async (type: 'aadhaar' | 'pan' | 'dl', launchFunc: Function) => {
+  const captureDocumentPhoto = async (type: 'aadhaar' | 'aadhaar_back' | 'pan' | 'dl', launchFunc: Function) => {
     try {
       const camPerm = await ImagePicker.requestCameraPermissionsAsync();
       const libPerm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -291,7 +330,7 @@ export default function ProfileScreen() {
     }
   };
 
-  const uploadDocumentFile = async (type: 'aadhaar' | 'pan' | 'dl', uri: string) => {
+  const uploadDocumentFile = async (type: 'aadhaar' | 'aadhaar_back' | 'pan' | 'dl', uri: string) => {
     if (!rider) return;
     try {
       setUploadingDoc(type);
@@ -310,7 +349,7 @@ export default function ProfileScreen() {
 
       const { error: uploadError } = await supabase.storage
         .from('rider-documents')
-        .upload(fileName, blob, { contentType: `image/${fileExt}` });
+        .upload(fileName, blob, { contentType: `image/${fileExt}`, upsert: true });
 
       if (uploadError) throw uploadError;
 
@@ -319,6 +358,7 @@ export default function ProfileScreen() {
         .getPublicUrl(fileName);
 
       if (type === 'aadhaar') setAadhaarUrl(publicUrl);
+      if (type === 'aadhaar_back') setAadhaarBackUrl(publicUrl);
       if (type === 'pan') setPanUrl(publicUrl);
       if (type === 'dl') setDlUrl(publicUrl);
 
@@ -356,20 +396,31 @@ export default function ProfileScreen() {
         .from('rider_profiles')
         .upsert({ rider_id: rider.id, ...bankPayload }, { onConflict: 'rider_id' });
 
-      if (profileErr) throw profileErr;
+      if (profileErr) {
+        console.log("PROFILE ERROR", profileErr);
+        console.log("PROFILE ERROR JSON", JSON.stringify(profileErr, null, 2));
+        Alert.alert("Database Error", JSON.stringify(profileErr, null, 2));
+        throw profileErr;
+      }
 
       const { error: riderErr } = await supabase
         .from('riders')
         .update(bankPayload)
         .eq('id', rider.id);
 
-      if (riderErr) throw riderErr;
+      if (riderErr) {
+        console.log("PROFILE ERROR", riderErr);
+        console.log("PROFILE ERROR JSON", JSON.stringify(riderErr, null, 2));
+        Alert.alert("Database Error", JSON.stringify(riderErr, null, 2));
+        throw riderErr;
+      }
 
       Alert.alert('Success', 'Bank details updated successfully.');
       setIsEditingBank(false);
       await fetchProfileData();
     } catch (err: any) {
-      Alert.alert('Update Failed', err.message || 'Could not update bank details.');
+      console.log("PROFILE ERROR", err);
+      console.log("PROFILE ERROR JSON", JSON.stringify(err, null, 2));
     } finally {
       setSavingBankDetails(false);
     }
@@ -378,9 +429,12 @@ export default function ProfileScreen() {
   const handleSubmitKYC = async () => {
     if (!rider) return;
 
+    if (!gender) return Alert.alert('Missing Details', 'Please select your Gender.');
+    if (!bloodGroup) return Alert.alert('Missing Details', 'Please select your Blood Group.');
     if (!selfieUrl) return Alert.alert('Missing Selfie', 'Capture a live profile selfie first.');
     if (!aadhaarNumber.trim()) return Alert.alert('Missing Details', 'Enter your Aadhaar number.');
     if (!aadhaarUrl) return Alert.alert('Missing Document', 'Upload your Aadhaar front photo.');
+    if (!aadhaarBackUrl) return Alert.alert('Missing Document', 'Upload your Aadhaar back photo.');
     if (!panNumber.trim()) return Alert.alert('Missing Details', 'Enter your PAN number.');
     if (!panUrl) return Alert.alert('Missing Document', 'Upload your PAN card photo.');
 
@@ -397,14 +451,13 @@ export default function ProfileScreen() {
     try {
       setSubmittingKyc(true);
 
-      const profilePayload = {
+      const profilePayload: Partial<RiderProfile> & { rider_id: string } = {
         rider_id: rider.id,
         aadhaar_number: aadhaarNumber.trim(),
         aadhaar_front_url: aadhaarUrl,
+        aadhaar_back_url: aadhaarBackUrl,
         pan_number: panNumber.trim().toUpperCase(),
         pan_card_url: panUrl,
-        driving_license_number: dlNumber.trim().toUpperCase(),
-        driving_license_url: dlUrl,
         account_holder_name: accountHolder.trim(),
         bank_name: bankName.trim(),
         account_number: accountNumber.trim(),
@@ -412,23 +465,61 @@ export default function ProfileScreen() {
         upi_id: upi.trim(),
       };
 
+      if (dlNumber.trim()) profilePayload.driving_license_number = dlNumber.trim().toUpperCase();
+      if (dlUrl) profilePayload.driving_license_url = dlUrl;
+
       const { error: profileError } = await supabase
         .from('rider_profiles')
         .upsert(profilePayload, { onConflict: 'rider_id' });
 
-      if (profileError) throw profileError;
+      if (profileError) {
+        console.log("PROFILE ERROR", profileError);
+        console.log("PROFILE ERROR JSON", JSON.stringify(profileError, null, 2));
+        Alert.alert("Database Error", JSON.stringify(profileError, null, 2));
+        throw profileError;
+      }
+
+      const nowIso = rider.selfie_uploaded_at || new Date().toISOString();
+      const riderPayload: Partial<Rider> = {
+        gender: gender,
+        blood_group: bloodGroup,
+        kyc_status: 'pending',
+        status: 'inactive',
+        selfie_photo_url: selfieUrl,
+        selfie_locked: true,
+        selfie_uploaded_at: nowIso,
+        account_holder_name: accountHolder.trim(),
+        bank_name: bankName.trim(),
+        account_number: accountNumber.trim(),
+        ifsc_code: ifsc.trim().toUpperCase(),
+        upi_id: upi.trim(),
+      };
 
       const { error: riderError } = await supabase
         .from('riders')
-        .update({ kyc_status: 'pending', status: 'inactive' })
+        .update(riderPayload)
         .eq('id', rider.id);
 
-      if (riderError) throw riderError;
+      if (riderError) {
+        console.log("PROFILE ERROR", riderError);
+        console.log("PROFILE ERROR JSON", JSON.stringify(riderError, null, 2));
+        Alert.alert("Database Error", JSON.stringify(riderError, null, 2));
+        throw riderError;
+      }
 
-      setRider({ ...rider, kyc_status: 'pending', status: 'inactive' });
+      setRider({ 
+        ...rider, 
+        gender,
+        blood_group: bloodGroup,
+        kyc_status: 'pending', 
+        status: 'inactive',
+        selfie_locked: true,
+        selfie_uploaded_at: nowIso
+      });
       Alert.alert('Submission Successful', 'Your KYC has been submitted for review.');
     } catch (err: any) {
-      Alert.alert('Submission Failed', err.message || 'Could not submit verification documents.');
+      console.log("PROFILE ERROR", err);
+      console.log("PROFILE ERROR JSON", JSON.stringify(err, null, 2));
     } finally {
       setSubmittingKyc(false);
     }
@@ -508,8 +599,8 @@ export default function ProfileScreen() {
               <TouchableOpacity
                 style={styles.largeAvatarContainer}
                 onPress={handleCaptureSelfie}
-                disabled={uploadingPhoto}
-                activeOpacity={0.8}
+                disabled={uploadingPhoto || rider.selfie_locked}
+                activeOpacity={rider.selfie_locked ? 1 : 0.8}
               >
                 {selfieUrl ? (
                   <Image source={{ uri: selfieUrl }} style={styles.largeAvatar} />
@@ -523,13 +614,28 @@ export default function ProfileScreen() {
                     <ActivityIndicator size="small" color="#ffffff" />
                   </View>
                 )}
-                <View style={styles.cameraIconBadge}>
-                  <Ionicons name="camera" size={14} color="#ffffff" />
-                </View>
+                {!rider.selfie_locked && (
+                  <View style={styles.cameraIconBadge}>
+                    <Ionicons name="camera" size={14} color="#ffffff" />
+                  </View>
+                )}
               </TouchableOpacity>
 
-              <Text style={[styles.riderNameText, { color: theme.text, marginTop: 12 }]}>{rider.rider_name || 'Rivo Rider'}</Text>
-              <Text style={[styles.riderIdText, { color: theme.textMuted }]}>ID: {rider.id ? `RDR-${rider.id.substring(0, 6).toUpperCase()}` : 'N/A'}</Text>
+              {rider.selfie_locked && (
+                <View style={styles.lockedSelfieBanner}>
+                  <Ionicons name="lock-closed" size={13} color={theme.textMuted} style={{ marginRight: 6 }} />
+                  <Text style={[styles.lockedSelfieText, { color: theme.textMuted }]}>
+                    Selfie verified. Contact support if it needs to be changed.
+                  </Text>
+                </View>
+              )}
+
+              <Text style={[styles.riderNameText, { color: theme.text, marginTop: rider.selfie_locked ? 8 : 12 }]}>
+                {rider.rider_name || 'Rivo Rider'}
+              </Text>
+              <Text style={[styles.riderIdText, { color: theme.textMuted }]}>
+                ID: {rider.id ? `RDR-${rider.id.substring(0, 6).toUpperCase()}` : 'N/A'}
+              </Text>
               
               {rider.vehicle_type ? (
                 <View style={[styles.vehicleTypeBadge, { backgroundColor: COLORS.emeraldGreen + '15', borderColor: COLORS.emeraldGreen }]}>
@@ -580,6 +686,42 @@ export default function ProfileScreen() {
             </View>
           )}
 
+          {/* PERSONAL DETAILS CARD */}
+          <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="person-circle-outline" size={18} color={COLORS.emeraldGreen} style={{ marginRight: 8 }} />
+              <Text style={[styles.cardTitle, { color: theme.text }]}>Personal Details</Text>
+            </View>
+
+            {/* Gender */}
+            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>Gender *</Text>
+            <TouchableOpacity
+              activeOpacity={isEditable ? 0.7 : 1}
+              style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}
+              onPress={() => isEditable && setActiveDropdown('gender')}
+            >
+              <Ionicons name="male-female-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
+              <Text style={[styles.input, { color: gender ? theme.text : theme.textMuted }]}>
+                {gender || 'Select Gender'}
+              </Text>
+              {isEditable && <Ionicons name="chevron-down-outline" size={16} color={theme.textMuted} />}
+            </TouchableOpacity>
+
+            {/* Blood Group */}
+            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>Blood Group *</Text>
+            <TouchableOpacity
+              activeOpacity={isEditable ? 0.7 : 1}
+              style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}
+              onPress={() => isEditable && setActiveDropdown('bloodGroup')}
+            >
+              <Ionicons name="water-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
+              <Text style={[styles.input, { color: bloodGroup ? theme.text : theme.textMuted }]}>
+                {bloodGroup || 'Select Blood Group'}
+              </Text>
+              {isEditable && <Ionicons name="chevron-down-outline" size={16} color={theme.textMuted} />}
+            </TouchableOpacity>
+          </View>
+
           {/* IDENTITY VERIFICATION CARD */}
           <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
             <View style={styles.cardHeader}>
@@ -588,7 +730,7 @@ export default function ProfileScreen() {
             </View>
 
             {/* Aadhaar */}
-            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>Aadhaar Card</Text>
+            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>Aadhaar Card *</Text>
             <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
               <Ionicons name="card-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
               <TextInput
@@ -623,10 +765,31 @@ export default function ProfileScreen() {
             </View>
             {aadhaarUrl ? <Image source={{ uri: aadhaarUrl }} style={styles.docPreviewImage} /> : null}
 
+            <View style={[styles.docUploadRow, { marginTop: 10 }]}>
+              <TouchableOpacity
+                style={[styles.docUploadBtn, { backgroundColor: theme.bg, borderColor: theme.border }]}
+                onPress={() => handleUploadDocument('aadhaar_back')}
+                disabled={!isEditable || uploadingDoc === 'aadhaar_back'}
+              >
+                {uploadingDoc === 'aadhaar_back' ? (
+                  <ActivityIndicator size="small" color={COLORS.emeraldGreen} />
+                ) : (
+                  <>
+                    <Ionicons name="camera-outline" size={18} color={COLORS.emeraldGreen} style={{ marginRight: 6 }} />
+                    <Text style={[styles.docUploadBtnText, { color: COLORS.emeraldGreen }]}>
+                      {aadhaarBackUrl ? 'Re-upload Aadhaar Back' : 'Upload Aadhaar Back'}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              {aadhaarBackUrl ? <Ionicons name="checkmark-circle-outline" size={20} color={COLORS.emeraldGreen} style={{ marginLeft: 8 }} /> : null}
+            </View>
+            {aadhaarBackUrl ? <Image source={{ uri: aadhaarBackUrl }} style={styles.docPreviewImage} /> : null}
+
             <View style={[styles.infoDivider, { backgroundColor: theme.border, marginVertical: 16 }]} />
 
             {/* PAN Card */}
-            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>PAN Card</Text>
+            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>PAN Card *</Text>
             <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
               <Ionicons name="document-text-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
               <TextInput
@@ -717,7 +880,7 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </View>
 
-            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>Account Holder Name</Text>
+            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>Account Holder Name *</Text>
             <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
               <Ionicons name="person-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
               <TextInput
@@ -730,7 +893,7 @@ export default function ProfileScreen() {
               />
             </View>
 
-            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>Bank Name</Text>
+            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>Bank Name *</Text>
             <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
               <Ionicons name="business-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
               <TextInput
@@ -743,7 +906,7 @@ export default function ProfileScreen() {
               />
             </View>
 
-            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>Account Number</Text>
+            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>Account Number *</Text>
             <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
               <Ionicons name="card-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
               <TextInput
@@ -757,7 +920,7 @@ export default function ProfileScreen() {
               />
             </View>
 
-            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>IFSC Code</Text>
+            <Text style={[styles.inputGroupLabel, { color: theme.textMuted }]}>IFSC Code *</Text>
             <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
               <Ionicons name="git-branch-outline" size={16} color={theme.textMuted} style={styles.inputIcon} />
               <TextInput
@@ -853,6 +1016,51 @@ export default function ProfileScreen() {
           </View>
         </Animated.View>
       </ScrollView>
+
+      {/* DROPDOWN PICKER MODAL */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={activeDropdown !== null}
+        onRequestClose={() => setActiveDropdown(null)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay} 
+          activeOpacity={1} 
+          onPress={() => setActiveDropdown(null)}
+        >
+          <View style={[styles.dropdownModalCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+            <Text style={[styles.dropdownModalTitle, { color: theme.text }]}>
+              {activeDropdown === 'gender' ? 'Select Gender' : 'Select Blood Group'}
+            </Text>
+            {(activeDropdown === 'gender' ? GENDER_OPTIONS : BLOOD_GROUP_OPTIONS).map((option) => (
+              <TouchableOpacity
+                key={option}
+                style={[styles.dropdownItem, { borderTopColor: theme.border }]}
+                onPress={() => {
+                  if (activeDropdown === 'gender') setGender(option);
+                  if (activeDropdown === 'bloodGroup') setBloodGroup(option);
+                  setActiveDropdown(null);
+                }}
+              >
+                <Text style={[
+                  styles.dropdownItemText, 
+                  { color: theme.text },
+                  ((activeDropdown === 'gender' && gender === option) || 
+                   (activeDropdown === 'bloodGroup' && bloodGroup === option)) && 
+                   { color: COLORS.emeraldGreen, fontWeight: '800' }
+                ]}>
+                  {option}
+                </Text>
+                {((activeDropdown === 'gender' && gender === option) || 
+                  (activeDropdown === 'bloodGroup' && bloodGroup === option)) && (
+                  <Ionicons name="checkmark-outline" size={18} color={COLORS.emeraldGreen} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -939,6 +1147,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 2,
     borderColor: COLORS.white,
+  },
+  lockedSelfieBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingHorizontal: 10,
+  },
+  lockedSelfieText: {
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   riderNameText: {
     fontSize: 20,
@@ -1156,5 +1375,37 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontWeight: '700',
     fontSize: 15,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  dropdownModalCard: {
+    width: '100%',
+    maxHeight: 380,
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingVertical: 12,
+  },
+  dropdownModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  dropdownItemText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

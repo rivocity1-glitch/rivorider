@@ -20,7 +20,7 @@ interface Settlement {
   id: string;
   rider_id: string;
   amount: number;
-  status: "pending" | "paid" | "rejected";
+  status: "AVAILABLE" | "REQUESTED" | "PAID";
   created_at: string;
   payment_method: string | null;
   utr_number: string | null;
@@ -166,10 +166,10 @@ export default function Settlements() {
       let hasPendingSettlement = false;
 
       settlementList.forEach((s) => {
-        if (s.status === "pending") {
+        if (s.status === "REQUESTED") {
           pendingSettlement += s.amount;
           hasPendingSettlement = true;
-        } else if (s.status === "paid") {
+        } else if (s.status === "PAID") {
           totalPaid += s.amount;
         }
       });
@@ -261,21 +261,47 @@ export default function Settlements() {
 
     setSubmitting(true);
     try {
-      const { error } = await supabase.from("rider_settlements").insert([
-        {
-          rider_id: riderId,
-          amount: stats.availableBalance,
-          delivery_count: stats.unsettledCount,
-          status: "pending",
-          payment_method: null,
-          utr_number: null,
-          remarks: null,
-          created_at: new Date().toISOString(),
-          paid_at: null,
-        },
-      ]);
+      const { data: deliveredOrders, error: ordersError } = await supabase
+        .from("orders")
+        .select("id, rider_earning")
+        .eq("rider_id", riderId)
+        .eq("order_status", "delivered")
+        .eq("settled_rider", false);
 
-      if (error) throw error;
+      if (ordersError) throw ordersError;
+
+      const ordersList = deliveredOrders || [];
+      const orderIds = ordersList.map(o => o.id);
+      const deliveryCount = ordersList.length;
+      const totalAmount = ordersList.reduce((acc, curr) => acc + (Number(curr.rider_earning) || 0), 0);
+
+      const payload = {
+        rider_id: riderId,
+        amount: totalAmount,
+        delivery_count: deliveryCount,
+        order_ids: orderIds,
+        status: "REQUESTED",
+        settlement_type: "request",
+        requested_by: "rider",
+        created_at: new Date().toISOString()
+      };
+
+      console.log("Submitting Rider Settlement", {
+        rider_id: riderId,
+        amount: totalAmount,
+        delivery_count: deliveryCount,
+        order_ids: orderIds,
+        status: "REQUESTED",
+        settlement_type: "request",
+        requested_by: "rider"
+      });
+
+      const { error } = await supabase.from("rider_settlements").insert([payload]);
+
+      if (error) {
+        console.error(error);
+        throw error;
+      }
 
       Alert.alert("Success", "Withdrawal Request Submitted Successfully");
       fetchData(riderId, true);
@@ -289,12 +315,12 @@ export default function Settlements() {
 
   const getStatusBadgeConfig = (status: string) => {
     switch (status) {
-      case "pending":
-        return { bg: isDarkMode ? '#451A03' : '#FFEFE6', text: '#FF7A00', label: 'Pending' };
-      case "paid":
+      case "REQUESTED":
+        return { bg: isDarkMode ? '#451A03' : '#FFEFE6', text: '#FF7A00', label: 'Requested' };
+      case "PAID":
         return { bg: isDarkMode ? '#064E3B' : '#DCFCE7', text: '#16A34A', label: 'Paid' };
-      case "rejected":
-        return { bg: isDarkMode ? '#450A0A' : '#FEE2E2', text: '#FF3B30', label: 'Rejected' };
+      case "AVAILABLE":
+        return { bg: isDarkMode ? '#1E3A8A' : '#DBEAFE', text: '#2563EB', label: 'Available' };
       default:
         return { bg: isDarkMode ? '#262626' : '#F3F4F6', text: '#888888', label: status.toUpperCase() };
     }
@@ -483,7 +509,7 @@ export default function Settlements() {
                         </View>
                       </View>
 
-                      {item.status === "paid" && (
+                      {item.status === "PAID" && (
                         <View style={[styles.cardFooter, { borderTopColor: theme.border }]}>
                           <View style={styles.cardDetailsRow}>
                             <View>
@@ -500,7 +526,7 @@ export default function Settlements() {
                         </View>
                       )}
 
-                      {item.status === "rejected" && item.remarks && (
+                      {item.status === "AVAILABLE" && item.remarks && (
                         <View style={[styles.cardFooterRejected, { backgroundColor: theme.bg }]}>
                           <Text style={styles.detailsLabelRejected}>REJECTION REASON</Text>
                           <Text style={[styles.detailsValueRejected, { color: theme.text }]}>"{item.remarks}"</Text>

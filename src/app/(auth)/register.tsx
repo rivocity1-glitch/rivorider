@@ -29,13 +29,34 @@ const DISABILITY_OPTIONS = [
   { id: 'other', label: 'Other / Preferred Not to Detail' },
 ];
 
+const GENDER_OPTIONS = [
+  { id: 'Male', label: 'Male' },
+  { id: 'Female', label: 'Female' },
+  { id: 'Other', label: 'Other' },
+];
+
+const BLOOD_GROUP_OPTIONS = [
+  { id: 'A+', label: 'A+' },
+  { id: 'A-', label: 'A-' },
+  { id: 'B+', label: 'B+' },
+  { id: 'B-', label: 'B-' },
+  { id: 'AB+', label: 'AB+' },
+  { id: 'AB-', label: 'AB-' },
+  { id: 'O+', label: 'O+' },
+  { id: 'O-', label: 'O-' },
+];
+
 export default function RegisterScreen() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [vehicleType, setVehicleType] = useState('bike');
   const [vehicleNumber, setVehicleNumber] = useState('');
-  
+
+  // New Mandatory Fields
+  const [gender, setGender] = useState('');
+  const [bloodGroup, setBloodGroup] = useState('');
+
   // Specially Abled / Disability States
   const [isSpeciallyAbled, setIsSpeciallyAbled] = useState(false);
   const [disabilityType, setDisabilityType] = useState('locomotor');
@@ -87,6 +108,8 @@ export default function RegisterScreen() {
       !phone.trim() ||
       !vehicleType.trim() ||
       (!isNoPlateRequired && !vehicleNumber.trim()) ||
+      !gender ||
+      !bloodGroup ||
       !password.trim() ||
       !confirmPassword.trim()
     ) {
@@ -114,7 +137,7 @@ export default function RegisterScreen() {
     try {
       const selectedOption = VEHICLE_OPTIONS.find((v) => v.id === vehicleType);
       const selectedDisability = DISABILITY_OPTIONS.find((d) => d.id === disabilityType);
-      
+
       await registerRider({
         rider_name: fullName.trim(),
         email: email.trim(),
@@ -122,7 +145,13 @@ export default function RegisterScreen() {
         vehicle_type: selectedOption ? selectedOption.label : vehicleType,
         vehicle_number: vehicleNumber.trim() || 'N/A',
         is_specially_abled: isSpeciallyAbled,
-        disability_type: isSpeciallyAbled ? (selectedDisability ? selectedDisability.label : disabilityType) : null,
+        disability_type: isSpeciallyAbled
+          ? selectedDisability
+            ? selectedDisability.label
+            : disabilityType
+          : null,
+        gender: gender,
+        blood_group: bloodGroup,
         password: password,
       } as any);
 
@@ -177,7 +206,9 @@ export default function RegisterScreen() {
             }}
           >
             {/* Full Name */}
-            <Text style={{ color: '#E0E0E0', fontSize: 14, fontWeight: '600', marginBottom: 6 }}>Full Name *</Text>
+            <Text style={{ color: '#E0E0E0', fontSize: 14, fontWeight: '600', marginBottom: 6 }}>
+              Full Name *
+            </Text>
             <TextInput
               placeholder="John Doe"
               placeholderTextColor="#555555"
@@ -195,7 +226,9 @@ export default function RegisterScreen() {
             />
 
             {/* Email */}
-            <Text style={{ color: '#E0E0E0', fontSize: 14, fontWeight: '600', marginBottom: 6 }}>Email Address *</Text>
+            <Text style={{ color: '#E0E0E0', fontSize: 14, fontWeight: '600', marginBottom: 6 }}>
+              Email Address *
+            </Text>
             <TextInput
               placeholder="johndoe@example.com"
               placeholderTextColor="#555555"
@@ -215,7 +248,9 @@ export default function RegisterScreen() {
             />
 
             {/* Phone */}
-            <Text style={{ color: '#E0E0E0', fontSize: 14, fontWeight: '600', marginBottom: 6 }}>Phone Number *</Text>
+            <Text style={{ color: '#E0E0E0', fontSize: 14, fontWeight: '600', marginBottom: 6 }}>
+              Phone Number *
+            </Text>
             <TextInput
               placeholder="+91 9876543210"
               placeholderTextColor="#555555"
@@ -233,8 +268,84 @@ export default function RegisterScreen() {
               }}
             />
 
+            {/* Gender Selection */}
+            <Text style={{ color: '#E0E0E0', fontSize: 14, fontWeight: '600', marginBottom: 8 }}>
+              Gender *
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+              {GENDER_OPTIONS.map((item) => {
+                const isSelected = gender === item.id;
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    onPress={() => setGender(item.id)}
+                    activeOpacity={0.8}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: isSelected ? '#A8E63A' : '#0D0D0D',
+                      borderWidth: 1,
+                      borderColor: isSelected ? '#A8E63A' : '#333333',
+                      paddingHorizontal: 16,
+                      paddingVertical: 10,
+                      borderRadius: 10,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: isSelected ? '#0D0D0D' : '#E0E0E0',
+                        fontSize: 13,
+                        fontWeight: '600',
+                      }}
+                    >
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Blood Group Selection */}
+            <Text style={{ color: '#E0E0E0', fontSize: 14, fontWeight: '600', marginBottom: 8 }}>
+              Blood Group *
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+              {BLOOD_GROUP_OPTIONS.map((item) => {
+                const isSelected = bloodGroup === item.id;
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    onPress={() => setBloodGroup(item.id)}
+                    activeOpacity={0.8}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: isSelected ? '#A8E63A' : '#0D0D0D',
+                      borderWidth: 1,
+                      borderColor: isSelected ? '#A8E63A' : '#333333',
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      borderRadius: 10,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: isSelected ? '#0D0D0D' : '#E0E0E0',
+                        fontSize: 13,
+                        fontWeight: '600',
+                      }}
+                    >
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
             {/* Vehicle Type Options */}
-            <Text style={{ color: '#E0E0E0', fontSize: 14, fontWeight: '600', marginBottom: 8 }}>Select Vehicle Type *</Text>
+            <Text style={{ color: '#E0E0E0', fontSize: 14, fontWeight: '600', marginBottom: 8 }}>
+              Select Vehicle Type *
+            </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
               {VEHICLE_OPTIONS.map((item) => {
                 const isSelected = vehicleType === item.id;
@@ -274,7 +385,7 @@ export default function RegisterScreen() {
               Vehicle Registration Number {isNoPlateRequired ? '(Optional)' : '*'}
             </Text>
             <TextInput
-              placeholder={isNoPlateRequired ? "Optional for Cycle/EV" : "e.g., KA-01-AB-1234"}
+              placeholder={isNoPlateRequired ? 'Optional for Cycle/EV' : 'e.g., KA-01-AB-1234'}
               placeholderTextColor="#555555"
               value={vehicleNumber}
               onChangeText={setVehicleNumber}
@@ -331,25 +442,47 @@ export default function RegisterScreen() {
                     justifyContent: 'center',
                   }}
                 >
-                  {isSpeciallyAbled && <Text style={{ color: '#0D0D0D', fontSize: 12, fontWeight: 'bold' }}>✓</Text>}
+                  {isSpeciallyAbled && (
+                    <Text style={{ color: '#0D0D0D', fontSize: 12, fontWeight: 'bold' }}>✓</Text>
+                  )}
                 </View>
               </TouchableOpacity>
 
               {/* Disability Category Select Dropdown */}
               {isSpeciallyAbled && (
-                <View style={{ marginTop: 12, backgroundColor: '#0D0D0D', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#333333' }}>
+                <View
+                  style={{
+                    marginTop: 12,
+                    backgroundColor: '#0D0D0D',
+                    borderRadius: 12,
+                    padding: 12,
+                    borderWidth: 1,
+                    borderColor: '#333333',
+                  }}
+                >
                   <TouchableOpacity
                     activeOpacity={0.8}
                     onPress={() => setShowDisabilityDropdown(!showDisabilityDropdown)}
                     style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
                   >
                     <View>
-                      <Text style={{ color: '#888888', fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }}>Select Category</Text>
+                      <Text
+                        style={{
+                          color: '#888888',
+                          fontSize: 11,
+                          fontWeight: '700',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        Select Category
+                      </Text>
                       <Text style={{ color: '#A8E63A', fontSize: 13, fontWeight: '600', marginTop: 2 }}>
                         {DISABILITY_OPTIONS.find((d) => d.id === disabilityType)?.label}
                       </Text>
                     </View>
-                    <Text style={{ color: '#A8E63A', fontSize: 14 }}>{showDisabilityDropdown ? '▲' : '▼'}</Text>
+                    <Text style={{ color: '#A8E63A', fontSize: 14 }}>
+                      {showDisabilityDropdown ? '▲' : '▼'}
+                    </Text>
                   </TouchableOpacity>
 
                   {showDisabilityDropdown && (
@@ -368,7 +501,13 @@ export default function RegisterScreen() {
                             backgroundColor: disabilityType === opt.id ? '#1A1A1A' : 'transparent',
                           }}
                         >
-                          <Text style={{ color: disabilityType === opt.id ? '#A8E63A' : '#CCCCCC', fontSize: 13, fontWeight: disabilityType === opt.id ? '700' : '500' }}>
+                          <Text
+                            style={{
+                              color: disabilityType === opt.id ? '#A8E63A' : '#CCCCCC',
+                              fontSize: 13,
+                              fontWeight: disabilityType === opt.id ? '700' : '500',
+                            }}
+                          >
                             {opt.label}
                           </Text>
                         </TouchableOpacity>
@@ -380,7 +519,9 @@ export default function RegisterScreen() {
             </View>
 
             {/* Password */}
-            <Text style={{ color: '#E0E0E0', fontSize: 14, fontWeight: '600', marginBottom: 6 }}>Password *</Text>
+            <Text style={{ color: '#E0E0E0', fontSize: 14, fontWeight: '600', marginBottom: 6 }}>
+              Password *
+            </Text>
             <TextInput
               placeholder="Minimum 6 characters"
               placeholderTextColor="#555555"
@@ -400,7 +541,9 @@ export default function RegisterScreen() {
             />
 
             {/* Confirm Password */}
-            <Text style={{ color: '#E0E0E0', fontSize: 14, fontWeight: '600', marginBottom: 6 }}>Confirm Password *</Text>
+            <Text style={{ color: '#E0E0E0', fontSize: 14, fontWeight: '600', marginBottom: 6 }}>
+              Confirm Password *
+            </Text>
             <TextInput
               placeholder="Re-enter password"
               placeholderTextColor="#555555"

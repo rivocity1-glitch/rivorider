@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Linking,
   Modal,
   Platform,
   ScrollView,
@@ -15,6 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import QRCode from "react-native-qrcode-svg";
 import { COLORS, useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../lib/supabase';
 
@@ -39,8 +41,8 @@ interface Order {
   collection_method?: string | null;
   cash_received?: number | null;
   change_returned?: number | null;
-  customer: { customer_name: string } | null;
-  vendor: { shop_name: string } | null;
+  customer: { customer_name: string; phone?: string | null } | null;
+  vendor: { shop_name: string; phone?: string | null } | null;
   customer_addresses: {
     address_line1: string | null;
     address_line2: string | null;
@@ -278,8 +280,8 @@ export default function DeliveriesScreen() {
           collection_method,
           cash_received,
           change_returned,
-          customer:customer_id ( customer_name ),
-          vendor:vendor_id ( shop_name ),
+          customer:customer_id ( customer_name, phone ),
+          vendor:vendor_id ( shop_name, phone ),
           customer_addresses:customer_address_id (
             address_line1,
             address_line2,
@@ -327,6 +329,37 @@ export default function DeliveriesScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCallContact = (type: 'vendor' | 'customer', order: Order) => {
+    const isVendor = type === 'vendor';
+    const name = isVendor ? order.vendor?.shop_name : order.customer?.customer_name;
+    const phone = isVendor ? order.vendor?.phone : order.customer?.phone;
+    const cleanPhone = phone ? phone.trim() : '';
+
+    if (!cleanPhone || cleanPhone.length < 5) {
+      Alert.alert(
+        'Phone Number Unavailable',
+        `${isVendor ? 'Vendor' : 'Customer'} phone number unavailable.`
+      );
+      return;
+    }
+
+    Alert.alert(
+      `Call ${isVendor ? 'Vendor' : 'Customer'}?`,
+      `${name || (isVendor ? 'Vendor' : 'Customer')}\n${cleanPhone}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Call',
+          onPress: () => {
+            Linking.openURL(`tel:${cleanPhone}`).catch(() => {
+              Alert.alert('Error', 'Unable to open the phone dialer on this device.');
+            });
+          },
+        },
+      ]
+    );
   };
 
   const updateOrderStatusDirectly = async (orderId: string, nextStatus: string) => {
@@ -655,6 +688,9 @@ export default function DeliveriesScreen() {
               const createdTimestamp = formatOrderTimestamp(item.created_at);
               const deliveredTimestamp = item.delivered_at ? formatOrderTimestamp(item.delivered_at) : null;
               const isDelivered = item.order_status?.toLowerCase() === 'delivered';
+              const isPacked = item.order_status?.toLowerCase() === 'packed';
+              const isPickedUp = item.order_status?.toLowerCase() === 'picked_up';
+              const isOutForDelivery = item.order_status?.toLowerCase() === 'out_for_delivery';
 
               return (
                 <View key={item.id} style={[styles.orderCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
@@ -760,37 +796,69 @@ export default function DeliveriesScreen() {
                       </View>
                     </View>
 
-                    {item.order_status?.toLowerCase() === 'packed' && (
-                      <TouchableOpacity
-                        activeOpacity={0.8}
-                        style={[styles.completeButton, { backgroundColor: COLORS.emeraldGreen }]}
-                        disabled={submitting}
-                        onPress={() => updateOrderStatusDirectly(item.id, 'picked_up')}
-                      >
-                        <Text style={styles.completeButtonText}>Accept Pickup</Text>
-                      </TouchableOpacity>
-                    )}
+                    <View style={styles.actionsContainer}>
+                      {isPacked && (
+                        <>
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            style={[styles.callButton, { borderColor: theme.border, backgroundColor: theme.bg }]}
+                            onPress={() => handleCallContact('vendor', item)}
+                          >
+                            <Text style={[styles.callButtonText, { color: theme.text }]}>📞 Call Vendor</Text>
+                          </TouchableOpacity>
 
-                    {item.order_status?.toLowerCase() === 'picked_up' && (
-                      <TouchableOpacity
-                        activeOpacity={0.8}
-                        style={[styles.completeButton, { backgroundColor: '#3498DB' }]}
-                        disabled={submitting}
-                        onPress={() => updateOrderStatusDirectly(item.id, 'out_for_delivery')}
-                      >
-                        <Text style={styles.completeButtonText}>Out For Delivery</Text>
-                      </TouchableOpacity>
-                    )}
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            style={[styles.completeButton, { backgroundColor: COLORS.emeraldGreen }]}
+                            disabled={submitting}
+                            onPress={() => updateOrderStatusDirectly(item.id, 'picked_up')}
+                          >
+                            <Text style={styles.completeButtonText}>Accept Pickup</Text>
+                          </TouchableOpacity>
+                        </>
+                      )}
 
-                    {item.order_status?.toLowerCase() === 'out_for_delivery' && (
-                      <TouchableOpacity
-                        activeOpacity={0.8}
-                        style={[styles.completeButton, { backgroundColor: COLORS.emeraldGreen }]}
-                        onPress={() => startOtpVerificationWorkflow(item)}
-                      >
-                        <Text style={styles.completeButtonText}>Delivered</Text>
-                      </TouchableOpacity>
-                    )}
+                      {isPickedUp && (
+                        <>
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            style={[styles.callButton, { borderColor: theme.border, backgroundColor: theme.bg }]}
+                            onPress={() => handleCallContact('customer', item)}
+                          >
+                            <Text style={[styles.callButtonText, { color: theme.text }]}>📞 Call Customer</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            style={[styles.completeButton, { backgroundColor: '#3498DB' }]}
+                            disabled={submitting}
+                            onPress={() => updateOrderStatusDirectly(item.id, 'out_for_delivery')}
+                          >
+                            <Text style={styles.completeButtonText}>Out For Delivery</Text>
+                          </TouchableOpacity>
+                        </>
+                      )}
+
+                      {isOutForDelivery && (
+                        <>
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            style={[styles.callButton, { borderColor: theme.border, backgroundColor: theme.bg }]}
+                            onPress={() => handleCallContact('customer', item)}
+                          >
+                            <Text style={[styles.callButtonText, { color: theme.text }]}>📞 Call Customer</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            style={[styles.completeButton, { backgroundColor: COLORS.emeraldGreen }]}
+                            onPress={() => startOtpVerificationWorkflow(item)}
+                          >
+                            <Text style={styles.completeButtonText}>Delivered</Text>
+                          </TouchableOpacity>
+                        </>
+                      )}
+                    </View>
                   </View>
                 </View>
               );
@@ -956,7 +1024,34 @@ export default function DeliveriesScreen() {
               </View>
             ) : (
               <View style={styles.formContainer}>
-                <Text style={[styles.fieldLabel, { color: theme.text }]}>UTR / Transaction Reference (Optional)</Text>
+                <View style={[styles.upiScreenContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+                  <Text style={[styles.upiAmountLabel, { color: theme.textMuted }]}>Amount To Collect</Text>
+                  <Text style={[styles.upiAmountValue, { color: COLORS.emeraldGreen }]}>₹{selectedOrder?.total_amount}</Text>
+
+                  <View style={[styles.qrContainerBox, { backgroundColor: '#FFFFFF', borderColor: theme.border }]}>
+                    <QRCode
+                      value={`upi://pay?pa=YOUR_UPI_ID_HERE&pn=Rivo%20City&am=${selectedOrder?.total_amount}&cu=INR&tn=Order%20${selectedOrder?.order_number}`}
+                      size={220}
+                    />
+                  </View>
+
+                  <View style={styles.upiDetailsMetaBox}>
+                    <View style={styles.upiMetaRowItem}>
+                      <Text style={[styles.upiMetaLabelText, { color: theme.textMuted }]}>Receiver</Text>
+                      <Text style={[styles.upiMetaValueText, { color: theme.text }]}>Rivo City</Text>
+                    </View>
+                    <View style={styles.upiMetaRowItem}>
+                      <Text style={[styles.upiMetaLabelText, { color: theme.textMuted }]}>UPI ID</Text>
+                      <Text style={[styles.upiMetaValueText, { color: theme.text }]}>YOUR_UPI_ID_HERE</Text>
+                    </View>
+                  </View>
+
+                  <Text style={[styles.upiHelperNoteText, { color: theme.textMuted }]}>
+                    "Ask the customer to scan this QR using any UPI app."
+                  </Text>
+                </View>
+
+                <Text style={[styles.fieldLabel, { color: theme.text, marginTop: 16 }]}>Transaction Reference (Optional)</Text>
                 <TextInput
                   style={[styles.modalInput, { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text }]}
                   placeholder="Enter transaction reference number"
@@ -1163,6 +1258,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  actionsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  callButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 99,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  callButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
   amountLabel: {
     fontSize: 14,
@@ -1367,5 +1481,63 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     marginTop: 16,
+  },
+  upiScreenContainer: {
+    alignItems: 'center',
+    padding: 20,
+    borderRadius: 24,
+    borderWidth: 1,
+    marginBottom: 4,
+  },
+  upiAmountLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  upiAmountValue: {
+    fontSize: 32,
+    fontWeight: '900',
+    marginBottom: 20,
+  },
+  qrContainerBox: {
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+    marginBottom: 20,
+  },
+  upiDetailsMetaBox: {
+    width: '100%',
+    gap: 8,
+    marginBottom: 16,
+    paddingHorizontal: 8,
+  },
+  upiMetaRowItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  upiMetaLabelText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  upiMetaValueText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  upiHelperNoteText: {
+    fontSize: 12,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    paddingHorizontal: 12,
+    lineHeight: 16,
   },
 });
