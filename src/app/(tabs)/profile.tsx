@@ -1,6 +1,7 @@
 // src/app/(tabs)/profile.tsx
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -24,6 +25,7 @@ import { supabase } from '../../lib/supabase';
 interface Rider {
   id: string;
   auth_user_id: string;
+  rider_code?: string;
   rider_name: string;
   email: string;
   phone: string;
@@ -74,6 +76,7 @@ const BLOOD_GROUP_OPTIONS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
 export default function ProfileScreen() {
   const { isDarkMode, toggleTheme, theme } = useTheme();
+  const router = useRouter();
   
   const [loading, setLoading] = useState(true);
   const [submittingKyc, setSubmittingKyc] = useState(false);
@@ -82,8 +85,10 @@ export default function ProfileScreen() {
   const [error, setError] = useState<string | null>(null);
   const [rider, setRider] = useState<Rider | null>(null);
   const [profile, setProfile] = useState<RiderProfile | null>(null);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
+  const [uploadingExtraDoc, setUploadingExtraDoc] = useState(false);
+  const [extraDocUrl, setExtraDocUrl] = useState('');
+  const [requestingUpdate, setRequestingUpdate] = useState(false);
 
   const themeToggleAnim = useRef(new Animated.Value(isDarkMode ? 1 : 0)).current;
 
@@ -209,92 +214,7 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleCaptureSelfie = async () => {
-    if (rider?.selfie_locked) {
-      Alert.alert('Selfie Verified', 'Selfie verified. Contact support if it needs to be changed.');
-      return;
-    }
-
-    try {
-      const cameraPerm = await ImagePicker.requestCameraPermissionsAsync();
-      if (!cameraPerm.granted) {
-        Alert.alert('Permission Denied', 'Camera permission is required.');
-        return;
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.6,
-        cameraType: ImagePicker.CameraType.front,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        await uploadSelfie(result.assets[0].uri);
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to capture live photo.');
-    }
-  };
-
-  const uploadSelfie = async (uri: string) => {
-    if (!rider) return;
-    try {
-      setUploadingPhoto(true);
-
-      const blob: Blob = await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.onload = () => resolve(xhr.response);
-        xhr.onerror = () => reject(new TypeError('Network request failed'));
-        xhr.responseType = 'blob';
-        xhr.open('GET', uri, true);
-        xhr.send(null);
-      });
-
-      const fileExt = uri.split('.').pop() || 'jpg';
-      const fileName = `${rider.id}/selfie-${Date.now()}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(fileName, blob, { contentType: `image/${fileExt}`, upsert: true });
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(fileName);
-
-      const nowIso = new Date().toISOString();
-      const { error: updateError } = await supabase
-        .from('riders')
-        .update({ 
-          selfie_photo_url: publicUrl,
-          profile_photo_url: publicUrl,
-          selfie_locked: true,
-          selfie_uploaded_at: nowIso 
-        })
-        .eq('id', rider.id);
-
-      if (updateError) throw updateError;
-
-      setSelfieUrl(publicUrl);
-      setRider({ 
-        ...rider, 
-        selfie_photo_url: publicUrl,
-        profile_photo_url: publicUrl, 
-        selfie_locked: true,
-        selfie_uploaded_at: nowIso 
-      });
-      Alert.alert('Success', 'Live selfie captured and locked successfully.');
-    } catch (err: any) {
-      Alert.alert('Upload Failed', err.message || 'Could not upload selfie.');
-    } finally {
-      setUploadingPhoto(false);
-    }
-  };
-
-  const handleUploadDocument = (type: 'aadhaar' | 'aadhaar_back' | 'pan' | 'dl') => {
+  const handleUploadDocument = (type: 'aadhaar' | 'aadhaar_back' | 'pan' | 'dl' | 'extra') => {
     Alert.alert(
       'Upload Document',
       'Select camera or library to capture document',
@@ -306,7 +226,7 @@ export default function ProfileScreen() {
     );
   };
 
-  const captureDocumentPhoto = async (type: 'aadhaar' | 'aadhaar_back' | 'pan' | 'dl', launchFunc: Function) => {
+  const captureDocumentPhoto = async (type: 'aadhaar' | 'aadhaar_back' | 'pan' | 'dl' | 'extra', launchFunc: Function) => {
     try {
       const camPerm = await ImagePicker.requestCameraPermissionsAsync();
       const libPerm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -330,10 +250,14 @@ export default function ProfileScreen() {
     }
   };
 
-  const uploadDocumentFile = async (type: 'aadhaar' | 'aadhaar_back' | 'pan' | 'dl', uri: string) => {
+  const uploadDocumentFile = async (type: 'aadhaar' | 'aadhaar_back' | 'pan' | 'dl' | 'extra', uri: string) => {
     if (!rider) return;
     try {
-      setUploadingDoc(type);
+      if (type === 'extra') {
+        setUploadingExtraDoc(true);
+      } else {
+        setUploadingDoc(type);
+      }
 
       const blob: Blob = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -357,16 +281,44 @@ export default function ProfileScreen() {
         .from('rider-documents')
         .getPublicUrl(fileName);
 
-      if (type === 'aadhaar') setAadhaarUrl(publicUrl);
-      if (type === 'aadhaar_back') setAadhaarBackUrl(publicUrl);
-      if (type === 'pan') setPanUrl(publicUrl);
-      if (type === 'dl') setDlUrl(publicUrl);
+      if (type === 'aadhaar') {
+        setAadhaarUrl(publicUrl);
+        await updateDocumentInDb({ aadhaar_front_url: publicUrl });
+      }
+      if (type === 'aadhaar_back') {
+        setAadhaarBackUrl(publicUrl);
+        await updateDocumentInDb({ aadhaar_back_url: publicUrl });
+      }
+      if (type === 'pan') {
+        setPanUrl(publicUrl);
+        await updateDocumentInDb({ pan_card_url: publicUrl });
+      }
+      if (type === 'dl') {
+        setDlUrl(publicUrl);
+        await updateDocumentInDb({ driving_license_url: publicUrl });
+      }
+      if (type === 'extra') {
+        setExtraDocUrl(publicUrl);
+        // TODO: Backend support is required for storing additional documents table if needed
+      }
 
       Alert.alert('Success', 'Document photo uploaded successfully.');
     } catch (err: any) {
       Alert.alert('Upload Failed', err.message || 'Could not upload document.');
     } finally {
       setUploadingDoc(null);
+      setUploadingExtraDoc(false);
+    }
+  };
+
+  const updateDocumentInDb = async (updateData: Partial<RiderProfile>) => {
+    if (!rider) return;
+    try {
+      await supabase
+        .from('rider_profiles')
+        .upsert({ rider_id: rider.id, ...updateData }, { onConflict: 'rider_id' });
+    } catch (err) {
+      console.error('Failed to update document URL in database', err);
     }
   };
 
@@ -397,9 +349,6 @@ export default function ProfileScreen() {
         .upsert({ rider_id: rider.id, ...bankPayload }, { onConflict: 'rider_id' });
 
       if (profileErr) {
-        console.log("PROFILE ERROR", profileErr);
-        console.log("PROFILE ERROR JSON", JSON.stringify(profileErr, null, 2));
-        Alert.alert("Database Error", JSON.stringify(profileErr, null, 2));
         throw profileErr;
       }
 
@@ -409,9 +358,6 @@ export default function ProfileScreen() {
         .eq('id', rider.id);
 
       if (riderErr) {
-        console.log("PROFILE ERROR", riderErr);
-        console.log("PROFILE ERROR JSON", JSON.stringify(riderErr, null, 2));
-        Alert.alert("Database Error", JSON.stringify(riderErr, null, 2));
         throw riderErr;
       }
 
@@ -419,8 +365,7 @@ export default function ProfileScreen() {
       setIsEditingBank(false);
       await fetchProfileData();
     } catch (err: any) {
-      console.log("PROFILE ERROR", err);
-      console.log("PROFILE ERROR JSON", JSON.stringify(err, null, 2));
+      Alert.alert('Error', err.message || 'Failed to save bank details.');
     } finally {
       setSavingBankDetails(false);
     }
@@ -431,7 +376,6 @@ export default function ProfileScreen() {
 
     if (!gender) return Alert.alert('Missing Details', 'Please select your Gender.');
     if (!bloodGroup) return Alert.alert('Missing Details', 'Please select your Blood Group.');
-    if (!selfieUrl) return Alert.alert('Missing Selfie', 'Capture a live profile selfie first.');
     if (!aadhaarNumber.trim()) return Alert.alert('Missing Details', 'Enter your Aadhaar number.');
     if (!aadhaarUrl) return Alert.alert('Missing Document', 'Upload your Aadhaar front photo.');
     if (!aadhaarBackUrl) return Alert.alert('Missing Document', 'Upload your Aadhaar back photo.');
@@ -472,22 +416,13 @@ export default function ProfileScreen() {
         .from('rider_profiles')
         .upsert(profilePayload, { onConflict: 'rider_id' });
 
-      if (profileError) {
-        console.log("PROFILE ERROR", profileError);
-        console.log("PROFILE ERROR JSON", JSON.stringify(profileError, null, 2));
-        Alert.alert("Database Error", JSON.stringify(profileError, null, 2));
-        throw profileError;
-      }
+      if (profileError) throw profileError;
 
-      const nowIso = rider.selfie_uploaded_at || new Date().toISOString();
       const riderPayload: Partial<Rider> = {
         gender: gender,
         blood_group: bloodGroup,
         kyc_status: 'pending',
         status: 'inactive',
-        selfie_photo_url: selfieUrl,
-        selfie_locked: true,
-        selfie_uploaded_at: nowIso,
         account_holder_name: accountHolder.trim(),
         bank_name: bankName.trim(),
         account_number: accountNumber.trim(),
@@ -500,12 +435,7 @@ export default function ProfileScreen() {
         .update(riderPayload)
         .eq('id', rider.id);
 
-      if (riderError) {
-        console.log("PROFILE ERROR", riderError);
-        console.log("PROFILE ERROR JSON", JSON.stringify(riderError, null, 2));
-        Alert.alert("Database Error", JSON.stringify(riderError, null, 2));
-        throw riderError;
-      }
+      if (riderError) throw riderError;
 
       setRider({ 
         ...rider, 
@@ -513,15 +443,35 @@ export default function ProfileScreen() {
         blood_group: bloodGroup,
         kyc_status: 'pending', 
         status: 'inactive',
-        selfie_locked: true,
-        selfie_uploaded_at: nowIso
       });
       Alert.alert('Submission Successful', 'Your KYC has been submitted for review.');
     } catch (err: any) {
-      console.log("PROFILE ERROR", err);
-      console.log("PROFILE ERROR JSON", JSON.stringify(err, null, 2));
+      Alert.alert('Error', err.message || 'Failed to submit KYC.');
     } finally {
       setSubmittingKyc(false);
+    }
+  };
+
+  const handleRequestDocumentUpdate = async () => {
+    if (!rider) return;
+    try {
+      setRequestingUpdate(true);
+      const { error: ticketError } = await supabase
+        .from('rider_support_tickets')
+        .insert({
+          rider_id: rider.id,
+          category: 'document_update',
+          status: 'open',
+          subject: 'Request Document Update',
+        });
+
+      if (ticketError) throw ticketError;
+
+      Alert.alert('Success', 'Document update request submitted successfully.');
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to submit document update request.');
+    } finally {
+      setRequestingUpdate(false);
     }
   };
 
@@ -542,7 +492,7 @@ export default function ProfileScreen() {
     ]);
   };
 
-  const handleOpenEmail = () => Linking.openURL('mailto:rivocityhelp1@gmail.com');
+  const handleOpenHelp = () => Linking.openURL('https://rivo-website.pages.dev/help');
 
   if (loading) {
     return (
@@ -596,12 +546,7 @@ export default function ProfileScreen() {
           {/* PROFILE PHOTO CARD */}
           <View style={[styles.profileHeroCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
             <View style={{ alignItems: 'center' }}>
-              <TouchableOpacity
-                style={styles.largeAvatarContainer}
-                onPress={handleCaptureSelfie}
-                disabled={uploadingPhoto || rider.selfie_locked}
-                activeOpacity={rider.selfie_locked ? 1 : 0.8}
-              >
+              <View style={styles.largeAvatarContainer}>
                 {selfieUrl ? (
                   <Image source={{ uri: selfieUrl }} style={styles.largeAvatar} />
                 ) : (
@@ -609,32 +554,13 @@ export default function ProfileScreen() {
                     <Ionicons name="camera-outline" size={40} color={theme.textMuted} />
                   </View>
                 )}
-                {uploadingPhoto && (
-                  <View style={styles.avatarLoaderLayer}>
-                    <ActivityIndicator size="small" color="#ffffff" />
-                  </View>
-                )}
-                {!rider.selfie_locked && (
-                  <View style={styles.cameraIconBadge}>
-                    <Ionicons name="camera" size={14} color="#ffffff" />
-                  </View>
-                )}
-              </TouchableOpacity>
+              </View>
 
-              {rider.selfie_locked && (
-                <View style={styles.lockedSelfieBanner}>
-                  <Ionicons name="lock-closed" size={13} color={theme.textMuted} style={{ marginRight: 6 }} />
-                  <Text style={[styles.lockedSelfieText, { color: theme.textMuted }]}>
-                    Selfie verified. Contact support if it needs to be changed.
-                  </Text>
-                </View>
-              )}
-
-              <Text style={[styles.riderNameText, { color: theme.text, marginTop: rider.selfie_locked ? 8 : 12 }]}>
+              <Text style={[styles.riderNameText, { color: theme.text, marginTop: 12 }]}>
                 {rider.rider_name || 'Rivo Rider'}
               </Text>
               <Text style={[styles.riderIdText, { color: theme.textMuted }]}>
-                ID: {rider.id ? `RDR-${rider.id.substring(0, 6).toUpperCase()}` : 'N/A'}
+                ID: {rider.rider_code || 'N/A'}
               </Text>
               
               {rider.vehicle_type ? (
@@ -680,9 +606,20 @@ export default function ProfileScreen() {
                 <Ionicons name="checkmark-circle-outline" size={22} color={COLORS.emeraldGreen} style={{ marginRight: 8 }} />
                 <Text style={[styles.cardTitle, { fontSize: 16, color: '#047857' }]}>Account Verified</Text>
               </View>
-              <Text style={[styles.infoLabel, { color: isDarkMode ? '#A7F3D0' : '#065F46', lineHeight: 20 }]}>
+              <Text style={[styles.infoLabel, { color: isDarkMode ? '#A7F3D0' : '#065F46', lineHeight: 20, marginBottom: 12 }]}>
                 Your account has been verified successfully.
               </Text>
+              <TouchableOpacity
+                style={[styles.docUploadBtn, { backgroundColor: theme.bg, borderColor: COLORS.emeraldGreen, marginTop: 4 }]}
+                onPress={handleRequestDocumentUpdate}
+                disabled={requestingUpdate}
+              >
+                {requestingUpdate ? (
+                  <ActivityIndicator size="small" color={COLORS.emeraldGreen} />
+                ) : (
+                  <Text style={[styles.docUploadBtnText, { color: COLORS.emeraldGreen }]}>Request Document Update</Text>
+                )}
+              </TouchableOpacity>
             </View>
           )}
 
@@ -748,7 +685,7 @@ export default function ProfileScreen() {
               <TouchableOpacity
                 style={[styles.docUploadBtn, { backgroundColor: theme.bg, borderColor: theme.border }]}
                 onPress={() => handleUploadDocument('aadhaar')}
-                disabled={!isEditable || uploadingDoc === 'aadhaar'}
+                disabled={uploadingDoc === 'aadhaar'}
               >
                 {uploadingDoc === 'aadhaar' ? (
                   <ActivityIndicator size="small" color={COLORS.emeraldGreen} />
@@ -769,7 +706,7 @@ export default function ProfileScreen() {
               <TouchableOpacity
                 style={[styles.docUploadBtn, { backgroundColor: theme.bg, borderColor: theme.border }]}
                 onPress={() => handleUploadDocument('aadhaar_back')}
-                disabled={!isEditable || uploadingDoc === 'aadhaar_back'}
+                disabled={uploadingDoc === 'aadhaar_back'}
               >
                 {uploadingDoc === 'aadhaar_back' ? (
                   <ActivityIndicator size="small" color={COLORS.emeraldGreen} />
@@ -807,7 +744,7 @@ export default function ProfileScreen() {
               <TouchableOpacity
                 style={[styles.docUploadBtn, { backgroundColor: theme.bg, borderColor: theme.border }]}
                 onPress={() => handleUploadDocument('pan')}
-                disabled={!isEditable || uploadingDoc === 'pan'}
+                disabled={uploadingDoc === 'pan'}
               >
                 {uploadingDoc === 'pan' ? (
                   <ActivityIndicator size="small" color={COLORS.emeraldGreen} />
@@ -846,7 +783,7 @@ export default function ProfileScreen() {
               <TouchableOpacity
                 style={[styles.docUploadBtn, { backgroundColor: theme.bg, borderColor: theme.border }]}
                 onPress={() => handleUploadDocument('dl')}
-                disabled={!isEditable || uploadingDoc === 'dl'}
+                disabled={uploadingDoc === 'dl'}
               >
                 {uploadingDoc === 'dl' ? (
                   <ActivityIndicator size="small" color={COLORS.emeraldGreen} />
@@ -862,6 +799,38 @@ export default function ProfileScreen() {
               {dlUrl ? <Ionicons name="checkmark-circle-outline" size={20} color={COLORS.emeraldGreen} style={{ marginLeft: 8 }} /> : null}
             </View>
             {dlUrl ? <Image source={{ uri: dlUrl }} style={styles.docPreviewImage} /> : null}
+          </View>
+
+          {/* ADDITIONAL DOCUMENTS SECTION */}
+          <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="folder-open-outline" size={18} color={COLORS.emeraldGreen} style={{ marginRight: 8 }} />
+              <Text style={[styles.cardTitle, { color: theme.text }]}>Additional Documents</Text>
+            </View>
+            <Text style={[styles.infoLabel, { color: theme.textMuted, fontSize: 13, marginTop: 4, marginBottom: 12 }]}>
+              Upload any supporting document (e.g. RC, Insurance, Address Proof, Other).
+            </Text>
+            {/* TODO: Backend support is required for storing extra rider documents table if needed */}
+            <View style={styles.docUploadRow}>
+              <TouchableOpacity
+                style={[styles.docUploadBtn, { backgroundColor: theme.bg, borderColor: theme.border }]}
+                onPress={() => handleUploadDocument('extra')}
+                disabled={uploadingExtraDoc}
+              >
+                {uploadingExtraDoc ? (
+                  <ActivityIndicator size="small" color={COLORS.emeraldGreen} />
+                ) : (
+                  <>
+                    <Ionicons name="cloud-upload-outline" size={18} color={COLORS.emeraldGreen} style={{ marginRight: 6 }} />
+                    <Text style={[styles.docUploadBtnText, { color: COLORS.emeraldGreen }]}>
+                      {extraDocUrl ? 'Re-upload Document' : 'Upload Supporting Document'}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              {extraDocUrl ? <Ionicons name="checkmark-circle-outline" size={20} color={COLORS.emeraldGreen} style={{ marginLeft: 8 }} /> : null}
+            </View>
+            {extraDocUrl ? <Image source={{ uri: extraDocUrl }} style={styles.docPreviewImage} /> : null}
           </View>
 
           {/* BANK DETAILS CARD */}
@@ -988,12 +957,22 @@ export default function ProfileScreen() {
               <Text style={[styles.cardTitle, { color: theme.text }]}>Support</Text>
             </View>
             
-            <TouchableOpacity style={styles.supportAction} onPress={handleOpenEmail} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.supportAction} onPress={handleOpenHelp} activeOpacity={0.7}>
               <View style={styles.supportLeft}>
-                <Ionicons name="mail-outline" size={16} color={theme.textMuted} style={{ marginRight: 10 }} />
-                <Text style={[styles.supportText, { color: theme.text }]}>Email Support</Text>
+                <Ionicons name="help-buoy-outline" size={16} color={theme.textMuted} style={{ marginRight: 10 }} />
+                <Text style={[styles.supportText, { color: theme.text }]}>Help Center</Text>
               </View>
-              <Text style={[styles.supportSubText, { color: theme.textMuted }]}>rivocityhelp1@gmail.com</Text>
+              <Ionicons name="chevron-forward-outline" size={16} color={theme.textMuted} />
+            </TouchableOpacity>
+
+            <View style={[styles.infoDivider, { backgroundColor: theme.border, marginVertical: 8 }]} />
+
+            <TouchableOpacity style={styles.supportAction} onPress={() => router.push('/notifications' as any)} activeOpacity={0.7}>
+              <View style={styles.supportLeft}>
+                <Ionicons name="notifications-outline" size={16} color={theme.textMuted} style={{ marginRight: 10 }} />
+                <Text style={[styles.supportText, { color: theme.text }]}>Notifications</Text>
+              </View>
+              <Ionicons name="chevron-forward-outline" size={16} color={theme.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -1123,41 +1102,6 @@ const styles = StyleSheet.create({
   avatarPlaceholder: {
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  avatarLoaderLayer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    borderRadius: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cameraIconBadge: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    backgroundColor: COLORS.emeraldGreen,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.white,
-  },
-  lockedSelfieBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 12,
-    paddingHorizontal: 10,
-  },
-  lockedSelfieText: {
-    fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'center',
   },
   riderNameText: {
     fontSize: 20,
@@ -1303,10 +1247,6 @@ const styles = StyleSheet.create({
   supportText: {
     fontSize: 14,
     fontWeight: '600',
-  },
-  supportSubText: {
-    fontSize: 13,
-    fontWeight: '500',
   },
   logoutButton: {
     flexDirection: 'row',

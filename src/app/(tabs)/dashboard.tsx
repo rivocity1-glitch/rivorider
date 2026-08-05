@@ -283,7 +283,7 @@ export default function DashboardScreen() {
     };
   }, [rider?.id, debouncedReloadDashboard]);
 
-  // SOS Realtime Subscription (Preserved 1:1)
+  // SOS Realtime Subscription
   useEffect(() => {
     if (!rider?.id) return;
     const riderId = rider.id;
@@ -655,9 +655,29 @@ export default function DashboardScreen() {
     }
   }
 
+  // --- TIME-BASED SHIFT AVAILABILITY HELPER ---
+  const isShiftSlotPassed = (template: SlotTemplate, offset: number) => {
+    if (offset > 0) return false; // Future days are available
+
+    const now = new Date();
+    const currentHour = now.getHours();
+
+    // Special case for Midnight Legend (22:00 to 02:00)
+    if (template.startHour === 22) {
+      return currentHour >= 2 && currentHour < 22;
+    }
+
+    return currentHour >= template.endHour;
+  };
+
   async function handleReserveShiftSlot(template: SlotTemplate, dateOffset: number) {
     if (rider?.kyc_status !== 'verified') {
       Alert.alert('KYC Required', 'Complete your KYC verification first.');
+      return;
+    }
+
+    if (isShiftSlotPassed(template, dateOffset)) {
+      Alert.alert('Shift Unavailable', 'This shift slot has already passed for today and cannot be selected.');
       return;
     }
 
@@ -1457,28 +1477,44 @@ export default function DashboardScreen() {
               <View style={{ gap: 10, marginVertical: 8 }}>
                 {SHIFT_TEMPLATES.map((slot) => {
                   const isReserved = isSlotAlreadyReserved(slot, selectedDayOffset);
+                  const isPassed = isShiftSlotPassed(slot, selectedDayOffset);
                   const isToday = selectedDayOffset === 0;
 
                   return (
                     <TouchableOpacity
                       key={slot.id}
-                      disabled={isReserved}
+                      disabled={isReserved || isPassed}
                       onPress={() => handleReserveShiftSlot(slot, selectedDayOffset)}
-                      style={[styles.shiftTemplateCard, { backgroundColor: theme.bg, borderColor: theme.border }, isReserved && { opacity: 0.6 }]}
+                      style={[
+                        styles.shiftTemplateCard,
+                        { backgroundColor: theme.bg, borderColor: theme.border },
+                        (isReserved || isPassed) && { opacity: 0.5 },
+                      ]}
                     >
                       <View style={{ flex: 1 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Ionicons name={slot.iconName} size={16} color={LOCAL_COLORS.emeraldGreen} />
-                          <Text style={[styles.shiftTemplateTitle, { color: theme.text }]}>{slot.name}</Text>
+                          <Ionicons name={slot.iconName} size={16} color={isPassed ? theme.textMuted : LOCAL_COLORS.emeraldGreen} />
+                          <Text style={[styles.shiftTemplateTitle, { color: isPassed ? theme.textMuted : theme.text }]}>{slot.name}</Text>
                         </View>
                         <Text style={[styles.shiftTemplateSub, { color: theme.textMuted }]}>{slot.subtitle}</Text>
-                        <Text style={styles.shiftTimeRange}>
+                        <Text style={[styles.shiftTimeRange, isPassed && { color: theme.textMuted }]}>
                           {slot.startHour.toString().padStart(2, '0')}:00 – {slot.endHour.toString().padStart(2, '0')}:00
                         </Text>
                       </View>
-                      <View style={[styles.reserveBadge, isReserved && { backgroundColor: '#9CA3AF' }, isToday && !isReserved && { backgroundColor: LOCAL_COLORS.emeraldGreen }]}>
-                        <Text style={styles.reserveBadgeText}>
-                          {isReserved ? 'Reserved' : isToday ? 'Start Shift' : 'Reserve Slot'}
+                      <View
+                        style={[
+                          styles.reserveBadge,
+                          isPassed
+                            ? { backgroundColor: theme.border }
+                            : isReserved
+                            ? { backgroundColor: '#9CA3AF' }
+                            : isToday
+                            ? { backgroundColor: LOCAL_COLORS.emeraldGreen }
+                            : { backgroundColor: LOCAL_COLORS.blueBorder },
+                        ]}
+                      >
+                        <Text style={[styles.reserveBadgeText, isPassed && { color: theme.textMuted }]}>
+                          {isPassed ? 'Closed' : isReserved ? 'Reserved' : isToday ? 'Start Shift' : 'Reserve Slot'}
                         </Text>
                       </View>
                     </TouchableOpacity>
@@ -2738,7 +2774,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   reserveBadge: {
-    backgroundColor: LOCAL_COLORS.blueBorder,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,

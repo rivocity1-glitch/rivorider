@@ -41,16 +41,30 @@ interface Order {
   collection_method?: string | null;
   cash_received?: number | null;
   change_returned?: number | null;
+  customer_address_id?: string | null;
   customer: { customer_name: string; phone?: string | null } | null;
   vendor: { shop_name: string; phone?: string | null } | null;
   customer_addresses: {
+    id?: string;
     address_line1: string | null;
     address_line2: string | null;
     city: string | null;
     state: string | null;
     pin_code: string | null;
+    landmark?: string | null;
     latitude: number | null;
     longitude: number | null;
+  } | null;
+  rider_collection?: {
+    id: string;
+    status: string;
+    return_started_at?: string | null;
+    estimated_return_minutes?: number | null;
+    estimated_delivery_minutes?: number | null;
+    vendor_arrival_at?: string | null;
+    return_distance_km?: number | null;
+    return_confirmed?: boolean | null;
+    returned_at?: string | null;
   } | null;
 }
 
@@ -280,14 +294,18 @@ export default function DeliveriesScreen() {
           collection_method,
           cash_received,
           change_returned,
+          customer_address_id,
           customer:customer_id ( customer_name, phone ),
           vendor:vendor_id ( shop_name, phone ),
           customer_addresses:customer_address_id (
+            id,
+            customer_id,
             address_line1,
             address_line2,
             city,
             state,
             pin_code,
+            landmark,
             latitude,
             longitude
           )
@@ -297,31 +315,98 @@ export default function DeliveriesScreen() {
 
       if (ordersError) throw ordersError;
 
-      const parsedOrders = (ordersData || []).map((order: any) => ({
-        id: order.id,
-        order_number: order.order_number,
-        total_amount: order.total_amount,
-        payment_method: order.payment_method,
-        payment_status: order.payment_status || 'pending',
-        order_status: order.order_status,
-        created_at: order.created_at,
-        delivered_at: order.delivered_at || null,
-        vendor_id: order.vendor_id,
-        customer_id: order.customer_id,
-        rider_id: order.rider_id,
-        vendor_earning: order.vendor_earning || 0,
-        rider_earning: order.rider_earning || 0,
-        vendor_commission: order.vendor_commission || 0,
-        rivo_delivery_margin: order.rivo_delivery_margin || 0,
-        delivery_fee: order.delivery_fee || 0,
-        delivery_distance_km: order.delivery_distance_km || 0,
-        collection_method: order.collection_method || null,
-        cash_received: order.cash_received !== undefined ? order.cash_received : null,
-        change_returned: order.change_returned !== undefined ? order.change_returned : null,
-        customer: Array.isArray(order.customer) ? order.customer[0] : order.customer,
-        vendor: Array.isArray(order.vendor) ? order.vendor[0] : order.vendor,
-        customer_addresses: Array.isArray(order.customer_addresses) ? order.customer_addresses[0] : order.customer_addresses,
-      }));
+      console.log(
+        "RAW ORDERS",
+        JSON.stringify(ordersData, null, 2)
+      );
+
+      const orderIds = (ordersData || []).map((o: any) => o.id);
+      let collectionsMap: Record<string, any> = {};
+
+      if (orderIds.length > 0) {
+        const { data: collectionsData } = await supabase
+          .from('rider_collections')
+          .select('*')
+          .in('order_id', orderIds);
+
+        if (collectionsData) {
+          collectionsData.forEach((col: any) => {
+            collectionsMap[col.order_id] = col;
+          });
+        }
+      }
+
+      // Collect missing address IDs where embedded query returned null
+      const missingAddressIds = Array.from(
+        new Set(
+          (ordersData || [])
+            .filter((o: any) => !o.customer_addresses && o.customer_address_id)
+            .map((o: any) => o.customer_address_id)
+        )
+      );
+
+      let fallbackAddressMap: Record<string, any> = {};
+      if (missingAddressIds.length > 0) {
+        const { data: fetchedAddresses } = await supabase
+          .from('customer_addresses')
+          .select('id, customer_id, address_line1, address_line2, city, state, pin_code, landmark, latitude, longitude')
+          .in('id', missingAddressIds);
+
+        if (fetchedAddresses) {
+          fetchedAddresses.forEach((addr: any) => {
+            fallbackAddressMap[addr.id] = addr;
+          });
+        }
+      }
+
+      const parsedOrders = (ordersData || []).map((order: any) => {
+        let rawAddress = order.customer_addresses;
+        let resolvedAddress = null;
+
+        if (Array.isArray(rawAddress)) {
+          resolvedAddress = rawAddress.length > 0 ? rawAddress[0] : null;
+        } else if (rawAddress && typeof rawAddress === 'object') {
+          resolvedAddress = rawAddress;
+        }
+
+        // Apply fallback from batch fetch if embedded query was null
+        if (!resolvedAddress && order.customer_address_id && fallbackAddressMap[order.customer_address_id]) {
+          resolvedAddress = fallbackAddressMap[order.customer_address_id];
+        }
+
+        return {
+          id: order.id,
+          order_number: order.order_number,
+          total_amount: order.total_amount,
+          payment_method: order.payment_method,
+          payment_status: order.payment_status || 'pending',
+          order_status: order.order_status,
+          created_at: order.created_at,
+          delivered_at: order.delivered_at || null,
+          vendor_id: order.vendor_id,
+          customer_id: order.customer_id,
+          rider_id: order.rider_id,
+          vendor_earning: order.vendor_earning || 0,
+          rider_earning: order.rider_earning || 0,
+          vendor_commission: order.vendor_commission || 0,
+          rivo_delivery_margin: order.rivo_delivery_margin || 0,
+          delivery_fee: order.delivery_fee || 0,
+          delivery_distance_km: order.delivery_distance_km || 0,
+          collection_method: order.collection_method || null,
+          cash_received: order.cash_received !== undefined ? order.cash_received : null,
+          change_returned: order.change_returned !== undefined ? order.change_returned : null,
+          customer_address_id: order.customer_address_id || null,
+          customer: Array.isArray(order.customer) ? order.customer[0] : order.customer,
+          vendor: Array.isArray(order.vendor) ? order.vendor[0] : order.vendor,
+          customer_addresses: resolvedAddress,
+          rider_collection: collectionsMap[order.id] || null,
+        };
+      });
+
+      console.log(
+        "PARSED ORDERS",
+        JSON.stringify(parsedOrders, null, 2)
+      );
 
       setOrders(parsedOrders);
     } catch (error) {
@@ -360,6 +445,34 @@ export default function DeliveriesScreen() {
         },
       ]
     );
+  };
+
+  const handleConfirmReturn = async (order: Order) => {
+    if (!order.rider_collection?.id) return;
+    try {
+      setSubmitting(true);
+      const nowIso = new Date().toISOString();
+
+      const { error } = await supabase
+        .from('rider_collections')
+        .update({
+          status: 'returned_to_store',
+          returned_at: nowIso,
+          vendor_arrival_at: nowIso,
+          return_confirmed: true,
+        })
+        .eq('id', order.rider_collection.id);
+
+      if (error) throw error;
+
+      showSuccessToast('Return Confirmed Successfully');
+      fetchRiderOrders();
+    } catch (err) {
+      console.error('Error confirming return:', err);
+      Alert.alert('Error', 'Failed to confirm return to store.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const updateOrderStatusDirectly = async (orderId: string, nextStatus: string) => {
@@ -530,7 +643,8 @@ export default function DeliveriesScreen() {
         .insert({
           order_id: selectedOrder.id,
           rider_id: currentRiderId,
-          status: 'waiting_return',
+          status: 'returning_to_store',
+          return_started_at: nowIso,
           transaction_reference: paymentMethod === 'upi' ? transactionRef : null,
           created_at: nowIso,
         });
@@ -554,11 +668,15 @@ export default function DeliveriesScreen() {
   const filteredOrders = orders.filter((order) => {
     let matchesTab = false;
     const currentStatus = order.order_status?.toLowerCase();
+    const colStatus = order.rider_collection?.status?.toLowerCase();
 
     if (activeTab === 'active') {
-      matchesTab = ['packed', 'picked_up', 'out_for_delivery'].includes(currentStatus);
+      const isDeliveredStillReturning = currentStatus === 'delivered' && colStatus !== 'returned_to_store';
+      const isNormalActive = ['packed', 'picked_up', 'out_for_delivery'].includes(currentStatus);
+      matchesTab = isNormalActive || isDeliveredStillReturning;
     } else if (activeTab === 'completed') {
-      matchesTab = currentStatus === 'delivered';
+      const isFullyReturned = currentStatus === 'delivered' && colStatus === 'returned_to_store';
+      matchesTab = isFullyReturned;
     } else if (activeTab === 'cancelled') {
       matchesTab = currentStatus === 'cancelled';
     }
@@ -621,9 +739,17 @@ export default function DeliveriesScreen() {
   };
 
   const formatAddress = (addr: Order['customer_addresses']) => {
-    if (!addr) return 'No Address Provided';
-    const parts = [addr.address_line1, addr.address_line2, addr.city, addr.state, addr.pin_code].map((p) => p?.trim()).filter(Boolean);
-    return parts.length > 0 ? parts.join(', ') : 'No Address Provided';
+    if (!addr) return 'No Address Available';
+    const parts = [
+      addr.address_line1,
+      addr.address_line2,
+      addr.city,
+      addr.state,
+      addr.pin_code,
+    ]
+      .map((p) => p?.trim())
+      .filter(Boolean);
+    return parts.length > 0 ? parts.join(', ') : 'No Address Available';
   };
 
   const isSubmitDisabled = paymentMethod === 'cash' && !receivedInputValid();
@@ -692,6 +818,11 @@ export default function DeliveriesScreen() {
               const isPickedUp = item.order_status?.toLowerCase() === 'picked_up';
               const isOutForDelivery = item.order_status?.toLowerCase() === 'out_for_delivery';
 
+              // Return workflow calculations
+              const collection = item.rider_collection;
+              const isReturning = isDelivered && collection?.status === 'returning_to_store';
+              const isReturned = isDelivered && collection?.status === 'returned_to_store';
+
               return (
                 <View key={item.id} style={[styles.orderCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
                   <View style={styles.cardHeader}>
@@ -704,7 +835,7 @@ export default function DeliveriesScreen() {
                     </View>
                     <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.order_status) }]}>
                       <Text style={[styles.statusText, { color: getStatusTextColor(item.order_status) }]}>
-                        {item.order_status?.toUpperCase().replace('_', ' ')}
+                        {isReturning ? 'RETURNING TO STORE' : item.order_status?.toUpperCase().replace('_', ' ')}
                       </Text>
                     </View>
                   </View>
@@ -732,8 +863,21 @@ export default function DeliveriesScreen() {
                       </Text>
                     </View>
 
-                    {/* FINANCIAL BREAKDOWN SECTION FOR COMPLETED DELIVERIES */}
-                    {isDelivered && (
+                    {/* RETURNING TO STORE CARD */}
+                    {isReturning && (
+                      <View style={[styles.completedFinancialBox, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+                        <TouchableOpacity
+                          style={[styles.completeButton, { backgroundColor: COLORS.emeraldGreen, alignItems: 'center' }]}
+                          disabled={submitting}
+                          onPress={() => handleConfirmReturn(item)}
+                        >
+                          <Text style={styles.completeButtonText}>Confirm Returned To Store</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
+                    {/* FINANCIAL BREAKDOWN SECTION FOR COMPLETED & RETURNED DELIVERIES */}
+                    {isReturned && (
                       <View style={[styles.completedFinancialBox, { backgroundColor: theme.bg, borderColor: theme.border }]}>
                         <Text style={[styles.completedFinancialHeaderTitle, { color: theme.text }]}>
                           Payment & Settlement Breakdown
@@ -771,6 +915,16 @@ export default function DeliveriesScreen() {
                           </View>
                         )}
 
+                        <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: theme.border, gap: 4 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Ionicons name="checkmark-circle" size={16} color={COLORS.emeraldGreen} />
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.emeraldGreen }}>Returned Successfully</Text>
+                          </View>
+                          <Text style={{ fontSize: 11, color: theme.textMuted }}>
+                            Return Status: Returned To Store
+                          </Text>
+                        </View>
+
                         {deliveredTimestamp && (
                           <View style={{ marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: theme.border }}>
                             <Text style={{ fontSize: 11, color: theme.textMuted }}>
@@ -785,12 +939,12 @@ export default function DeliveriesScreen() {
                   <View style={[styles.cardDivider, { backgroundColor: theme.border }]} />
 
                   <View style={styles.cardFooter}>
-                    <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginRight: 10 }}>
-                      <View>
+                    <View style={styles.amountSection}>
+                      <View style={styles.amountBox}>
                         <Text style={[styles.amountLabel, { color: theme.textMuted, fontSize: 12 }]}>Total Order</Text>
                         <Text style={[styles.amountValue, { color: theme.text, fontSize: 18 }]}>₹{item.total_amount}</Text>
                       </View>
-                      <View style={{ alignItems: 'flex-end' }}>
+                      <View style={[styles.amountBox, { alignItems: 'flex-end' }]}>
                         <Text style={[styles.amountLabel, { color: COLORS.emeraldGreen, fontWeight: '700', fontSize: 12 }]}>Your Earnings</Text>
                         <Text style={[styles.amountValue, { color: COLORS.emeraldGreen, fontSize: 20, fontWeight: '900' }]}>₹{item.rider_earning || 0}</Text>
                       </View>
@@ -1255,19 +1409,26 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   cardFooter: {
+    flexDirection: 'column',
+    gap: 12,
+  },
+  amountSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 10,
+    width: '100%',
+  },
+  amountBox: {
+    justifyContent: 'center',
   },
   actionsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    width: '100%',
   },
   callButton: {
-    paddingHorizontal: 14,
+    flex: 1,
     paddingVertical: 10,
     borderRadius: 99,
     borderWidth: 1,
@@ -1286,9 +1447,11 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   completeButton: {
-    paddingHorizontal: 16,
+    flex: 1,
     paddingVertical: 10,
     borderRadius: 99,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   completeButtonText: {
     color: COLORS.white,

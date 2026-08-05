@@ -15,9 +15,12 @@ import {
 } from 'react-native';
 
 import { registerForPushNotifications } from '@/lib/pushNotifications';
+import { useTheme } from '../../context/ThemeContext';
 import { signInRider } from '../../services/auth';
 
 export default function LoginScreen() {
+  const { theme } = useTheme();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [secureText, setSecureText] = useState(true);
@@ -83,7 +86,7 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1, backgroundColor: '#0D0D0D' }}
+      style={{ flex: 1, backgroundColor: theme.bg }}
     >
       <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }} bounces={false}>
         <Animated.View
@@ -113,10 +116,10 @@ export default function LoginScreen() {
             >
               <Text style={{ fontSize: 36, color: '#0D0D0D' }}>⚡</Text>
             </View>
-            <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#FFFFFF' }}>
+            <Text style={{ fontSize: 32, fontWeight: 'bold', color: theme.text }}>
               Rivo <Text style={{ color: '#2ECC71' }}>Rider</Text>
             </Text>
-            <Text style={{ fontSize: 16, color: '#666666', marginTop: 8 }}>
+            <Text style={{ fontSize: 16, color: theme.textMuted, marginTop: 8 }}>
               Welcome Rider, log in to start earning
             </Text>
           </View>
@@ -124,11 +127,11 @@ export default function LoginScreen() {
           {/* Form Card */}
           <View
             style={{
-              backgroundColor: '#1A1A1A',
+              backgroundColor: theme.cardBg,
               borderRadius: 24,
               padding: 24,
               borderWidth: 1,
-              borderColor: '#262626',
+              borderColor: theme.border,
               shadowColor: '#000000',
               shadowOffset: { width: 0, height: 12 },
               shadowOpacity: 0.5,
@@ -136,47 +139,47 @@ export default function LoginScreen() {
               elevation: 8,
             }}
           >
-            <Text style={{ color: '#E0E0E0', fontSize: 14, fontWeight: '600', marginBottom: 8 }}>
+            <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600', marginBottom: 8 }}>
               Email Address
             </Text>
             <TextInput
               placeholder="Enter your email"
-              placeholderTextColor="#555555"
+              placeholderTextColor={theme.textMuted}
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
               keyboardType="email-address"
               style={{
-                backgroundColor: '#0D0D0D',
+                backgroundColor: theme.bg,
                 borderWidth: 1,
-                borderColor: '#333333',
+                borderColor: theme.border,
                 padding: 16,
                 marginBottom: 20,
                 borderRadius: 12,
-                color: '#FFFFFF',
+                color: theme.text,
                 fontSize: 15,
               }}
             />
 
-            <Text style={{ color: '#E0E0E0', fontSize: 14, fontWeight: '600', marginBottom: 8 }}>
+            <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600', marginBottom: 8 }}>
               Password
             </Text>
             <View style={{ position: 'relative', marginBottom: 28 }}>
               <TextInput
                 placeholder="Enter your password"
-                placeholderTextColor="#555555"
+                placeholderTextColor={theme.textMuted}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={secureText}
                 autoCapitalize="none"
                 style={{
-                  backgroundColor: '#0D0D0D',
+                  backgroundColor: theme.bg,
                   borderWidth: 1,
-                  borderColor: '#333333',
+                  borderColor: theme.border,
                   padding: 16,
                   paddingRight: 60,
                   borderRadius: 12,
-                  color: '#FFFFFF',
+                  color: theme.text,
                   fontSize: 15,
                 }}
               />
@@ -226,7 +229,7 @@ export default function LoginScreen() {
               onPress={() => router.push('/(auth)/register' as any)}
               style={{ marginTop: 20, alignItems: 'center' }}
             >
-              <Text style={{ color: '#666666', fontSize: 14 }}>
+              <Text style={{ color: theme.textMuted, fontSize: 14 }}>
                 Don't have an account?{' '}
                 <Text style={{ color: '#A8E63A', fontWeight: '600' }}>Register Here</Text>
               </Text>
