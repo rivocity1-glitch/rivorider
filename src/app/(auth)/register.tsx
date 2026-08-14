@@ -1,16 +1,13 @@
-// src/app/(auth)/register.tsx
-import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Animated,
-  Image,
   KeyboardAvoidingView,
   Platform,
+  SafeAreaView,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -18,613 +15,362 @@ import {
 } from 'react-native';
 import { registerRider } from '../../services/auth';
 
-const VEHICLE_OPTIONS = [
-  { id: 'bike', label: 'Bike (Motorcycle)', icon: '🏍️' },
-  { id: 'scooty', label: 'Scooty / Scooter', icon: '🛵' },
-  { id: 'ev', label: 'Electric Vehicle (EV)', icon: '⚡' },
-  { id: 'ev_gear', label: 'EV Gearbike', icon: '🔋' },
-  { id: 'bicycle', label: 'Bicycle / Cycle', icon: '🚲' },
-];
-
-const DISABILITY_OPTIONS = [
-  { id: 'locomotor', label: 'Locomotor / Physical Disability' },
-  { id: 'visual', label: 'Visual / Sight Impairment' },
-  { id: 'hearing_speech', label: 'Hearing / Speech Impairment' },
-  { id: 'other', label: 'Other / Preferred Not to Detail' },
-];
-
-const GENDER_OPTIONS = [
-  { id: 'Male', label: 'Male' },
-  { id: 'Female', label: 'Female' },
-  { id: 'Other', label: 'Other' },
-];
-
-const BLOOD_GROUP_OPTIONS = [
-  { id: 'A+', label: 'A+' },
-  { id: 'A-', label: 'A-' },
-  { id: 'B+', label: 'B+' },
-  { id: 'B-', label: 'B-' },
-  { id: 'AB+', label: 'AB+' },
-  { id: 'AB-', label: 'AB-' },
-  { id: 'O+', label: 'O+' },
-  { id: 'O-', label: 'O-' },
-];
-
 export default function RegisterScreen() {
-  // ---------------------------------------------------------
-  // ACCOUNT INFO
-  // ---------------------------------------------------------
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
-  // ---------------------------------------------------------
-  // PERSONAL DETAILS
-  // ---------------------------------------------------------
-  const [gender, setGender] = useState('');
-  const [bloodGroup, setBloodGroup] = useState('');
-  const [isSpeciallyAbled, setIsSpeciallyAbled] = useState(false);
-  const [disabilityType, setDisabilityType] = useState('locomotor');
-  const [showDisabilityDropdown, setShowDisabilityDropdown] =
-    useState(false);
-
-  // ---------------------------------------------------------
-  // VEHICLE DETAILS
-  // ---------------------------------------------------------
-  const [vehicleType, setVehicleType] = useState('bike');
-  const [vehicleNumber, setVehicleNumber] = useState('');
-
-  // ---------------------------------------------------------
-  // ADDRESS DETAILS
-  // ---------------------------------------------------------
-  const [addressLine, setAddressLine] = useState('');
-  const [city, setCity] = useState('');
-  const [stateName, setStateName] = useState('');
-  const [pinCode, setPinCode] = useState('');
-  const [emergencyName, setEmergencyName] = useState('');
-  const [emergencyPhone, setEmergencyPhone] = useState('');
-
-  // ---------------------------------------------------------
-  // DOCUMENTS
-  //
-  // ALL KYC DOCUMENTS ARE OPTIONAL DURING REGISTRATION.
-  // They can be completed later from the rider profile/KYC flow.
-  // ---------------------------------------------------------
-  const [aadhaarFrontUrl, setAadhaarFrontUrl] = useState('');
-  const [aadhaarBackUrl, setAadhaarBackUrl] = useState('');
-  const [panCardUrl, setPanCardUrl] = useState('');
-  const [drivingLicenseUrl, setDrivingLicenseUrl] = useState('');
-  const [vehicleRcUrl, setVehicleRcUrl] = useState('');
-  const [selfieUrl, setSelfieUrl] = useState('');
-  const [uploadingDoc, setUploadingDoc] =
-    useState<string | null>(null);
-
-  // ---------------------------------------------------------
-  // BANK DETAILS
-  // ---------------------------------------------------------
-  const [accountHolder, setAccountHolder] = useState('');
-  const [bankName, setBankName] = useState('');
-  const [accountNumber, setAccountNumber] = useState('');
-  const [ifsc, setIfsc] = useState('');
-  const [upi, setUpi] = useState('');
-
-  // ---------------------------------------------------------
-  // DECLARATIONS
-  // ---------------------------------------------------------
-  const [confirmAccurate, setConfirmAccurate] = useState(false);
-  const [agreeTerms, setAgreeTerms] = useState(false);
-  const [understandInactive, setUnderstandInactive] =
-    useState(false);
+  const router = useRouter();
 
   const [loading, setLoading] = useState(false);
 
   // ---------------------------------------------------------
-  // ANIMATIONS
+  // PERSONAL DETAILS
   // ---------------------------------------------------------
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
-  const buttonScale = useRef(new Animated.Value(1)).current;
 
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, []);
+  const [riderName, setRiderName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
 
-  const handlePressIn = () => {
-    Animated.spring(buttonScale, {
-      toValue: 0.95,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(buttonScale, {
-      toValue: 1,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const isNoPlateRequired = ['bicycle', 'ev'].includes(
-    vehicleType
-  );
+  const [gender, setGender] = useState('');
+  const [bloodGroup, setBloodGroup] = useState('');
 
   // ---------------------------------------------------------
-  // PASSWORD VALIDATION
+  // VEHICLE DETAILS
   // ---------------------------------------------------------
-  const passwordHasMinLen = password.length >= 8;
-  const passwordHasUpper = /[A-Z]/.test(password);
-  const passwordHasLower = /[a-z]/.test(password);
-  const passwordHasNumber = /[0-9]/.test(password);
 
-  const isPasswordValid =
-    passwordHasMinLen &&
-    passwordHasUpper &&
-    passwordHasLower &&
-    passwordHasNumber;
-
-  const getPasswordStrength = () => {
-    if (!password) {
-      return {
-        label: '',
-        color: '#555555',
-        score: 0,
-      };
-    }
-
-    let score = 0;
-
-    if (passwordHasMinLen) score++;
-    if (passwordHasUpper) score++;
-    if (passwordHasLower) score++;
-    if (passwordHasNumber) score++;
-
-    if (score <= 2) {
-      return {
-        label: 'Weak',
-        color: '#E74C3C',
-        score,
-      };
-    }
-
-    if (score === 3) {
-      return {
-        label: 'Medium',
-        color: '#F39C12',
-        score,
-      };
-    }
-
-    return {
-      label: 'Strong',
-      color: '#A8E63A',
-      score,
-    };
-  };
-
-  const strength = getPasswordStrength();
+  const [vehicleType, setVehicleType] = useState('');
+  const [vehicleNumber, setVehicleNumber] = useState('');
 
   // ---------------------------------------------------------
-  // DOCUMENT UPLOAD
-  //
-  // Documents are optional.
-  // Uploading them here only previews/selects them.
-  // KYC can also be completed later from the profile.
+  // ADDRESS
   // ---------------------------------------------------------
-  const handleUploadDocument = async (
-    type:
-      | 'aadhaar_front'
-      | 'aadhaar_back'
-      | 'pan'
-      | 'dl'
-      | 'rc'
-      | 'selfie'
-  ) => {
-    try {
-      setUploadingDoc(type);
 
-      // -----------------------------------------------------
-      // SELFIE
-      // -----------------------------------------------------
-      if (type === 'selfie') {
-        const camPerm =
-          await ImagePicker.requestCameraPermissionsAsync();
-
-        if (!camPerm.granted) {
-          Alert.alert(
-            'Permission Denied',
-            'Camera permission is required to capture selfie.'
-          );
-          return;
-        }
-
-        const result =
-          await ImagePicker.launchCameraAsync({
-            mediaTypes:
-              ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.6,
-          });
-
-        if (
-          !result.canceled &&
-          result.assets &&
-          result.assets.length > 0
-        ) {
-          setSelfieUrl(result.assets[0].uri);
-        }
-
-        return;
-      }
-
-      // -----------------------------------------------------
-      // DOCUMENT PHOTO
-      // -----------------------------------------------------
-      Alert.alert(
-        'Upload Document',
-        'Choose an option to attach a document photo.',
-        [
-          {
-            text: 'Take Photo',
-            onPress: async () => {
-              try {
-                const camPerm =
-                  await ImagePicker.requestCameraPermissionsAsync();
-
-                if (!camPerm.granted) {
-                  Alert.alert(
-                    'Permission Denied',
-                    'Camera permission is required.'
-                  );
-                  return;
-                }
-
-                const result =
-                  await ImagePicker.launchCameraAsync({
-                    mediaTypes:
-                      ImagePicker.MediaTypeOptions.Images,
-                    allowsEditing: true,
-                    quality: 0.6,
-                  });
-
-                if (
-                  !result.canceled &&
-                  result.assets &&
-                  result.assets.length > 0
-                ) {
-                  setDocUri(
-                    type,
-                    result.assets[0].uri
-                  );
-                }
-              } catch {
-                Alert.alert(
-                  'Error',
-                  'Unable to capture document photo.'
-                );
-              }
-            },
-          },
-          {
-            text: 'Choose From Gallery',
-            onPress: async () => {
-              try {
-                const libPerm =
-                  await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-                if (!libPerm.granted) {
-                  Alert.alert(
-                    'Permission Denied',
-                    'Media library permission is required.'
-                  );
-                  return;
-                }
-
-                const result =
-                  await ImagePicker.launchImageLibraryAsync({
-                    mediaTypes:
-                      ImagePicker.MediaTypeOptions.Images,
-                    allowsEditing: true,
-                    quality: 0.6,
-                  });
-
-                if (
-                  !result.canceled &&
-                  result.assets &&
-                  result.assets.length > 0
-                ) {
-                  setDocUri(
-                    type,
-                    result.assets[0].uri
-                  );
-                }
-              } catch {
-                Alert.alert(
-                  'Error',
-                  'Unable to select document photo.'
-                );
-              }
-            },
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-        ]
-      );
-    } catch {
-      Alert.alert(
-        'Error',
-        'An error occurred while selecting the document photo.'
-      );
-    } finally {
-      setUploadingDoc(null);
-    }
-  };
-
-  const setDocUri = (
-    type: string,
-    uri: string
-  ) => {
-    if (type === 'aadhaar_front') {
-      setAadhaarFrontUrl(uri);
-    }
-
-    if (type === 'aadhaar_back') {
-      setAadhaarBackUrl(uri);
-    }
-
-    if (type === 'pan') {
-      setPanCardUrl(uri);
-    }
-
-    if (type === 'dl') {
-      setDrivingLicenseUrl(uri);
-    }
-
-    if (type === 'rc') {
-      setVehicleRcUrl(uri);
-    }
-  };
-
-  const allDeclarationsChecked =
-    confirmAccurate &&
-    agreeTerms &&
-    understandInactive;
+  const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [pinCode, setPinCode] = useState('');
 
   // ---------------------------------------------------------
-  // REGISTER RIDER
-  //
-  // IMPORTANT:
-  // No KYC document validation is performed here.
-  //
-  // Registration is allowed with:
-  // - no Aadhaar
-  // - no PAN
-  // - no Driving Licence
-  // - no RC
-  // - no Selfie
-  //
-  // KYC is completed later.
+  // EMERGENCY CONTACT
   // ---------------------------------------------------------
+
+  const [emergencyContactName, setEmergencyContactName] =
+    useState('');
+
+  const [emergencyContactPhone, setEmergencyContactPhone] =
+    useState('');
+
+  const [alternateContact, setAlternateContact] =
+    useState('');
+
+  // ---------------------------------------------------------
+  // BANK DETAILS
+  // ---------------------------------------------------------
+
+  const [accountHolderName, setAccountHolderName] =
+    useState('');
+
+  const [bankName, setBankName] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [ifscCode, setIfscCode] = useState('');
+  const [upiId, setUpiId] = useState('');
+
+  // ---------------------------------------------------------
+  // OPTIONAL KYC NUMBERS
+  // ---------------------------------------------------------
+
+  const [aadhaarNumber, setAadhaarNumber] =
+    useState('');
+
+  const [panNumber, setPanNumber] = useState('');
+
+  const [drivingLicenseNumber, setDrivingLicenseNumber] =
+    useState('');
+
+  const [isSpeciallyAbled, setIsSpeciallyAbled] =
+    useState(false);
+
+  // ---------------------------------------------------------
+  // HELPERS
+  // ---------------------------------------------------------
+
+  const normalizePhone = (value: string) =>
+    value.replace(/[^0-9]/g, '').slice(0, 10);
+
+  const normalizeAadhaar = (value: string) =>
+    value.replace(/[^0-9]/g, '').slice(0, 12);
+
+  const normalizePan = (value: string) =>
+    value
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toUpperCase()
+      .slice(0, 10);
+
+  const normalizeIfsc = (value: string) =>
+    value
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toUpperCase()
+      .slice(0, 11);
+
+  // ---------------------------------------------------------
+  // REGISTRATION
+  // ---------------------------------------------------------
+
   const handleRegister = async () => {
-    const cleanPhone = phone
-      .trim()
-      .replace(/[^0-9]/g, '');
+    if (loading) {
+      return;
+    }
 
-    const cleanEmail = email
-      .trim()
-      .toLowerCase();
+    const cleanName = riderName.trim();
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPhone = normalizePhone(phone);
 
-    // -------------------------------------------------------
-    // BASIC REGISTRATION VALIDATION ONLY
-    // -------------------------------------------------------
+    if (!cleanName) {
+      Alert.alert(
+        'Missing Name',
+        'Please enter your full name.'
+      );
+      return;
+    }
+
+    if (!cleanEmail) {
+      Alert.alert(
+        'Missing Email',
+        'Please enter your email address.'
+      );
+      return;
+    }
+
     if (
-      !fullName.trim() ||
-      !cleanEmail ||
-      !cleanPhone ||
-      !gender ||
-      !bloodGroup ||
-      !vehicleType.trim() ||
-      (!isNoPlateRequired &&
-        !vehicleNumber.trim()) ||
-      !password ||
-      !confirmPassword
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+        cleanEmail
+      )
     ) {
       Alert.alert(
-        'Validation Error',
-        'Please fill in all required registration fields.'
+        'Invalid Email',
+        'Please enter a valid email address.'
       );
       return;
     }
 
     if (cleanPhone.length !== 10) {
       Alert.alert(
-        'Validation Error',
-        'Phone number must be exactly 10 digits.'
+        'Invalid Phone',
+        'Please enter a valid 10-digit mobile number.'
       );
       return;
     }
 
-    const emailRegex =
-      /\S+@\S+\.\S+/;
-
-    if (!emailRegex.test(cleanEmail)) {
+    if (!vehicleType.trim()) {
       Alert.alert(
-        'Validation Error',
-        'Please enter a valid email address.'
+        'Missing Vehicle Type',
+        'Please enter your vehicle type.'
       );
       return;
     }
 
-    if (!isPasswordValid) {
+    if (!vehicleNumber.trim()) {
       Alert.alert(
-        'Validation Error',
-        'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, and one number.'
+        'Missing Vehicle Number',
+        'Please enter your vehicle number.'
       );
       return;
     }
 
-    if (password !== confirmPassword) {
+    if (!address.trim()) {
       Alert.alert(
-        'Validation Error',
-        'Passwords do not match.'
+        'Missing Address',
+        'Please enter your address.'
       );
       return;
     }
 
-    // -------------------------------------------------------
-    // KYC IS NOT VALIDATED HERE.
-    //
-    // Do NOT add checks for:
-    // aadhaarFrontUrl
-    // aadhaarBackUrl
-    // panCardUrl
-    // drivingLicenseUrl
-    // vehicleRcUrl
-    // selfieUrl
-    // -------------------------------------------------------
-
-    if (!allDeclarationsChecked) {
+    if (!city.trim()) {
       Alert.alert(
-        'Validation Error',
-        'Please agree to all declarations before submitting.'
+        'Missing City',
+        'Please enter your city.'
       );
       return;
     }
 
-    if (loading) return;
+    if (!state.trim()) {
+      Alert.alert(
+        'Missing State',
+        'Please enter your state.'
+      );
+      return;
+    }
+
+    if (pinCode.trim().length !== 6) {
+      Alert.alert(
+        'Invalid PIN Code',
+        'Please enter a valid 6-digit PIN code.'
+      );
+      return;
+    }
+
+    if (
+      emergencyContactPhone &&
+      normalizePhone(emergencyContactPhone).length !== 10
+    ) {
+      Alert.alert(
+        'Invalid Emergency Contact',
+        'Please enter a valid 10-digit emergency contact number.'
+      );
+      return;
+    }
+
+    if (
+      alternateContact &&
+      normalizePhone(alternateContact).length !== 10
+    ) {
+      Alert.alert(
+        'Invalid Alternate Contact',
+        'Please enter a valid 10-digit alternate contact number.'
+      );
+      return;
+    }
+
+    if (
+      aadhaarNumber &&
+      normalizeAadhaar(aadhaarNumber).length !== 12
+    ) {
+      Alert.alert(
+        'Invalid Aadhaar Number',
+        'Aadhaar number must contain 12 digits.'
+      );
+      return;
+    }
+
+    if (
+      panNumber &&
+      normalizePan(panNumber).length !== 10
+    ) {
+      Alert.alert(
+        'Invalid PAN Number',
+        'PAN number must contain 10 characters.'
+      );
+      return;
+    }
+
+    if (
+      drivingLicenseNumber.trim() &&
+      drivingLicenseNumber.trim().length < 5
+    ) {
+      Alert.alert(
+        'Invalid Driving Licence',
+        'Please enter a valid driving licence number.'
+      );
+      return;
+    }
 
     setLoading(true);
 
     try {
-      const selectedOption =
-        VEHICLE_OPTIONS.find(
-          (v) => v.id === vehicleType
-        );
+      /*
+       * IMPORTANT:
+       *
+       * No KYC image is uploaded here.
+       *
+       * Registration only creates the Auth user,
+       * riders record and rider_profiles record.
+       *
+       * KYC documents are completed later from
+       * the authenticated Complete KYC screen.
+       */
 
-      const selectedDisability =
-        DISABILITY_OPTIONS.find(
-          (d) => d.id === disabilityType
-        );
-
-      await registerRider({
-        rider_name: fullName.trim(),
-
+      const rider = await registerRider({
+        rider_name: cleanName,
         email: cleanEmail,
-
         phone: cleanPhone,
 
-        vehicle_type: selectedOption
-          ? selectedOption.label
-          : vehicleType,
+        vehicle_type:
+          vehicleType.trim(),
 
         vehicle_number:
-          vehicleNumber.trim().toUpperCase() ||
-          'N/A',
+          vehicleNumber.trim().toUpperCase(),
 
         is_specially_abled:
           isSpeciallyAbled,
 
-        disability_type:
-          isSpeciallyAbled
-            ? selectedDisability
-              ? selectedDisability.label
-              : disabilityType
-            : null,
+        gender:
+          gender.trim() || null,
 
-        gender: gender,
-
-        blood_group: bloodGroup,
-
-        password: password,
+        blood_group:
+          bloodGroup.trim() || null,
 
         address:
-          addressLine.trim() || undefined,
+          address.trim(),
 
         city:
-          city.trim() || undefined,
+          city.trim(),
 
         state:
-          stateName.trim() || undefined,
+          state.trim(),
 
         pin_code:
-          pinCode.trim() || undefined,
+          pinCode.trim(),
 
         emergency_contact_name:
-          emergencyName.trim() || undefined,
+          emergencyContactName.trim() || null,
 
         emergency_contact_phone:
-          emergencyPhone.trim() || undefined,
+          normalizePhone(
+            emergencyContactPhone
+          ) || null,
+
+        alternate_contact:
+          normalizePhone(
+            alternateContact
+          ) || null,
 
         account_holder_name:
-          accountHolder.trim() || undefined,
+          accountHolderName.trim() || null,
 
         bank_name:
-          bankName.trim() || undefined,
+          bankName.trim() || null,
 
         account_number:
-          accountNumber.trim() || undefined,
+          accountNumber.trim() || null,
 
         ifsc_code:
-          ifsc.trim().toUpperCase() ||
-          undefined,
+          normalizeIfsc(ifscCode) || null,
 
         upi_id:
-          upi.trim() || undefined,
+          upiId.trim() || null,
 
-        // ---------------------------------------------------
-        // OPTIONAL KYC FILES
-        //
-        // These are passed if the rider selected them.
-        // They are NOT required for registration.
-        // ---------------------------------------------------
-        aadhaar_front_uri:
-          aadhaarFrontUrl || null,
+        /*
+         * KYC numbers are optional.
+         * If entered, they are saved.
+         */
+        aadhaar_number:
+          normalizeAadhaar(aadhaarNumber) || null,
 
-        aadhaar_back_uri:
-          aadhaarBackUrl || null,
+        pan_number:
+          normalizePan(panNumber) || null,
 
-        pan_card_uri:
-          panCardUrl || null,
+        driving_license_number:
+          drivingLicenseNumber.trim() || null,
 
-        driving_license_uri:
-          drivingLicenseUrl || null,
+        /*
+         * KYC document URIs intentionally NOT passed.
+         *
+         * Even if the UI previously selected files,
+         * registration does not upload them.
+         */
+      });
 
-        vehicle_rc_uri:
-          vehicleRcUrl || null,
+      console.log(
+        'Rider registration successful:',
+        rider?.id
+      );
 
-        selfie_uri:
-          selfieUrl || null,
-      } as any);
-
-      // -----------------------------------------------------
-      // REGISTRATION SUCCESS
-      // -----------------------------------------------------
       Alert.alert(
-        'Registration Submitted',
-        'Your rider account has been created successfully.\n\nKYC is optional during registration. You can complete your KYC later from your profile.',
+        'Registration Successful',
+        'Your rider account has been created. KYC is optional and can be completed later from your profile.',
         [
           {
             text: 'Continue',
-            onPress: () =>
-              router.replace(
-                '/(auth)/login' as any
-              ),
+            onPress: () => {
+              router.replace('/');
+            },
           },
         ]
       );
@@ -634,10 +380,13 @@ export default function RegisterScreen() {
         error
       );
 
+      const message =
+        error?.message ||
+        'Unable to create your rider account. Please try again.';
+
       Alert.alert(
         'Registration Failed',
-        error?.message ||
-          'An error occurred during registration.'
+        message
       );
     } finally {
       setLoading(false);
@@ -645,2063 +394,845 @@ export default function RegisterScreen() {
   };
 
   // ---------------------------------------------------------
-  // DOCUMENT CARD
+  // INPUT COMPONENT
   // ---------------------------------------------------------
-  const renderDocCard = (
-    title: string,
-    mandatory: boolean,
-    docUri: string,
-    onUpload: () => void,
-    helperText?: string
-  ) => (
-    <View
-      style={{
-        marginBottom: 16,
-      }}
-    >
-      <View
-        style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 6,
-        }}
-      >
-        <Text
-          style={{
-            color: '#E0E0E0',
-            fontSize: 13,
-            fontWeight: '600',
-          }}
-        >
-          {title}{' '}
-          {mandatory && (
-            <Text
-              style={{
-                color: '#E74C3C',
-              }}
-            >
-              *
-            </Text>
-          )}
+
+  const renderInput = (
+    label: string,
+    value: string,
+    onChangeText: (value: string) => void,
+    placeholder: string,
+    options?: {
+      keyboardType?: any;
+      autoCapitalize?: any;
+      secureTextEntry?: boolean;
+      maxLength?: number;
+      multiline?: boolean;
+      editable?: boolean;
+    }
+  ) => {
+    return (
+      <View style={styles.fieldContainer}>
+        <Text style={styles.fieldLabel}>
+          {label}
         </Text>
 
-        {docUri ? (
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-            }}
-          >
-            <Ionicons
-              name="checkmark-circle"
-              size={16}
-              color="#A8E63A"
-              style={{
-                marginRight: 4,
-              }}
-            />
-
-            <Text
-              style={{
-                color: '#A8E63A',
-                fontSize: 12,
-                fontWeight: '700',
-              }}
-            >
-              Selected
-            </Text>
-          </View>
-        ) : (
-          <Text
-            style={{
-              color: '#777777',
-              fontSize: 11,
-              fontWeight: '600',
-            }}
-          >
-            Optional
-          </Text>
-        )}
-      </View>
-
-      {helperText ? (
-        <Text
-          style={{
-            color: '#888888',
-            fontSize: 11,
-            marginBottom: 6,
-          }}
-        >
-          {helperText}
-        </Text>
-      ) : null}
-
-      <TouchableOpacity
-        activeOpacity={0.8}
-        onPress={onUpload}
-        disabled={
-          uploadingDoc !== null
-        }
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: '#0D0D0D',
-          borderWidth: 1,
-          borderColor: docUri
-            ? '#A8E63A'
-            : '#333333',
-          paddingVertical: 12,
-          paddingHorizontal: 16,
-          borderRadius: 12,
-          opacity:
-            uploadingDoc !== null
-              ? 0.6
-              : 1,
-        }}
-      >
-        {uploadingDoc === title ? (
-          <ActivityIndicator
-            size="small"
-            color="#A8E63A"
-          />
-        ) : (
-          <>
-            <Ionicons
-              name="camera-outline"
-              size={18}
-              color="#A8E63A"
-              style={{
-                marginRight: 8,
-              }}
-            />
-
-            <Text
-              style={{
-                color: '#A8E63A',
-                fontSize: 13,
-                fontWeight: '700',
-              }}
-            >
-              {docUri
-                ? 'Replace Document'
-                : 'Upload Document'}
-            </Text>
-          </>
-        )}
-      </TouchableOpacity>
-
-      {docUri ? (
-        <Image
-          source={{
-            uri: docUri,
-          }}
-          style={{
-            width: '100%',
-            height: 130,
-            borderRadius: 12,
-            marginTop: 8,
-            resizeMode: 'cover',
-          }}
+        <TextInput
+          style={[
+            styles.input,
+            options?.multiline &&
+              styles.multilineInput,
+          ]}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor="#94A3B8"
+          keyboardType={
+            options?.keyboardType || 'default'
+          }
+          autoCapitalize={
+            options?.autoCapitalize ||
+            'sentences'
+          }
+          secureTextEntry={
+            options?.secureTextEntry || false
+          }
+          maxLength={options?.maxLength}
+          multiline={
+            options?.multiline || false
+          }
+          editable={
+            options?.editable !== false
+          }
         />
-      ) : null}
-    </View>
-  );
+      </View>
+    );
+  };
 
   return (
-    <KeyboardAvoidingView
-      behavior={
-        Platform.OS === 'ios'
-          ? 'padding'
-          : 'height'
-      }
-      style={{
-        flex: 1,
-        backgroundColor: '#0D0D0D',
-      }}
-    >
-      <ScrollView
-        contentContainerStyle={{
-          flexGrow: 1,
-          paddingVertical: 32,
-        }}
-        showsVerticalScrollIndicator={false}
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        style={styles.keyboardContainer}
+        behavior={
+          Platform.OS === 'ios'
+            ? 'padding'
+            : undefined
+        }
       >
-        <Animated.View
-          style={{
-            paddingHorizontal: 20,
-            opacity: fadeAnim,
-            transform: [
-              {
-                translateY: slideAnim,
-              },
-            ],
-          }}
+        <ScrollView
+          contentContainerStyle={
+            styles.scrollContent
+          }
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          {/* -------------------------------------------------
-              HEADER
-          ------------------------------------------------- */}
-          <View
-            style={{
-              alignItems: 'center',
-              marginBottom: 28,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 26,
-                fontWeight: 'bold',
-                color: '#FFFFFF',
-                textAlign: 'center',
-              }}
-            >
+          {/* ------------------------------------------------ */}
+          {/* HEADER */}
+          {/* ------------------------------------------------ */}
+
+          <View style={styles.header}>
+            <View style={styles.logo}>
+              <Text style={styles.logoText}>
+                R
+              </Text>
+            </View>
+
+            <Text style={styles.title}>
               Rider Registration
             </Text>
 
-            <Text
-              style={{
-                fontSize: 14,
-                color: '#888888',
-                marginTop: 6,
-                textAlign: 'center',
-                lineHeight: 20,
-              }}
-            >
-              Create your rider account. KYC can be completed later from your profile.
+            <Text style={styles.subtitle}>
+              Create your Rivo rider account
             </Text>
           </View>
 
-          {/* -------------------------------------------------
-              SECTION 1: ACCOUNT INFORMATION
-          ------------------------------------------------- */}
-          <View
-            style={{
-              backgroundColor: '#1A1A1A',
-              borderRadius: 24,
-              padding: 20,
-              marginBottom: 16,
-              borderWidth: 1,
-              borderColor: '#262626',
-            }}
-          >
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                marginBottom: 4,
-              }}
-            >
-              <Ionicons
-                name="person-circle-outline"
-                size={18}
-                color="#A8E63A"
-                style={{
-                  marginRight: 8,
-                }}
-              />
+          {/* ------------------------------------------------ */}
+          {/* PERSONAL DETAILS */}
+          {/* ------------------------------------------------ */}
 
-              <Text
-                style={{
-                  color: '#FFFFFF',
-                  fontSize: 16,
-                  fontWeight: '800',
-                }}
-              >
-                Account Information
-              </Text>
-            </View>
-
-            <Text
-              style={{
-                color: '#888888',
-                fontSize: 12,
-                marginBottom: 16,
-              }}
-            >
-              Enter your basic identity and login details
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>
+              Personal Details
             </Text>
 
-            {/* Full Name */}
-            <Text
-              style={{
-                color: '#E0E0E0',
-                fontSize: 13,
-                fontWeight: '600',
-                marginBottom: 6,
-              }}
-            >
-              Full Name *
-            </Text>
+            {renderInput(
+              'Full Name *',
+              riderName,
+              setRiderName,
+              'Enter your full name'
+            )}
 
-            <TextInput
-              placeholder="John Doe"
-              placeholderTextColor="#555555"
-              value={fullName}
-              onChangeText={setFullName}
-              style={{
-                backgroundColor: '#0D0D0D',
-                borderWidth: 1,
-                borderColor: '#333333',
-                padding: 14,
-                marginBottom: 14,
-                borderRadius: 12,
-                color: '#FFFFFF',
-              }}
-            />
-
-            {/* Email */}
-            <Text
-              style={{
-                color: '#E0E0E0',
-                fontSize: 13,
-                fontWeight: '600',
-                marginBottom: 6,
-              }}
-            >
-              Email Address *
-            </Text>
-
-            <TextInput
-              placeholder="johndoe@example.com"
-              placeholderTextColor="#555555"
-              value={email}
-              onChangeText={(val) =>
-                setEmail(val.trim())
+            {renderInput(
+              'Email *',
+              email,
+              setEmail,
+              'you@example.com',
+              {
+                keyboardType:
+                  'email-address',
+                autoCapitalize:
+                  'none',
               }
-              autoCapitalize="none"
-              keyboardType="email-address"
-              style={{
-                backgroundColor: '#0D0D0D',
-                borderWidth: 1,
-                borderColor: '#333333',
-                padding: 14,
-                marginBottom: 14,
-                borderRadius: 12,
-                color: '#FFFFFF',
-              }}
-            />
+            )}
 
-            {/* Phone */}
-            <Text
-              style={{
-                color: '#E0E0E0',
-                fontSize: 13,
-                fontWeight: '600',
-                marginBottom: 6,
-              }}
-            >
-              Phone Number *
-            </Text>
-
-            <TextInput
-              placeholder="10-digit mobile number"
-              placeholderTextColor="#555555"
-              value={phone}
-              onChangeText={(val) =>
+            {renderInput(
+              'Mobile Number *',
+              phone,
+              (value) =>
                 setPhone(
-                  val
-                    .replace(
-                      /[^0-9]/g,
-                      ''
-                    )
-                    .slice(0, 10)
-                )
+                  normalizePhone(value)
+                ),
+              '10-digit mobile number',
+              {
+                keyboardType:
+                  'phone-pad',
+                maxLength: 10,
               }
-              keyboardType="phone-pad"
-              maxLength={10}
-              style={{
-                backgroundColor: '#0D0D0D',
-                borderWidth: 1,
-                borderColor: '#333333',
-                padding: 14,
-                marginBottom: 14,
-                borderRadius: 12,
-                color: '#FFFFFF',
-              }}
-            />
-
-            {/* Password */}
-            <Text
-              style={{
-                color: '#E0E0E0',
-                fontSize: 13,
-                fontWeight: '600',
-                marginBottom: 6,
-              }}
-            >
-              Password *
-            </Text>
-
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                backgroundColor: '#0D0D0D',
-                borderWidth: 1,
-                borderColor: '#333333',
-                borderRadius: 12,
-                paddingHorizontal: 14,
-                marginBottom: 6,
-              }}
-            >
-              <TextInput
-                placeholder="Min 8 chars, 1 uppercase, 1 lowercase, 1 number"
-                placeholderTextColor="#555555"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                style={{
-                  flex: 1,
-                  paddingVertical: 14,
-                  color: '#FFFFFF',
-                }}
-              />
-
-              <TouchableOpacity
-                onPress={() =>
-                  setShowPassword(
-                    !showPassword
-                  )
-                }
-              >
-                <Ionicons
-                  name={
-                    showPassword
-                      ? 'eye-off-outline'
-                      : 'eye-outline'
-                  }
-                  size={20}
-                  color="#888888"
-                />
-              </TouchableOpacity>
-            </View>
-
-            {/* Password Strength */}
-            {password.length > 0 && (
-              <View
-                style={{
-                  marginBottom: 14,
-                  paddingHorizontal: 2,
-                }}
-              >
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent:
-                      'space-between',
-                    marginBottom: 4,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: '#888888',
-                      fontSize: 11,
-                    }}
-                  >
-                    Password Strength:
-                  </Text>
-
-                  <Text
-                    style={{
-                      color: strength.color,
-                      fontSize: 11,
-                      fontWeight: '700',
-                    }}
-                  >
-                    {strength.label}
-                  </Text>
-                </View>
-
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    gap: 4,
-                    height: 4,
-                  }}
-                >
-                  {[1, 2, 3, 4].map(
-                    (step) => (
-                      <View
-                        key={step}
-                        style={{
-                          flex: 1,
-                          height: 4,
-                          borderRadius: 2,
-                          backgroundColor:
-                            step <=
-                            strength.score
-                              ? strength.color
-                              : '#262626',
-                        }}
-                      />
-                    )
-                  )}
-                </View>
-              </View>
             )}
 
-            {/* Confirm Password */}
-            <Text
-              style={{
-                color: '#E0E0E0',
-                fontSize: 13,
-                fontWeight: '600',
-                marginBottom: 6,
-              }}
-            >
-              Confirm Password *
-            </Text>
+            {renderInput(
+              'Gender',
+              gender,
+              setGender,
+              'Male / Female / Other'
+            )}
 
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                backgroundColor: '#0D0D0D',
-                borderWidth: 1,
-                borderColor: '#333333',
-                borderRadius: 12,
-                paddingHorizontal: 14,
-                marginBottom: 4,
-              }}
-            >
-              <TextInput
-                placeholder="Re-enter password"
-                placeholderTextColor="#555555"
-                value={confirmPassword}
-                onChangeText={
-                  setConfirmPassword
-                }
-                secureTextEntry={
-                  !showConfirmPassword
-                }
-                autoCapitalize="none"
-                style={{
-                  flex: 1,
-                  paddingVertical: 14,
-                  color: '#FFFFFF',
-                }}
-              />
-
-              <TouchableOpacity
-                onPress={() =>
-                  setShowConfirmPassword(
-                    !showConfirmPassword
-                  )
-                }
-              >
-                <Ionicons
-                  name={
-                    showConfirmPassword
-                      ? 'eye-off-outline'
-                      : 'eye-outline'
-                  }
-                  size={20}
-                  color="#888888"
-                />
-              </TouchableOpacity>
-            </View>
+            {renderInput(
+              'Blood Group',
+              bloodGroup,
+              setBloodGroup,
+              'e.g. O+'
+            )}
           </View>
 
-          {/* -------------------------------------------------
-              SECTION 2: PERSONAL DETAILS
-          ------------------------------------------------- */}
-          <View
-            style={{
-              backgroundColor: '#1A1A1A',
-              borderRadius: 24,
-              padding: 20,
-              marginBottom: 16,
-              borderWidth: 1,
-              borderColor: '#262626',
-            }}
-          >
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                marginBottom: 4,
-              }}
-            >
-              <Ionicons
-                name="male-female-outline"
-                size={18}
-                color="#A8E63A"
-                style={{
-                  marginRight: 8,
-                }}
-              />
+          {/* ------------------------------------------------ */}
+          {/* VEHICLE DETAILS */}
+          {/* ------------------------------------------------ */}
 
-              <Text
-                style={{
-                  color: '#FFFFFF',
-                  fontSize: 16,
-                  fontWeight: '800',
-                }}
-              >
-                Personal Details
-              </Text>
-            </View>
-
-            <Text
-              style={{
-                color: '#888888',
-                fontSize: 12,
-                marginBottom: 16,
-              }}
-            >
-              Select gender, blood group, and accessibility options
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>
+              Vehicle Details
             </Text>
 
-            {/* Gender */}
-            <Text
-              style={{
-                color: '#E0E0E0',
-                fontSize: 13,
-                fontWeight: '600',
-                marginBottom: 8,
-              }}
-            >
-              Gender *
-            </Text>
+            {renderInput(
+              'Vehicle Type *',
+              vehicleType,
+              setVehicleType,
+              'Bike / Scooter / Cycle'
+            )}
 
-            <View
-              style={{
-                flexDirection: 'row',
-                flexWrap: 'wrap',
-                gap: 8,
-                marginBottom: 16,
-              }}
-            >
-              {GENDER_OPTIONS.map(
-                (item) => {
-                  const isSelected =
-                    gender === item.id;
-
-                  return (
-                    <TouchableOpacity
-                      key={item.id}
-                      onPress={() =>
-                        setGender(
-                          item.id
-                        )
-                      }
-                      activeOpacity={0.8}
-                      style={{
-                        backgroundColor:
-                          isSelected
-                            ? '#A8E63A'
-                            : '#0D0D0D',
-                        borderWidth: 1,
-                        borderColor:
-                          isSelected
-                            ? '#A8E63A'
-                            : '#333333',
-                        paddingHorizontal: 16,
-                        paddingVertical: 10,
-                        borderRadius: 10,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color:
-                            isSelected
-                              ? '#0D0D0D'
-                              : '#E0E0E0',
-                          fontSize: 13,
-                          fontWeight: '600',
-                        }}
-                      >
-                        {item.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                }
-              )}
-            </View>
-
-            {/* Blood Group */}
-            <Text
-              style={{
-                color: '#E0E0E0',
-                fontSize: 13,
-                fontWeight: '600',
-                marginBottom: 8,
-              }}
-            >
-              Blood Group *
-            </Text>
-
-            <View
-              style={{
-                flexDirection: 'row',
-                flexWrap: 'wrap',
-                gap: 8,
-                marginBottom: 16,
-              }}
-            >
-              {BLOOD_GROUP_OPTIONS.map(
-                (item) => {
-                  const isSelected =
-                    bloodGroup ===
-                    item.id;
-
-                  return (
-                    <TouchableOpacity
-                      key={item.id}
-                      onPress={() =>
-                        setBloodGroup(
-                          item.id
-                        )
-                      }
-                      activeOpacity={0.8}
-                      style={{
-                        backgroundColor:
-                          isSelected
-                            ? '#A8E63A'
-                            : '#0D0D0D',
-                        borderWidth: 1,
-                        borderColor:
-                          isSelected
-                            ? '#A8E63A'
-                            : '#333333',
-                        paddingHorizontal: 14,
-                        paddingVertical: 10,
-                        borderRadius: 10,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color:
-                            isSelected
-                              ? '#0D0D0D'
-                              : '#E0E0E0',
-                          fontSize: 13,
-                          fontWeight: '600',
-                        }}
-                      >
-                        {item.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                }
-              )}
-            </View>
-
-            {/* Specially Abled */}
-            <View
-              style={{
-                marginBottom: 4,
-              }}
-            >
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => {
-                  const nextValue =
-                    !isSpeciallyAbled;
-
-                  setIsSpeciallyAbled(
-                    nextValue
-                  );
-
-                  if (nextValue) {
-                    setShowDisabilityDropdown(
-                      true
-                    );
-                  } else {
-                    setShowDisabilityDropdown(
-                      false
-                    );
-                  }
-                }}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent:
-                    'space-between',
-                  backgroundColor:
-                    isSpeciallyAbled
-                      ? '#262626'
-                      : '#0D0D0D',
-                  borderWidth: 1,
-                  borderColor:
-                    isSpeciallyAbled
-                      ? '#A8E63A'
-                      : '#333333',
-                  padding: 14,
-                  borderRadius: 12,
-                }}
-              >
-                <View
-                  style={{
-                    flex: 1,
-                    paddingRight: 8,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: '#FFFFFF',
-                      fontSize: 13,
-                      fontWeight: '600',
-                    }}
-                  >
-                    Blessed by Nature / Specially Abled 💚
-                  </Text>
-
-                  <Text
-                    style={{
-                      color: '#888888',
-                      fontSize: 11,
-                      marginTop: 2,
-                    }}
-                  >
-                    Check this if you require accessible delivery assignments
-                  </Text>
-                </View>
-
-                <View
-                  style={{
-                    width: 22,
-                    height: 22,
-                    borderRadius: 6,
-                    borderWidth: 2,
-                    borderColor:
-                      isSpeciallyAbled
-                        ? '#A8E63A'
-                        : '#555555',
-                    backgroundColor:
-                      isSpeciallyAbled
-                        ? '#A8E63A'
-                        : 'transparent',
-                    alignItems: 'center',
-                    justifyContent:
-                      'center',
-                  }}
-                >
-                  {isSpeciallyAbled && (
-                    <Text
-                      style={{
-                        color: '#0D0D0D',
-                        fontSize: 12,
-                        fontWeight: 'bold',
-                      }}
-                    >
-                      ✓
-                    </Text>
-                  )}
-                </View>
-              </TouchableOpacity>
-
-              {isSpeciallyAbled && (
-                <View
-                  style={{
-                    marginTop: 12,
-                    backgroundColor: '#0D0D0D',
-                    borderRadius: 12,
-                    padding: 12,
-                    borderWidth: 1,
-                    borderColor: '#333333',
-                  }}
-                >
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    onPress={() =>
-                      setShowDisabilityDropdown(
-                        !showDisabilityDropdown
-                      )
-                    }
-                    style={{
-                      flexDirection: 'row',
-                      justifyContent:
-                        'space-between',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <View>
-                      <Text
-                        style={{
-                          color: '#888888',
-                          fontSize: 11,
-                          fontWeight: '700',
-                          textTransform:
-                            'uppercase',
-                        }}
-                      >
-                        Disability Category
-                      </Text>
-
-                      <Text
-                        style={{
-                          color: '#A8E63A',
-                          fontSize: 13,
-                          fontWeight: '600',
-                          marginTop: 2,
-                        }}
-                      >
-                        {
-                          DISABILITY_OPTIONS.find(
-                            (d) =>
-                              d.id ===
-                              disabilityType
-                          )?.label
-                        }
-                      </Text>
-                    </View>
-
-                    <Ionicons
-                      name={
-                        showDisabilityDropdown
-                          ? 'chevron-up'
-                          : 'chevron-down'
-                      }
-                      size={18}
-                      color="#A8E63A"
-                    />
-                  </TouchableOpacity>
-
-                  {showDisabilityDropdown && (
-                    <View
-                      style={{
-                        marginTop: 10,
-                        borderTopWidth: 1,
-                        borderTopColor:
-                          '#222222',
-                        paddingTop: 8,
-                      }}
-                    >
-                      {DISABILITY_OPTIONS.map(
-                        (option) => (
-                          <TouchableOpacity
-                            key={
-                              option.id
-                            }
-                            onPress={() => {
-                              setDisabilityType(
-                                option.id
-                              );
-
-                              setShowDisabilityDropdown(
-                                false
-                              );
-                            }}
-                            style={{
-                              paddingVertical: 10,
-                              paddingHorizontal: 8,
-                              borderRadius: 8,
-                              backgroundColor:
-                                disabilityType ===
-                                option.id
-                                  ? '#1A1A1A'
-                                  : 'transparent',
-                            }}
-                          >
-                            <Text
-                              style={{
-                                color:
-                                  disabilityType ===
-                                  option.id
-                                    ? '#A8E63A'
-                                    : '#CCCCCC',
-                                fontSize: 13,
-                                fontWeight:
-                                  disabilityType ===
-                                  option.id
-                                    ? '700'
-                                    : '500',
-                              }}
-                            >
-                              {option.label}
-                            </Text>
-                          </TouchableOpacity>
-                        )
-                      )}
-                    </View>
-                  )}
-                </View>
-              )}
-            </View>
-          </View>
-
-          {/* -------------------------------------------------
-              SECTION 3: VEHICLE DETAILS
-          ------------------------------------------------- */}
-          <View
-            style={{
-              backgroundColor: '#1A1A1A',
-              borderRadius: 24,
-              padding: 20,
-              marginBottom: 16,
-              borderWidth: 1,
-              borderColor: '#262626',
-            }}
-          >
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                marginBottom: 4,
-              }}
-            >
-              <Ionicons
-                name="bicycle-outline"
-                size={18}
-                color="#A8E63A"
-                style={{
-                  marginRight: 8,
-                }}
-              />
-
-              <Text
-                style={{
-                  color: '#FFFFFF',
-                  fontSize: 16,
-                  fontWeight: '800',
-                }}
-              >
-                Vehicle Details
-              </Text>
-            </View>
-
-            <Text
-              style={{
-                color: '#888888',
-                fontSize: 12,
-                marginBottom: 16,
-              }}
-            >
-              Select vehicle type and registration details
-            </Text>
-
-            {/* Vehicle Type */}
-            <Text
-              style={{
-                color: '#E0E0E0',
-                fontSize: 13,
-                fontWeight: '600',
-                marginBottom: 8,
-              }}
-            >
-              Vehicle Type *
-            </Text>
-
-            <View
-              style={{
-                flexDirection: 'row',
-                flexWrap: 'wrap',
-                gap: 8,
-                marginBottom: 16,
-              }}
-            >
-              {VEHICLE_OPTIONS.map(
-                (item) => {
-                  const isSelected =
-                    vehicleType ===
-                    item.id;
-
-                  return (
-                    <TouchableOpacity
-                      key={item.id}
-                      onPress={() =>
-                        setVehicleType(
-                          item.id
-                        )
-                      }
-                      activeOpacity={0.8}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        backgroundColor:
-                          isSelected
-                            ? '#A8E63A'
-                            : '#0D0D0D',
-                        borderWidth: 1,
-                        borderColor:
-                          isSelected
-                            ? '#A8E63A'
-                            : '#333333',
-                        paddingHorizontal: 12,
-                        paddingVertical: 10,
-                        borderRadius: 10,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 14,
-                          marginRight: 6,
-                        }}
-                      >
-                        {item.icon}
-                      </Text>
-
-                      <Text
-                        style={{
-                          color:
-                            isSelected
-                              ? '#0D0D0D'
-                              : '#E0E0E0',
-                          fontSize: 13,
-                          fontWeight: '600',
-                        }}
-                      >
-                        {item.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                }
-              )}
-            </View>
-
-            {/* Vehicle Number */}
-            <Text
-              style={{
-                color: '#E0E0E0',
-                fontSize: 13,
-                fontWeight: '600',
-                marginBottom: 6,
-              }}
-            >
-              Vehicle Registration Number{' '}
-              {isNoPlateRequired
-                ? '(Optional)'
-                : '*'}
-            </Text>
-
-            <TextInput
-              placeholder={
-                isNoPlateRequired
-                  ? 'Optional for Cycle/EV'
-                  : 'e.g., KA-01-AB-1234'
-              }
-              placeholderTextColor="#555555"
-              value={vehicleNumber}
-              onChangeText={(val) =>
+            {renderInput(
+              'Vehicle Number *',
+              vehicleNumber,
+              (value) =>
                 setVehicleNumber(
-                  val.toUpperCase()
+                  value.toUpperCase()
+                ),
+              'e.g. MH12AB1234',
+              {
+                autoCapitalize:
+                  'characters',
+              }
+            )}
+
+            <TouchableOpacity
+              style={[
+                styles.checkboxRow,
+                isSpeciallyAbled &&
+                  styles.checkboxRowActive,
+              ]}
+              onPress={() =>
+                setIsSpeciallyAbled(
+                  (previous) =>
+                    !previous
                 )
               }
-              autoCapitalize="characters"
-              style={{
-                backgroundColor: '#0D0D0D',
-                borderWidth: 1,
-                borderColor: '#333333',
-                padding: 14,
-                borderRadius: 12,
-                color: '#FFFFFF',
-              }}
-            />
-
-            {isNoPlateRequired && (
-              <Text
-                style={{
-                  color: '#888888',
-                  fontSize: 11,
-                  marginTop: 6,
-                }}
+              activeOpacity={0.8}
+            >
+              <View
+                style={[
+                  styles.checkbox,
+                  isSpeciallyAbled &&
+                    styles.checkboxActive,
+                ]}
               >
-                Vehicle number is optional for Bicycle and EV.
+                {isSpeciallyAbled && (
+                  <Text
+                    style={
+                      styles.checkboxTick
+                    }
+                  >
+                    ✓
+                  </Text>
+                )}
+              </View>
+
+              <Text
+                style={
+                  styles.checkboxLabel
+                }
+              >
+                I am specially abled
               </Text>
-            )}
+            </TouchableOpacity>
           </View>
 
-          {/* -------------------------------------------------
-              SECTION 4: ADDRESS DETAILS
-          ------------------------------------------------- */}
-          <View
-            style={{
-              backgroundColor: '#1A1A1A',
-              borderRadius: 24,
-              padding: 20,
-              marginBottom: 16,
-              borderWidth: 1,
-              borderColor: '#262626',
-            }}
-          >
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                marginBottom: 4,
-              }}
-            >
-              <Ionicons
-                name="location-outline"
-                size={18}
-                color="#A8E63A"
-                style={{
-                  marginRight: 8,
-                }}
-              />
+          {/* ------------------------------------------------ */}
+          {/* ADDRESS */}
+          {/* ------------------------------------------------ */}
 
-              <Text
-                style={{
-                  color: '#FFFFFF',
-                  fontSize: 16,
-                  fontWeight: '800',
-                }}
-              >
-                Address Details
-              </Text>
-            </View>
-
-            <Text
-              style={{
-                color: '#888888',
-                fontSize: 12,
-                marginBottom: 16,
-              }}
-            >
-              Enter residential address and emergency contact
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>
+              Address
             </Text>
 
-            {/* Address */}
-            <Text
-              style={{
-                color: '#E0E0E0',
-                fontSize: 13,
-                fontWeight: '600',
-                marginBottom: 6,
-              }}
-            >
-              Address Line
-            </Text>
-
-            <TextInput
-              placeholder="Flat / House No., Street, Area"
-              placeholderTextColor="#555555"
-              value={addressLine}
-              onChangeText={
-                setAddressLine
+            {renderInput(
+              'Address *',
+              address,
+              setAddress,
+              'House / Street / Area',
+              {
+                multiline: true,
               }
-              style={{
-                backgroundColor: '#0D0D0D',
-                borderWidth: 1,
-                borderColor: '#333333',
-                padding: 14,
-                marginBottom: 14,
-                borderRadius: 12,
-                color: '#FFFFFF',
-              }}
-            />
+            )}
 
-            {/* City / State */}
-            <View
-              style={{
-                flexDirection: 'row',
-                gap: 12,
-                marginBottom: 14,
-              }}
-            >
-              <View
-                style={{
-                  flex: 1,
-                }}
-              >
-                <Text
-                  style={{
-                    color: '#E0E0E0',
-                    fontSize: 13,
-                    fontWeight: '600',
-                    marginBottom: 6,
-                  }}
-                >
-                  City
-                </Text>
+            {renderInput(
+              'City *',
+              city,
+              setCity,
+              'City'
+            )}
 
-                <TextInput
-                  placeholder="e.g. Bangalore"
-                  placeholderTextColor="#555555"
-                  value={city}
-                  onChangeText={
-                    setCity
-                  }
-                  style={{
-                    backgroundColor:
-                      '#0D0D0D',
-                    borderWidth: 1,
-                    borderColor:
-                      '#333333',
-                    padding: 14,
-                    borderRadius: 12,
-                    color: '#FFFFFF',
-                  }}
-                />
-              </View>
+            {renderInput(
+              'State *',
+              state,
+              setState,
+              'State'
+            )}
 
-              <View
-                style={{
-                  flex: 1,
-                }}
-              >
-                <Text
-                  style={{
-                    color: '#E0E0E0',
-                    fontSize: 13,
-                    fontWeight: '600',
-                    marginBottom: 6,
-                  }}
-                >
-                  State
-                </Text>
-
-                <TextInput
-                  placeholder="e.g. Karnataka"
-                  placeholderTextColor="#555555"
-                  value={stateName}
-                  onChangeText={
-                    setStateName
-                  }
-                  style={{
-                    backgroundColor:
-                      '#0D0D0D',
-                    borderWidth: 1,
-                    borderColor:
-                      '#333333',
-                    padding: 14,
-                    borderRadius: 12,
-                    color: '#FFFFFF',
-                  }}
-                />
-              </View>
-            </View>
-
-            {/* PIN */}
-            <Text
-              style={{
-                color: '#E0E0E0',
-                fontSize: 13,
-                fontWeight: '600',
-                marginBottom: 6,
-              }}
-            >
-              PIN Code
-            </Text>
-
-            <TextInput
-              placeholder="6-digit PIN Code"
-              placeholderTextColor="#555555"
-              value={pinCode}
-              onChangeText={(val) =>
+            {renderInput(
+              'PIN Code *',
+              pinCode,
+              (value) =>
                 setPinCode(
-                  val
+                  value
                     .replace(
                       /[^0-9]/g,
                       ''
                     )
                     .slice(0, 6)
-                )
+                ),
+              '6-digit PIN code',
+              {
+                keyboardType:
+                  'number-pad',
+                maxLength: 6,
               }
-              keyboardType="number-pad"
-              maxLength={6}
-              style={{
-                backgroundColor: '#0D0D0D',
-                borderWidth: 1,
-                borderColor: '#333333',
-                padding: 14,
-                marginBottom: 14,
-                borderRadius: 12,
-                color: '#FFFFFF',
-              }}
-            />
-
-            {/* Emergency Name */}
-            <Text
-              style={{
-                color: '#E0E0E0',
-                fontSize: 13,
-                fontWeight: '600',
-                marginBottom: 6,
-              }}
-            >
-              Emergency Contact Name
-            </Text>
-
-            <TextInput
-              placeholder="Parent / Spouse / Relative Name"
-              placeholderTextColor="#555555"
-              value={emergencyName}
-              onChangeText={
-                setEmergencyName
-              }
-              style={{
-                backgroundColor: '#0D0D0D',
-                borderWidth: 1,
-                borderColor: '#333333',
-                padding: 14,
-                marginBottom: 14,
-                borderRadius: 12,
-                color: '#FFFFFF',
-              }}
-            />
-
-            {/* Emergency Phone */}
-            <Text
-              style={{
-                color: '#E0E0E0',
-                fontSize: 13,
-                fontWeight: '600',
-                marginBottom: 6,
-              }}
-            >
-              Emergency Contact Number
-            </Text>
-
-            <TextInput
-              placeholder="10-digit Emergency Number"
-              placeholderTextColor="#555555"
-              value={emergencyPhone}
-              onChangeText={(val) =>
-                setEmergencyPhone(
-                  val
-                    .replace(
-                      /[^0-9]/g,
-                      ''
-                    )
-                    .slice(0, 10)
-                )
-              }
-              keyboardType="phone-pad"
-              maxLength={10}
-              style={{
-                backgroundColor: '#0D0D0D',
-                borderWidth: 1,
-                borderColor: '#333333',
-                padding: 14,
-                borderRadius: 12,
-                color: '#FFFFFF',
-              }}
-            />
+            )}
           </View>
 
-          {/* -------------------------------------------------
-              SECTION 5: DOCUMENTS
-          ------------------------------------------------- */}
-          <View
-            style={{
-              backgroundColor: '#1A1A1A',
-              borderRadius: 24,
-              padding: 20,
-              marginBottom: 16,
-              borderWidth: 1,
-              borderColor: '#262626',
-            }}
-          >
+          {/* ------------------------------------------------ */}
+          {/* EMERGENCY CONTACT */}
+          {/* ------------------------------------------------ */}
+
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>
+              Emergency Contact
+            </Text>
+
+            {renderInput(
+              'Contact Name',
+              emergencyContactName,
+              setEmergencyContactName,
+              'Emergency contact name'
+            )}
+
+            {renderInput(
+              'Contact Number',
+              emergencyContactPhone,
+              (value) =>
+                setEmergencyContactPhone(
+                  normalizePhone(value)
+                ),
+              '10-digit mobile number',
+              {
+                keyboardType:
+                  'phone-pad',
+                maxLength: 10,
+              }
+            )}
+
+            {renderInput(
+              'Alternate Contact',
+              alternateContact,
+              (value) =>
+                setAlternateContact(
+                  normalizePhone(value)
+                ),
+              'Optional alternate number',
+              {
+                keyboardType:
+                  'phone-pad',
+                maxLength: 10,
+              }
+            )}
+          </View>
+
+          {/* ------------------------------------------------ */}
+          {/* BANK DETAILS */}
+          {/* ------------------------------------------------ */}
+
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>
+              Bank Details
+            </Text>
+
+            <Text style={styles.optionalText}>
+              Optional — you can add these later.
+            </Text>
+
+            {renderInput(
+              'Account Holder Name',
+              accountHolderName,
+              setAccountHolderName,
+              'Account holder name'
+            )}
+
+            {renderInput(
+              'Bank Name',
+              bankName,
+              setBankName,
+              'Bank name'
+            )}
+
+            {renderInput(
+              'Account Number',
+              accountNumber,
+              setAccountNumber,
+              'Bank account number',
+              {
+                keyboardType:
+                  'number-pad',
+              }
+            )}
+
+            {renderInput(
+              'IFSC Code',
+              ifscCode,
+              (value) =>
+                setIfscCode(
+                  normalizeIfsc(value)
+                ),
+              'e.g. SBIN0001234',
+              {
+                autoCapitalize:
+                  'characters',
+                maxLength: 11,
+              }
+            )}
+
+            {renderInput(
+              'UPI ID',
+              upiId,
+              setUpiId,
+              'example@upi',
+              {
+                autoCapitalize:
+                  'none',
+              }
+            )}
+          </View>
+
+          {/* ------------------------------------------------ */}
+          {/* OPTIONAL KYC */}
+          {/* ------------------------------------------------ */}
+
+          <View style={styles.card}>
             <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                marginBottom: 4,
-              }}
-            >
-              <Ionicons
-                name="shield-checkmark-outline"
-                size={18}
-                color="#A8E63A"
-                style={{
-                  marginRight: 8,
-                }}
-              />
-
-              <Text
-                style={{
-                  color: '#FFFFFF',
-                  fontSize: 16,
-                  fontWeight: '800',
-                }}
-              >
-                KYC Documents
-              </Text>
-            </View>
-
-            <Text
-              style={{
-                color: '#888888',
-                fontSize: 12,
-                marginBottom: 16,
-              }}
-            >
-              KYC is optional during registration. You can upload these documents now or complete them later from your profile.
-            </Text>
-
-            {/* Aadhaar Front */}
-            {renderDocCard(
-              'Aadhaar Front',
-              false,
-              aadhaarFrontUrl,
-              () =>
-                handleUploadDocument(
-                  'aadhaar_front'
-                ),
-              'Optional'
-            )}
-
-            {/* Aadhaar Back */}
-            {renderDocCard(
-              'Aadhaar Back',
-              false,
-              aadhaarBackUrl,
-              () =>
-                handleUploadDocument(
-                  'aadhaar_back'
-                ),
-              'Optional'
-            )}
-
-            {/* PAN */}
-            {renderDocCard(
-              'PAN Card',
-              false,
-              panCardUrl,
-              () =>
-                handleUploadDocument(
-                  'pan'
-                ),
-              'Optional'
-            )}
-
-            {/* Driving Licence */}
-            {renderDocCard(
-              'Driving Licence',
-              false,
-              drivingLicenseUrl,
-              () =>
-                handleUploadDocument(
-                  'dl'
-                ),
-              'Optional'
-            )}
-
-            {/* Vehicle RC */}
-            {renderDocCard(
-              'Vehicle RC',
-              false,
-              vehicleRcUrl,
-              () =>
-                handleUploadDocument(
-                  'rc'
-                ),
-              'Optional'
-            )}
-
-            {/* Selfie */}
-            {renderDocCard(
-              'Selfie',
-              false,
-              selfieUrl,
-              () =>
-                handleUploadDocument(
-                  'selfie'
-                ),
-              'Optional — camera capture'
-            )}
-          </View>
-
-          {/* -------------------------------------------------
-              SECTION 6: BANK DETAILS
-          ------------------------------------------------- */}
-          <View
-            style={{
-              backgroundColor: '#1A1A1A',
-              borderRadius: 24,
-              padding: 20,
-              marginBottom: 16,
-              borderWidth: 1,
-              borderColor: '#262626',
-            }}
-          >
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                marginBottom: 4,
-              }}
-            >
-              <Ionicons
-                name="wallet-outline"
-                size={18}
-                color="#A8E63A"
-                style={{
-                  marginRight: 8,
-                }}
-              />
-
-              <Text
-                style={{
-                  color: '#FFFFFF',
-                  fontSize: 16,
-                  fontWeight: '800',
-                }}
-              >
-                Bank Details
-              </Text>
-            </View>
-
-            <Text
-              style={{
-                color: '#888888',
-                fontSize: 12,
-                marginBottom: 16,
-              }}
-            >
-              Payout account information for weekly earnings
-            </Text>
-
-            {/* Account Holder */}
-            <Text
-              style={{
-                color: '#E0E0E0',
-                fontSize: 13,
-                fontWeight: '600',
-                marginBottom: 6,
-              }}
-            >
-              Account Holder Name
-            </Text>
-
-            <TextInput
-              placeholder="Name as per Bank records"
-              placeholderTextColor="#555555"
-              value={accountHolder}
-              onChangeText={
-                setAccountHolder
+              style={
+                styles.kycHeaderRow
               }
-              style={{
-                backgroundColor: '#0D0D0D',
-                borderWidth: 1,
-                borderColor: '#333333',
-                padding: 14,
-                marginBottom: 14,
-                borderRadius: 12,
-                color: '#FFFFFF',
-              }}
-            />
-
-            {/* Bank */}
-            <Text
-              style={{
-                color: '#E0E0E0',
-                fontSize: 13,
-                fontWeight: '600',
-                marginBottom: 6,
-              }}
-            >
-              Bank Name
-            </Text>
-
-            <TextInput
-              placeholder="e.g., HDFC Bank"
-              placeholderTextColor="#555555"
-              value={bankName}
-              onChangeText={setBankName}
-              style={{
-                backgroundColor: '#0D0D0D',
-                borderWidth: 1,
-                borderColor: '#333333',
-                padding: 14,
-                marginBottom: 14,
-                borderRadius: 12,
-                color: '#FFFFFF',
-              }}
-            />
-
-            {/* Account Number */}
-            <Text
-              style={{
-                color: '#E0E0E0',
-                fontSize: 13,
-                fontWeight: '600',
-                marginBottom: 6,
-              }}
-            >
-              Account Number
-            </Text>
-
-            <TextInput
-              placeholder="Bank Account Number"
-              placeholderTextColor="#555555"
-              value={accountNumber}
-              onChangeText={
-                setAccountNumber
-              }
-              keyboardType="number-pad"
-              style={{
-                backgroundColor: '#0D0D0D',
-                borderWidth: 1,
-                borderColor: '#333333',
-                padding: 14,
-                marginBottom: 14,
-                borderRadius: 12,
-                color: '#FFFFFF',
-              }}
-            />
-
-            {/* IFSC */}
-            <Text
-              style={{
-                color: '#E0E0E0',
-                fontSize: 13,
-                fontWeight: '600',
-                marginBottom: 6,
-              }}
-            >
-              IFSC Code
-            </Text>
-
-            <TextInput
-              placeholder="e.g., HDFC0001234"
-              placeholderTextColor="#555555"
-              value={ifsc}
-              onChangeText={(val) =>
-                setIfsc(
-                  val.toUpperCase()
-                )
-              }
-              autoCapitalize="characters"
-              maxLength={11}
-              style={{
-                backgroundColor: '#0D0D0D',
-                borderWidth: 1,
-                borderColor: '#333333',
-                padding: 14,
-                marginBottom: 14,
-                borderRadius: 12,
-                color: '#FFFFFF',
-              }}
-            />
-
-            {/* UPI */}
-            <Text
-              style={{
-                color: '#E0E0E0',
-                fontSize: 13,
-                fontWeight: '600',
-                marginBottom: 6,
-              }}
-            >
-              UPI ID (Optional)
-            </Text>
-
-            <TextInput
-              placeholder="e.g., mobile@upi"
-              placeholderTextColor="#555555"
-              value={upi}
-              onChangeText={setUpi}
-              autoCapitalize="none"
-              style={{
-                backgroundColor: '#0D0D0D',
-                borderWidth: 1,
-                borderColor: '#333333',
-                padding: 14,
-                borderRadius: 12,
-                color: '#FFFFFF',
-              }}
-            />
-          </View>
-
-          {/* -------------------------------------------------
-              SECTION 7: DECLARATION
-          ------------------------------------------------- */}
-          <View
-            style={{
-              backgroundColor: '#1A1A1A',
-              borderRadius: 24,
-              padding: 20,
-              marginBottom: 20,
-              borderWidth: 1,
-              borderColor: '#262626',
-            }}
-          >
-            <Text
-              style={{
-                color: '#FFFFFF',
-                fontSize: 15,
-                fontWeight: '800',
-                marginBottom: 14,
-              }}
-            >
-              Declaration & Confirmation
-            </Text>
-
-            {/* Declaration 1 */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() =>
-                setConfirmAccurate(
-                  !confirmAccurate
-                )
-              }
-              style={{
-                flexDirection: 'row',
-                alignItems: 'flex-start',
-                marginBottom: 12,
-              }}
             >
               <View
-                style={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: 6,
-                  borderWidth: 2,
-                  borderColor:
-                    confirmAccurate
-                      ? '#A8E63A'
-                      : '#555555',
-                  backgroundColor:
-                    confirmAccurate
-                      ? '#A8E63A'
-                      : 'transparent',
-                  alignItems: 'center',
-                  justifyContent:
-                    'center',
-                  marginRight: 10,
-                  marginTop: 2,
-                }}
+                style={
+                  styles.kycHeaderTextContainer
+                }
               >
-                {confirmAccurate && (
-                  <Text
-                    style={{
-                      color: '#0D0D0D',
-                      fontSize: 11,
-                      fontWeight: 'bold',
-                    }}
-                  >
-                    ✓
-                  </Text>
-                )}
-              </View>
-
-              <Text
-                style={{
-                  color: '#CCCCCC',
-                  fontSize: 13,
-                  flex: 1,
-                  lineHeight: 18,
-                }}
-              >
-                I confirm that all information provided is accurate.
-              </Text>
-            </TouchableOpacity>
-
-            {/* Declaration 2 */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() =>
-                setAgreeTerms(
-                  !agreeTerms
-                )
-              }
-              style={{
-                flexDirection: 'row',
-                alignItems: 'flex-start',
-                marginBottom: 12,
-              }}
-            >
-              <View
-                style={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: 6,
-                  borderWidth: 2,
-                  borderColor:
-                    agreeTerms
-                      ? '#A8E63A'
-                      : '#555555',
-                  backgroundColor:
-                    agreeTerms
-                      ? '#A8E63A'
-                      : 'transparent',
-                  alignItems: 'center',
-                  justifyContent:
-                    'center',
-                  marginRight: 10,
-                  marginTop: 2,
-                }}
-              >
-                {agreeTerms && (
-                  <Text
-                    style={{
-                      color: '#0D0D0D',
-                      fontSize: 11,
-                      fontWeight: 'bold',
-                    }}
-                  >
-                    ✓
-                  </Text>
-                )}
-              </View>
-
-              <Text
-                style={{
-                  color: '#CCCCCC',
-                  fontSize: 13,
-                  flex: 1,
-                  lineHeight: 18,
-                }}
-              >
-                I agree to the Terms & Conditions and Privacy Policy.
-              </Text>
-            </TouchableOpacity>
-
-            {/* Declaration 3 */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() =>
-                setUnderstandInactive(
-                  !understandInactive
-                )
-              }
-              style={{
-                flexDirection: 'row',
-                alignItems: 'flex-start',
-              }}
-            >
-              <View
-                style={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: 6,
-                  borderWidth: 2,
-                  borderColor:
-                    understandInactive
-                      ? '#A8E63A'
-                      : '#555555',
-                  backgroundColor:
-                    understandInactive
-                      ? '#A8E63A'
-                      : 'transparent',
-                  alignItems: 'center',
-                  justifyContent:
-                    'center',
-                  marginRight: 10,
-                  marginTop: 2,
-                }}
-              >
-                {understandInactive && (
-                  <Text
-                    style={{
-                      color: '#0D0D0D',
-                      fontSize: 11,
-                      fontWeight: 'bold',
-                    }}
-                  >
-                    ✓
-                  </Text>
-                )}
-              </View>
-
-              <Text
-                style={{
-                  color: '#CCCCCC',
-                  fontSize: 13,
-                  flex: 1,
-                  lineHeight: 18,
-                }}
-              >
-                I understand that KYC verification can be completed after registration and that my rider account may remain inactive until the required verification is completed.
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* -------------------------------------------------
-              SUBMIT BUTTON
-          ------------------------------------------------- */}
-          <Animated.View
-            style={{
-              transform: [
-                {
-                  scale: buttonScale,
-                },
-              ],
-            }}
-          >
-            <TouchableOpacity
-              onPressIn={
-                handlePressIn
-              }
-              onPressOut={
-                handlePressOut
-              }
-              onPress={
-                handleRegister
-              }
-              disabled={
-                loading ||
-                !allDeclarationsChecked
-              }
-              activeOpacity={1}
-              style={{
-                backgroundColor:
-                  allDeclarationsChecked
-                    ? '#A8E63A'
-                    : '#333333',
-                opacity:
-                  allDeclarationsChecked
-                    ? 1
-                    : 0.6,
-                padding: 16,
-                borderRadius: 12,
-                alignItems: 'center',
-                justifyContent:
-                  'center',
-                height: 56,
-              }}
-            >
-              {loading ? (
-                <ActivityIndicator
-                  color="#0D0D0D"
-                />
-              ) : (
                 <Text
-                  style={{
-                    color:
-                      allDeclarationsChecked
-                        ? '#0D0D0D'
-                        : '#888888',
-                    fontWeight: 'bold',
-                    fontSize: 16,
-                  }}
+                  style={
+                    styles.sectionTitle
+                  }
                 >
-                  Submit Registration
+                  KYC Information
                 </Text>
-              )}
-            </TouchableOpacity>
-          </Animated.View>
 
-          {/* -------------------------------------------------
-              LOGIN
-          ------------------------------------------------- */}
+                <Text
+                  style={
+                    styles.optionalBadge
+                  }
+                >
+                  OPTIONAL
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.kycInfoText}>
+              You can skip KYC during registration.
+              Your account can be created now and
+              you can complete KYC later from your
+              rider profile.
+            </Text>
+
+            {renderInput(
+              'Aadhaar Number',
+              aadhaarNumber,
+              (value) =>
+                setAadhaarNumber(
+                  normalizeAadhaar(value)
+                ),
+              '12-digit Aadhaar number',
+              {
+                keyboardType:
+                  'number-pad',
+                maxLength: 12,
+              }
+            )}
+
+            {renderInput(
+              'PAN Number',
+              panNumber,
+              (value) =>
+                setPanNumber(
+                  normalizePan(value)
+                ),
+              '10-character PAN number',
+              {
+                autoCapitalize:
+                  'characters',
+                maxLength: 10,
+              }
+            )}
+
+            {renderInput(
+              'Driving Licence Number',
+              drivingLicenseNumber,
+              setDrivingLicenseNumber,
+              'Driving licence number'
+            )}
+
+            <View
+              style={
+                styles.kycLaterNotice
+              }
+            >
+              <Text
+                style={
+                  styles.kycLaterNoticeTitle
+                }
+              >
+                📋 Documents can be uploaded later
+              </Text>
+
+              <Text
+                style={
+                  styles.kycLaterNoticeText
+                }
+              >
+                Aadhaar, PAN, driving licence,
+                vehicle RC and selfie documents
+                are completed from the Complete
+                KYC section after registration.
+              </Text>
+            </View>
+          </View>
+
+          {/* ------------------------------------------------ */}
+          {/* REGISTER BUTTON */}
+          {/* ------------------------------------------------ */}
+
           <TouchableOpacity
-            onPress={() =>
-              router.replace(
-                '/(auth)/login' as any
-              )
+            style={[
+              styles.registerButton,
+              loading &&
+                styles.registerButtonDisabled,
+            ]}
+            onPress={handleRegister}
+            disabled={loading}
+            activeOpacity={0.85}
+          >
+            {loading ? (
+              <ActivityIndicator
+                color="#FFFFFF"
+              />
+            ) : (
+              <Text
+                style={
+                  styles.registerButtonText
+                }
+              >
+                Create Rider Account
+              </Text>
+            )}
+          </TouchableOpacity>
+
+          {/* ------------------------------------------------ */}
+          {/* LOGIN */}
+          {/* ------------------------------------------------ */}
+
+          <View
+            style={
+              styles.loginContainer
             }
-            style={{
-              marginTop: 20,
-              marginBottom: 24,
-              alignItems: 'center',
-            }}
           >
             <Text
-              style={{
-                color: '#666666',
-                fontSize: 14,
-              }}
+              style={
+                styles.loginText
+              }
             >
-              Already registered?{' '}
-              <Text
-                style={{
-                  color: '#2ECC71',
-                  fontWeight: '600',
-                }}
-              >
-                Log In
-              </Text>
+              Already have a rider account?
             </Text>
-          </TouchableOpacity>
-        </Animated.View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+
+            <TouchableOpacity
+              onPress={() =>
+                router.replace(
+                  '/login'
+                )
+              }
+              disabled={loading}
+            >
+              <Text
+                style={
+                  styles.loginLink
+                }
+              >
+                Login
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* ------------------------------------------------ */}
+          {/* FOOTER */}
+          {/* ------------------------------------------------ */}
+
+          <Text
+            style={
+              styles.footerText
+            }
+          >
+            By creating an account, you agree
+            to Rivo's terms and privacy policy.
+          </Text>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
+
+// ============================================================
+// STYLES
+// ============================================================
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F7F8FA',
+  },
+
+  keyboardContainer: {
+    flex: 1,
+  },
+
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 40,
+  },
+
+  header: {
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 24,
+  },
+
+  logo: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: '#22CC71',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+    shadowColor: '#22CC71',
+    shadowOffset: {
+      width: 0,
+      height: 6,
+    },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+
+  logoText: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '900',
+  },
+
+  title: {
+    color: '#0D0D0D',
+    fontSize: 25,
+    fontWeight: '900',
+  },
+
+  subtitle: {
+    color: '#64748B',
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 5,
+  },
+
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    padding: 18,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#EAEFF3',
+  },
+
+  sectionTitle: {
+    color: '#0D0D0D',
+    fontSize: 15,
+    fontWeight: '900',
+    marginBottom: 14,
+  },
+
+  fieldContainer: {
+    marginBottom: 14,
+  },
+
+  fieldLabel: {
+    color: '#0D0D0D',
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 6,
+  },
+
+  input: {
+    width: '100%',
+    minHeight: 48,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    color: '#0D0D0D',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  multilineInput: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+
+  checkboxRowActive: {
+    opacity: 1,
+  },
+
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+
+  checkboxActive: {
+    backgroundColor: '#22CC71',
+    borderColor: '#22CC71',
+  },
+
+  checkboxTick: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+
+  checkboxLabel: {
+    color: '#334155',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  optionalText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: -8,
+    marginBottom: 14,
+  },
+
+  kycHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  kycHeaderTextContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+
+  optionalBadge: {
+    color: '#22CC71',
+    backgroundColor: '#E8FBF0',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontSize: 9,
+    fontWeight: '900',
+    overflow: 'hidden',
+  },
+
+  kycInfoText: {
+    color: '#64748B',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '500',
+    marginBottom: 16,
+  },
+
+  kycLaterNotice: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 13,
+    marginTop: 2,
+  },
+
+  kycLaterNoticeTitle: {
+    color: '#334155',
+    fontSize: 12,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+
+  kycLaterNoticeText: {
+    color: '#64748B',
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: '500',
+  },
+
+  registerButton: {
+    width: '100%',
+    minHeight: 54,
+    borderRadius: 16,
+    backgroundColor: '#22CC71',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+    shadowColor: '#22CC71',
+    shadowOffset: {
+      width: 0,
+      height: 6,
+    },
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+
+  registerButtonDisabled: {
+    opacity: 0.65,
+  },
+
+  registerButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '900',
+  },
+
+  loginContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 20,
+    gap: 5,
+  },
+
+  loginText: {
+    color: '#64748B',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  loginLink: {
+    color: '#22CC71',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+
+  footerText: {
+    color: '#94A3B8',
+    fontSize: 10,
+    lineHeight: 15,
+    textAlign: 'center',
+    marginTop: 22,
+    paddingHorizontal: 20,
+  },
+});
