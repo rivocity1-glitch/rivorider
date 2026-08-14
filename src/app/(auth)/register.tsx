@@ -1,13 +1,15 @@
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+// src/app/(auth)/register.tsx
+
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -15,87 +17,248 @@ import {
 } from 'react-native';
 import { registerRider } from '../../services/auth';
 
+// ============================================================
+// OPTIONS
+// ============================================================
+
+const VEHICLE_OPTIONS = [
+  {
+    id: 'bike',
+    label: 'Bike (Motorcycle)',
+    icon: '🏍️',
+  },
+  {
+    id: 'scooty',
+    label: 'Scooty / Scooter',
+    icon: '🛵',
+  },
+  {
+    id: 'ev',
+    label: 'Electric Vehicle (EV)',
+    icon: '⚡',
+  },
+  {
+    id: 'ev_gear',
+    label: 'EV Gearbike',
+    icon: '🔋',
+  },
+  {
+    id: 'bicycle',
+    label: 'Bicycle / Cycle',
+    icon: '🚲',
+  },
+];
+
+const GENDER_OPTIONS = [
+  {
+    id: 'Male',
+    label: 'Male',
+  },
+  {
+    id: 'Female',
+    label: 'Female',
+  },
+  {
+    id: 'Other',
+    label: 'Other',
+  },
+];
+
+const BLOOD_GROUP_OPTIONS = [
+  'A+',
+  'A-',
+  'B+',
+  'B-',
+  'AB+',
+  'AB-',
+  'O+',
+  'O-',
+];
+
+const DISABILITY_OPTIONS = [
+  {
+    id: 'locomotor',
+    label: 'Locomotor / Physical Disability',
+  },
+  {
+    id: 'visual',
+    label: 'Visual / Sight Impairment',
+  },
+  {
+    id: 'hearing_speech',
+    label: 'Hearing / Speech Impairment',
+  },
+  {
+    id: 'other',
+    label: 'Other / Preferred Not to Detail',
+  },
+];
+
+// ============================================================
+// COMPONENT
+// ============================================================
+
 export default function RegisterScreen() {
-  const router = useRouter();
+  // ----------------------------------------------------------
+  // ACCOUNT
+  // ----------------------------------------------------------
 
-  const [loading, setLoading] = useState(false);
-
-  // ---------------------------------------------------------
-  // PERSONAL DETAILS
-  // ---------------------------------------------------------
-
-  const [riderName, setRiderName] = useState('');
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] =
+    useState('');
+
+  const [showPassword, setShowPassword] =
+    useState(false);
+
+  const [showConfirmPassword, setShowConfirmPassword] =
+    useState(false);
+
+  // ----------------------------------------------------------
+  // PERSONAL
+  // ----------------------------------------------------------
 
   const [gender, setGender] = useState('');
   const [bloodGroup, setBloodGroup] = useState('');
 
-  // ---------------------------------------------------------
-  // VEHICLE DETAILS
-  // ---------------------------------------------------------
+  const [isSpeciallyAbled, setIsSpeciallyAbled] =
+    useState(false);
 
-  const [vehicleType, setVehicleType] = useState('');
-  const [vehicleNumber, setVehicleNumber] = useState('');
+  const [disabilityType, setDisabilityType] =
+    useState('locomotor');
 
-  // ---------------------------------------------------------
+  const [showDisabilityDropdown, setShowDisabilityDropdown] =
+    useState(false);
+
+  // ----------------------------------------------------------
+  // VEHICLE
+  // ----------------------------------------------------------
+
+  const [vehicleType, setVehicleType] =
+    useState('bike');
+
+  const [vehicleNumber, setVehicleNumber] =
+    useState('');
+
+  // ----------------------------------------------------------
   // ADDRESS
-  // ---------------------------------------------------------
+  // ----------------------------------------------------------
 
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
-  const [state, setState] = useState('');
+  const [stateName, setStateName] = useState('');
   const [pinCode, setPinCode] = useState('');
 
-  // ---------------------------------------------------------
-  // EMERGENCY CONTACT
-  // ---------------------------------------------------------
+  // ----------------------------------------------------------
+  // EMERGENCY
+  // ----------------------------------------------------------
 
-  const [emergencyContactName, setEmergencyContactName] =
-    useState('');
-
-  const [emergencyContactPhone, setEmergencyContactPhone] =
+  const [emergencyContact, setEmergencyContact] =
     useState('');
 
   const [alternateContact, setAlternateContact] =
     useState('');
 
-  // ---------------------------------------------------------
-  // BANK DETAILS
-  // ---------------------------------------------------------
+  // ----------------------------------------------------------
+  // BANK
+  // ----------------------------------------------------------
 
   const [accountHolderName, setAccountHolderName] =
     useState('');
 
   const [bankName, setBankName] = useState('');
-  const [accountNumber, setAccountNumber] = useState('');
+
+  const [accountNumber, setAccountNumber] =
+    useState('');
+
   const [ifscCode, setIfscCode] = useState('');
+
   const [upiId, setUpiId] = useState('');
 
-  // ---------------------------------------------------------
+  // ----------------------------------------------------------
   // OPTIONAL KYC NUMBERS
-  // ---------------------------------------------------------
+  // ----------------------------------------------------------
 
   const [aadhaarNumber, setAadhaarNumber] =
     useState('');
 
-  const [panNumber, setPanNumber] = useState('');
+  const [panNumber, setPanNumber] =
+    useState('');
 
   const [drivingLicenseNumber, setDrivingLicenseNumber] =
     useState('');
 
-  const [isSpeciallyAbled, setIsSpeciallyAbled] =
+  // ----------------------------------------------------------
+  // DECLARATIONS
+  // ----------------------------------------------------------
+
+  const [confirmAccurate, setConfirmAccurate] =
     useState(false);
 
-  // ---------------------------------------------------------
-  // HELPERS
-  // ---------------------------------------------------------
+  const [agreeTerms, setAgreeTerms] =
+    useState(false);
+
+  const [understandKycOptional, setUnderstandKycOptional] =
+    useState(false);
+
+  // ----------------------------------------------------------
+  // STATE
+  // ----------------------------------------------------------
+
+  const [loading, setLoading] = useState(false);
+
+  // ----------------------------------------------------------
+  // ANIMATION
+  // ----------------------------------------------------------
+
+  const fadeAnim = useRef(
+    new Animated.Value(0)
+  ).current;
+
+  const slideAnim = useRef(
+    new Animated.Value(30)
+  ).current;
+
+  const buttonScale = useRef(
+    new Animated.Value(1)
+  ).current;
+
+  // ==========================================================
+  // EFFECT
+  // ==========================================================
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 700,
+        useNativeDriver: true,
+      }),
+
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
+  // ==========================================================
+  // NORMALIZERS
+  // ==========================================================
 
   const normalizePhone = (value: string) =>
-    value.replace(/[^0-9]/g, '').slice(0, 10);
+    value
+      .replace(/[^0-9]/g, '')
+      .slice(0, 10);
 
   const normalizeAadhaar = (value: string) =>
-    value.replace(/[^0-9]/g, '').slice(0, 12);
+    value
+      .replace(/[^0-9]/g, '')
+      .slice(0, 12);
 
   const normalizePan = (value: string) =>
     value
@@ -109,18 +272,162 @@ export default function RegisterScreen() {
       .toUpperCase()
       .slice(0, 11);
 
-  // ---------------------------------------------------------
-  // REGISTRATION
-  // ---------------------------------------------------------
+  // ==========================================================
+  // VEHICLE
+  // ==========================================================
+
+  const isNoPlateRequired = [
+    'bicycle',
+    'ev',
+  ].includes(vehicleType);
+
+  // ==========================================================
+  // PASSWORD
+  // ==========================================================
+
+  const passwordHasMinLength =
+    password.length >= 8;
+
+  const passwordHasUpper =
+    /[A-Z]/.test(password);
+
+  const passwordHasLower =
+    /[a-z]/.test(password);
+
+  const passwordHasNumber =
+    /[0-9]/.test(password);
+
+  const passwordValid =
+    passwordHasMinLength &&
+    passwordHasUpper &&
+    passwordHasLower &&
+    passwordHasNumber;
+
+  const getPasswordStrength = () => {
+    if (!password) {
+      return {
+        label: '',
+        color: '#555555',
+        score: 0,
+      };
+    }
+
+    let score = 0;
+
+    if (passwordHasMinLength) score++;
+    if (passwordHasUpper) score++;
+    if (passwordHasLower) score++;
+    if (passwordHasNumber) score++;
+
+    if (score <= 2) {
+      return {
+        label: 'Weak',
+        color: '#E74C3C',
+        score,
+      };
+    }
+
+    if (score === 3) {
+      return {
+        label: 'Medium',
+        color: '#F39C12',
+        score,
+      };
+    }
+
+    return {
+      label: 'Strong',
+      color: '#22CC71',
+      score,
+    };
+  };
+
+  const passwordStrength =
+    getPasswordStrength();
+
+  // ==========================================================
+  // BUTTON ANIMATION
+  // ==========================================================
+
+  const handlePressIn = () => {
+    Animated.spring(buttonScale, {
+      toValue: 0.96,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(buttonScale, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  // ==========================================================
+  // DECLARATIONS
+  // ==========================================================
+
+  const allDeclarationsChecked =
+    confirmAccurate &&
+    agreeTerms &&
+    understandKycOptional;
+
+  // ==========================================================
+  // REGISTER
+  // ==========================================================
 
   const handleRegister = async () => {
     if (loading) {
       return;
     }
 
-    const cleanName = riderName.trim();
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanPhone = normalizePhone(phone);
+    const cleanName =
+      fullName.trim();
+
+    const cleanEmail =
+      email.trim().toLowerCase();
+
+    const cleanPhone =
+      normalizePhone(phone);
+
+    const cleanAddress =
+      address.trim();
+
+    const cleanCity =
+      city.trim();
+
+    const cleanState =
+      stateName.trim();
+
+    const cleanPin =
+      pinCode.trim();
+
+    const cleanEmergency =
+      normalizePhone(
+        emergencyContact
+      );
+
+    const cleanAlternate =
+      normalizePhone(
+        alternateContact
+      );
+
+    const cleanAadhaar =
+      normalizeAadhaar(
+        aadhaarNumber
+      );
+
+    const cleanPan =
+      normalizePan(
+        panNumber
+      );
+
+    const cleanDl =
+      drivingLicenseNumber.trim();
+
+    // --------------------------------------------------------
+    // BASIC REQUIRED FIELDS
+    // --------------------------------------------------------
 
     if (!cleanName) {
       Alert.alert(
@@ -158,23 +465,69 @@ export default function RegisterScreen() {
       return;
     }
 
-    if (!vehicleType.trim()) {
+    if (!password) {
       Alert.alert(
-        'Missing Vehicle Type',
-        'Please enter your vehicle type.'
+        'Missing Password',
+        'Please create a password.'
       );
       return;
     }
 
-    if (!vehicleNumber.trim()) {
+    if (!passwordValid) {
+      Alert.alert(
+        'Invalid Password',
+        'Password must contain at least 8 characters, one uppercase letter, one lowercase letter and one number.'
+      );
+      return;
+    }
+
+    if (
+      password !==
+      confirmPassword
+    ) {
+      Alert.alert(
+        'Password Mismatch',
+        'Passwords do not match.'
+      );
+      return;
+    }
+
+    if (!gender) {
+      Alert.alert(
+        'Missing Gender',
+        'Please select your gender.'
+      );
+      return;
+    }
+
+    if (!bloodGroup) {
+      Alert.alert(
+        'Missing Blood Group',
+        'Please select your blood group.'
+      );
+      return;
+    }
+
+    if (!vehicleType) {
+      Alert.alert(
+        'Missing Vehicle',
+        'Please select your vehicle type.'
+      );
+      return;
+    }
+
+    if (
+      !isNoPlateRequired &&
+      !vehicleNumber.trim()
+    ) {
       Alert.alert(
         'Missing Vehicle Number',
-        'Please enter your vehicle number.'
+        'Please enter your vehicle registration number.'
       );
       return;
     }
 
-    if (!address.trim()) {
+    if (!cleanAddress) {
       Alert.alert(
         'Missing Address',
         'Please enter your address.'
@@ -182,7 +535,7 @@ export default function RegisterScreen() {
       return;
     }
 
-    if (!city.trim()) {
+    if (!cleanCity) {
       Alert.alert(
         'Missing City',
         'Please enter your city.'
@@ -190,7 +543,7 @@ export default function RegisterScreen() {
       return;
     }
 
-    if (!state.trim()) {
+    if (!cleanState) {
       Alert.alert(
         'Missing State',
         'Please enter your state.'
@@ -198,7 +551,7 @@ export default function RegisterScreen() {
       return;
     }
 
-    if (pinCode.trim().length !== 6) {
+    if (cleanPin.length !== 6) {
       Alert.alert(
         'Invalid PIN Code',
         'Please enter a valid 6-digit PIN code.'
@@ -206,9 +559,13 @@ export default function RegisterScreen() {
       return;
     }
 
+    // --------------------------------------------------------
+    // OPTIONAL EMERGENCY VALIDATION
+    // --------------------------------------------------------
+
     if (
-      emergencyContactPhone &&
-      normalizePhone(emergencyContactPhone).length !== 10
+      emergencyContact &&
+      cleanEmergency.length !== 10
     ) {
       Alert.alert(
         'Invalid Emergency Contact',
@@ -219,7 +576,7 @@ export default function RegisterScreen() {
 
     if (
       alternateContact &&
-      normalizePhone(alternateContact).length !== 10
+      cleanAlternate.length !== 10
     ) {
       Alert.alert(
         'Invalid Alternate Contact',
@@ -228,12 +585,16 @@ export default function RegisterScreen() {
       return;
     }
 
+    // --------------------------------------------------------
+    // OPTIONAL KYC NUMBER VALIDATION
+    // --------------------------------------------------------
+
     if (
       aadhaarNumber &&
-      normalizeAadhaar(aadhaarNumber).length !== 12
+      cleanAadhaar.length !== 12
     ) {
       Alert.alert(
-        'Invalid Aadhaar Number',
+        'Invalid Aadhaar',
         'Aadhaar number must contain 12 digits.'
       );
       return;
@@ -241,18 +602,18 @@ export default function RegisterScreen() {
 
     if (
       panNumber &&
-      normalizePan(panNumber).length !== 10
+      cleanPan.length !== 10
     ) {
       Alert.alert(
-        'Invalid PAN Number',
+        'Invalid PAN',
         'PAN number must contain 10 characters.'
       );
       return;
     }
 
     if (
-      drivingLicenseNumber.trim() &&
-      drivingLicenseNumber.trim().length < 5
+      drivingLicenseNumber &&
+      cleanDl.length < 5
     ) {
       Alert.alert(
         'Invalid Driving Licence',
@@ -261,101 +622,143 @@ export default function RegisterScreen() {
       return;
     }
 
+    // --------------------------------------------------------
+    // DECLARATIONS
+    // --------------------------------------------------------
+
+    if (!allDeclarationsChecked) {
+      Alert.alert(
+        'Confirm Registration',
+        'Please accept all declarations before creating your rider account.'
+      );
+      return;
+    }
+
+    // --------------------------------------------------------
+    // REGISTER
+    // --------------------------------------------------------
+
     setLoading(true);
 
     try {
+      const selectedVehicle =
+        VEHICLE_OPTIONS.find(
+          (item) =>
+            item.id === vehicleType
+        );
+
       /*
        * IMPORTANT:
        *
-       * No KYC image is uploaded here.
+       * KYC DOCUMENTS ARE NOT UPLOADED HERE.
        *
-       * Registration only creates the Auth user,
-       * riders record and rider_profiles record.
+       * Registration only sends:
        *
-       * KYC documents are completed later from
-       * the authenticated Complete KYC screen.
+       * - account information
+       * - personal information
+       * - vehicle information
+       * - address
+       * - emergency contact
+       * - bank information
+       * - optional KYC NUMBERS
+       *
+       * Aadhaar/PAN/DL/RC/selfie images are completed
+       * later from the authenticated rider profile.
        */
 
-      const rider = await registerRider({
-        rider_name: cleanName,
-        email: cleanEmail,
-        phone: cleanPhone,
+      const rider =
+        await registerRider({
+          rider_name:
+            cleanName,
 
-        vehicle_type:
-          vehicleType.trim(),
+          email:
+            cleanEmail,
 
-        vehicle_number:
-          vehicleNumber.trim().toUpperCase(),
+          phone:
+            cleanPhone,
 
-        is_specially_abled:
-          isSpeciallyAbled,
+          vehicle_type:
+            selectedVehicle
+              ? selectedVehicle.label
+              : vehicleType,
 
-        gender:
-          gender.trim() || null,
+          vehicle_number:
+            vehicleNumber.trim()
+              ? vehicleNumber
+                  .trim()
+                  .toUpperCase()
+              : 'N/A',
 
-        blood_group:
-          bloodGroup.trim() || null,
+          is_specially_abled:
+            isSpeciallyAbled,
 
-        address:
-          address.trim(),
+          gender:
+            gender || null,
 
-        city:
-          city.trim(),
+          blood_group:
+            bloodGroup || null,
 
-        state:
-          state.trim(),
+          address:
+            cleanAddress,
 
-        pin_code:
-          pinCode.trim(),
+          city:
+            cleanCity,
 
-        emergency_contact_name:
-          emergencyContactName.trim() || null,
+          state:
+            cleanState,
 
-        emergency_contact_phone:
-          normalizePhone(
-            emergencyContactPhone
-          ) || null,
+          pin_code:
+            cleanPin,
 
-        alternate_contact:
-          normalizePhone(
-            alternateContact
-          ) || null,
+          emergency_contact:
+            cleanEmergency || undefined,
 
-        account_holder_name:
-          accountHolderName.trim() || null,
+          alternate_contact:
+            cleanAlternate || undefined,
 
-        bank_name:
-          bankName.trim() || null,
+          account_holder_name:
+            accountHolderName.trim() ||
+            undefined,
 
-        account_number:
-          accountNumber.trim() || null,
+          bank_name:
+            bankName.trim() ||
+            undefined,
 
-        ifsc_code:
-          normalizeIfsc(ifscCode) || null,
+          account_number:
+            accountNumber.trim() ||
+            undefined,
 
-        upi_id:
-          upiId.trim() || null,
+          ifsc_code:
+            normalizeIfsc(
+              ifscCode
+            ) || undefined,
 
-        /*
-         * KYC numbers are optional.
-         * If entered, they are saved.
-         */
-        aadhaar_number:
-          normalizeAadhaar(aadhaarNumber) || null,
+          upi_id:
+            upiId.trim() ||
+            undefined,
 
-        pan_number:
-          normalizePan(panNumber) || null,
+          // --------------------------------------------------
+          // OPTIONAL KYC NUMBERS
+          // --------------------------------------------------
 
-        driving_license_number:
-          drivingLicenseNumber.trim() || null,
+          aadhaar_number:
+            cleanAadhaar || undefined,
 
-        /*
-         * KYC document URIs intentionally NOT passed.
-         *
-         * Even if the UI previously selected files,
-         * registration does not upload them.
-         */
-      });
+          pan_number:
+            cleanPan || undefined,
+
+          driving_license_number:
+            cleanDl || undefined,
+
+          // --------------------------------------------------
+          // NO DOCUMENT URI FIELDS.
+          //
+          // KYC images are intentionally NOT uploaded
+          // during registration.
+          // --------------------------------------------------
+
+          password,
+        });
 
       console.log(
         'Rider registration successful:',
@@ -364,12 +767,14 @@ export default function RegisterScreen() {
 
       Alert.alert(
         'Registration Successful',
-        'Your rider account has been created. KYC is optional and can be completed later from your profile.',
+        'Your Rivo rider account has been created successfully.\n\nKYC is optional during registration. You can complete your remaining KYC from your rider profile.',
         [
           {
             text: 'Continue',
             onPress: () => {
-              router.replace('/');
+              router.replace(
+                '/login'
+              );
             },
           },
         ]
@@ -380,27 +785,26 @@ export default function RegisterScreen() {
         error
       );
 
-      const message =
-        error?.message ||
-        'Unable to create your rider account. Please try again.';
-
       Alert.alert(
         'Registration Failed',
-        message
+        error?.message ||
+          'Unable to create your rider account. Please try again.'
       );
     } finally {
       setLoading(false);
     }
   };
 
-  // ---------------------------------------------------------
+  // ==========================================================
   // INPUT COMPONENT
-  // ---------------------------------------------------------
+  // ==========================================================
 
   const renderInput = (
     label: string,
     value: string,
-    onChangeText: (value: string) => void,
+    onChangeText: (
+      value: string
+    ) => void,
     placeholder: string,
     options?: {
       keyboardType?: any;
@@ -408,104 +812,354 @@ export default function RegisterScreen() {
       secureTextEntry?: boolean;
       maxLength?: number;
       multiline?: boolean;
-      editable?: boolean;
     }
   ) => {
     return (
-      <View style={styles.fieldContainer}>
-        <Text style={styles.fieldLabel}>
+      <View
+        style={{
+          marginBottom: 14,
+        }}
+      >
+        <Text
+          style={{
+            color: '#E0E0E0',
+            fontSize: 13,
+            fontWeight: '700',
+            marginBottom: 6,
+          }}
+        >
           {label}
         </Text>
 
         <TextInput
-          style={[
-            styles.input,
-            options?.multiline &&
-              styles.multilineInput,
-          ]}
           value={value}
-          onChangeText={onChangeText}
-          placeholder={placeholder}
-          placeholderTextColor="#94A3B8"
+          onChangeText={
+            onChangeText
+          }
+          placeholder={
+            placeholder
+          }
+          placeholderTextColor="#555555"
           keyboardType={
-            options?.keyboardType || 'default'
+            options?.keyboardType ||
+            'default'
           }
           autoCapitalize={
             options?.autoCapitalize ||
             'sentences'
           }
           secureTextEntry={
-            options?.secureTextEntry || false
+            options?.secureTextEntry ||
+            false
           }
-          maxLength={options?.maxLength}
+          maxLength={
+            options?.maxLength
+          }
           multiline={
-            options?.multiline || false
+            options?.multiline ||
+            false
           }
-          editable={
-            options?.editable !== false
+          textAlignVertical={
+            options?.multiline
+              ? 'top'
+              : 'center'
           }
+          style={{
+            backgroundColor:
+              '#0D0D0D',
+            borderWidth: 1,
+            borderColor:
+              '#333333',
+            borderRadius: 12,
+            paddingHorizontal: 14,
+            paddingVertical:
+              options?.multiline
+                ? 14
+                : 13,
+            minHeight:
+              options?.multiline
+                ? 85
+                : undefined,
+            color: '#FFFFFF',
+            fontSize: 14,
+          }}
         />
       </View>
     );
   };
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        style={styles.keyboardContainer}
-        behavior={
-          Platform.OS === 'ios'
-            ? 'padding'
-            : undefined
-        }
-      >
-        <ScrollView
-          contentContainerStyle={
-            styles.scrollContent
-          }
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* ------------------------------------------------ */}
-          {/* HEADER */}
-          {/* ------------------------------------------------ */}
+  // ==========================================================
+  // CHECKBOX
+  // ==========================================================
 
-          <View style={styles.header}>
-            <View style={styles.logo}>
-              <Text style={styles.logoText}>
+  const renderCheckbox = (
+    checked: boolean,
+    onPress: () => void,
+    children: React.ReactNode
+  ) => {
+    return (
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={onPress}
+        style={{
+          flexDirection:
+            'row',
+          alignItems:
+            'flex-start',
+          marginBottom: 14,
+        }}
+      >
+        <View
+          style={{
+            width: 21,
+            height: 21,
+            borderRadius: 6,
+            borderWidth: 2,
+            borderColor:
+              checked
+                ? '#A8E63A'
+                : '#555555',
+            backgroundColor:
+              checked
+                ? '#A8E63A'
+                : 'transparent',
+            alignItems:
+              'center',
+            justifyContent:
+              'center',
+            marginRight: 10,
+            marginTop: 1,
+          }}
+        >
+          {checked && (
+            <Text
+              style={{
+                color: '#0D0D0D',
+                fontSize: 12,
+                fontWeight:
+                  '900',
+              }}
+            >
+              ✓
+            </Text>
+          )}
+        </View>
+
+        <Text
+          style={{
+            flex: 1,
+            color: '#CCCCCC',
+            fontSize: 13,
+            lineHeight: 19,
+          }}
+        >
+          {children}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
+
+  // ==========================================================
+  // SECTION HEADER
+  // ==========================================================
+
+  const renderSectionHeader = (
+    icon: any,
+    title: string,
+    subtitle: string
+  ) => {
+    return (
+      <View
+        style={{
+          marginBottom: 18,
+        }}
+      >
+        <View
+          style={{
+            flexDirection:
+              'row',
+            alignItems:
+              'center',
+            marginBottom: 4,
+          }}
+        >
+          <Ionicons
+            name={icon}
+            size={19}
+            color="#A8E63A"
+            style={{
+              marginRight: 8,
+            }}
+          />
+
+          <Text
+            style={{
+              color: '#FFFFFF',
+              fontSize: 16,
+              fontWeight:
+                '900',
+            }}
+          >
+            {title}
+          </Text>
+        </View>
+
+        <Text
+          style={{
+            color: '#888888',
+            fontSize: 12,
+            lineHeight: 18,
+          }}
+        >
+          {subtitle}
+        </Text>
+      </View>
+    );
+  };
+
+  // ==========================================================
+  // RETURN
+  // ==========================================================
+
+  return (
+    <KeyboardAvoidingView
+      behavior={
+        Platform.OS === 'ios'
+          ? 'padding'
+          : 'height'
+      }
+      style={{
+        flex: 1,
+        backgroundColor:
+          '#0D0D0D',
+      }}
+    >
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={
+          false
+        }
+        contentContainerStyle={{
+          paddingVertical: 32,
+          paddingHorizontal: 20,
+          paddingBottom: 50,
+        }}
+      >
+        <Animated.View
+          style={{
+            opacity:
+              fadeAnim,
+            transform: [
+              {
+                translateY:
+                  slideAnim,
+              },
+            ],
+          }}
+        >
+          {/* ==================================================
+              HEADER
+          ================================================== */}
+
+          <View
+            style={{
+              alignItems:
+                'center',
+              marginBottom: 28,
+            }}
+          >
+            <View
+              style={{
+                width: 62,
+                height: 62,
+                borderRadius: 20,
+                backgroundColor:
+                  '#A8E63A',
+                alignItems:
+                  'center',
+                justifyContent:
+                  'center',
+                marginBottom: 14,
+              }}
+            >
+              <Text
+                style={{
+                  color:
+                    '#0D0D0D',
+                  fontSize: 28,
+                  fontWeight:
+                    '900',
+                }}
+              >
                 R
               </Text>
             </View>
 
-            <Text style={styles.title}>
+            <Text
+              style={{
+                color:
+                  '#FFFFFF',
+                fontSize: 27,
+                fontWeight:
+                  '900',
+                textAlign:
+                  'center',
+              }}
+            >
               Rider Registration
             </Text>
 
-            <Text style={styles.subtitle}>
+            <Text
+              style={{
+                color:
+                  '#888888',
+                fontSize: 13,
+                marginTop: 6,
+                textAlign:
+                  'center',
+                lineHeight: 19,
+              }}
+            >
               Create your Rivo rider account
             </Text>
           </View>
 
-          {/* ------------------------------------------------ */}
-          {/* PERSONAL DETAILS */}
-          {/* ------------------------------------------------ */}
+          {/* ==================================================
+              ACCOUNT INFORMATION
+          ================================================== */}
 
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>
-              Personal Details
-            </Text>
+          <View
+            style={{
+              backgroundColor:
+                '#1A1A1A',
+              borderRadius: 24,
+              padding: 20,
+              marginBottom: 16,
+              borderWidth: 1,
+              borderColor:
+                '#262626',
+            }}
+          >
+            {renderSectionHeader(
+              'person-circle-outline',
+              'Account Information',
+              'Create your login and basic account information.'
+            )}
 
             {renderInput(
               'Full Name *',
-              riderName,
-              setRiderName,
+              fullName,
+              setFullName,
               'Enter your full name'
             )}
 
             {renderInput(
-              'Email *',
+              'Email Address *',
               email,
-              setEmail,
+              (value) =>
+                setEmail(
+                  value.trim()
+                ),
               'you@example.com',
               {
                 keyboardType:
@@ -520,7 +1174,9 @@ export default function RegisterScreen() {
               phone,
               (value) =>
                 setPhone(
-                  normalizePhone(value)
+                  normalizePhone(
+                    value
+                  )
                 ),
               '10-digit mobile number',
               {
@@ -530,125 +1186,880 @@ export default function RegisterScreen() {
               }
             )}
 
-            {renderInput(
-              'Gender',
-              gender,
-              setGender,
-              'Male / Female / Other'
+            <Text
+              style={{
+                color:
+                  '#E0E0E0',
+                fontSize: 13,
+                fontWeight:
+                  '700',
+                marginBottom: 6,
+              }}
+            >
+              Password *
+            </Text>
+
+            <View
+              style={{
+                flexDirection:
+                  'row',
+                alignItems:
+                  'center',
+                backgroundColor:
+                  '#0D0D0D',
+                borderWidth: 1,
+                borderColor:
+                  '#333333',
+                borderRadius: 12,
+                paddingLeft: 14,
+                paddingRight: 12,
+                marginBottom: 7,
+              }}
+            >
+              <TextInput
+                value={
+                  password
+                }
+                onChangeText={
+                  setPassword
+                }
+                placeholder="Minimum 8 characters"
+                placeholderTextColor="#555555"
+                secureTextEntry={
+                  !showPassword
+                }
+                autoCapitalize="none"
+                style={{
+                  flex: 1,
+                  color:
+                    '#FFFFFF',
+                  paddingVertical: 13,
+                  fontSize: 14,
+                }}
+              />
+
+              <TouchableOpacity
+                onPress={() =>
+                  setShowPassword(
+                    (value) =>
+                      !value
+                  )
+                }
+              >
+                <Ionicons
+                  name={
+                    showPassword
+                      ? 'eye-off-outline'
+                      : 'eye-outline'
+                  }
+                  size={21}
+                  color="#888888"
+                />
+              </TouchableOpacity>
+            </View>
+
+            {password.length >
+              0 && (
+              <View
+                style={{
+                  marginBottom:
+                    14,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection:
+                      'row',
+                    justifyContent:
+                      'space-between',
+                    marginBottom:
+                      5,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color:
+                        '#777777',
+                      fontSize: 11,
+                    }}
+                  >
+                    Password strength
+                  </Text>
+
+                  <Text
+                    style={{
+                      color:
+                        passwordStrength.color,
+                      fontSize: 11,
+                      fontWeight:
+                        '800',
+                    }}
+                  >
+                    {
+                      passwordStrength.label
+                    }
+                  </Text>
+                </View>
+
+                <View
+                  style={{
+                    flexDirection:
+                      'row',
+                    gap: 4,
+                  }}
+                >
+                  {[1, 2, 3, 4].map(
+                    (step) => (
+                      <View
+                        key={
+                          step
+                        }
+                        style={{
+                          flex: 1,
+                          height: 4,
+                          borderRadius: 3,
+                          backgroundColor:
+                            step <=
+                            passwordStrength.score
+                              ? passwordStrength.color
+                              : '#292929',
+                        }}
+                      />
+                    )
+                  )}
+                </View>
+              </View>
             )}
 
-            {renderInput(
-              'Blood Group',
-              bloodGroup,
-              setBloodGroup,
-              'e.g. O+'
+            <Text
+              style={{
+                color:
+                  '#E0E0E0',
+                fontSize: 13,
+                fontWeight:
+                  '700',
+                marginBottom: 6,
+              }}
+            >
+              Confirm Password *
+            </Text>
+
+            <View
+              style={{
+                flexDirection:
+                  'row',
+                alignItems:
+                  'center',
+                backgroundColor:
+                  '#0D0D0D',
+                borderWidth: 1,
+                borderColor:
+                  '#333333',
+                borderRadius: 12,
+                paddingLeft: 14,
+                paddingRight: 12,
+              }}
+            >
+              <TextInput
+                value={
+                  confirmPassword
+                }
+                onChangeText={
+                  setConfirmPassword
+                }
+                placeholder="Re-enter password"
+                placeholderTextColor="#555555"
+                secureTextEntry={
+                  !showConfirmPassword
+                }
+                autoCapitalize="none"
+                style={{
+                  flex: 1,
+                  color:
+                    '#FFFFFF',
+                  paddingVertical: 13,
+                  fontSize: 14,
+                }}
+              />
+
+              <TouchableOpacity
+                onPress={() =>
+                  setShowConfirmPassword(
+                    (value) =>
+                      !value
+                  )
+                }
+              >
+                <Ionicons
+                  name={
+                    showConfirmPassword
+                      ? 'eye-off-outline'
+                      : 'eye-outline'
+                  }
+                  size={21}
+                  color="#888888"
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* ==================================================
+              PERSONAL DETAILS
+          ================================================== */}
+
+          <View
+            style={{
+              backgroundColor:
+                '#1A1A1A',
+              borderRadius: 24,
+              padding: 20,
+              marginBottom: 16,
+              borderWidth: 1,
+              borderColor:
+                '#262626',
+            }}
+          >
+            {renderSectionHeader(
+              'male-female-outline',
+              'Personal Details',
+              'Provide your personal information.'
+            )}
+
+            <Text
+              style={{
+                color:
+                  '#E0E0E0',
+                fontSize: 13,
+                fontWeight:
+                  '700',
+                marginBottom: 8,
+              }}
+            >
+              Gender *
+            </Text>
+
+            <View
+              style={{
+                flexDirection:
+                  'row',
+                flexWrap:
+                  'wrap',
+                gap: 8,
+                marginBottom:
+                  16,
+              }}
+            >
+              {GENDER_OPTIONS.map(
+                (option) => {
+                  const selected =
+                    gender ===
+                    option.id;
+
+                  return (
+                    <TouchableOpacity
+                      key={
+                        option.id
+                      }
+                      onPress={() =>
+                        setGender(
+                          option.id
+                        )
+                      }
+                      activeOpacity={
+                        0.8
+                      }
+                      style={{
+                        paddingHorizontal:
+                          16,
+                        paddingVertical:
+                          10,
+                        borderRadius:
+                          10,
+                        backgroundColor:
+                          selected
+                            ? '#A8E63A'
+                            : '#0D0D0D',
+                        borderWidth: 1,
+                        borderColor:
+                          selected
+                            ? '#A8E63A'
+                            : '#333333',
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            selected
+                              ? '#0D0D0D'
+                              : '#CCCCCC',
+                          fontSize:
+                            13,
+                          fontWeight:
+                            '700',
+                        }}
+                      >
+                        {
+                          option.label
+                        }
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                }
+              )}
+            </View>
+
+            <Text
+              style={{
+                color:
+                  '#E0E0E0',
+                fontSize: 13,
+                fontWeight:
+                  '700',
+                marginBottom: 8,
+              }}
+            >
+              Blood Group *
+            </Text>
+
+            <View
+              style={{
+                flexDirection:
+                  'row',
+                flexWrap:
+                  'wrap',
+                gap: 8,
+                marginBottom:
+                  16,
+              }}
+            >
+              {BLOOD_GROUP_OPTIONS.map(
+                (group) => {
+                  const selected =
+                    bloodGroup ===
+                    group;
+
+                  return (
+                    <TouchableOpacity
+                      key={
+                        group
+                      }
+                      onPress={() =>
+                        setBloodGroup(
+                          group
+                        )
+                      }
+                      style={{
+                        paddingHorizontal:
+                          14,
+                        paddingVertical:
+                          10,
+                        borderRadius:
+                          10,
+                        backgroundColor:
+                          selected
+                            ? '#A8E63A'
+                            : '#0D0D0D',
+                        borderWidth: 1,
+                        borderColor:
+                          selected
+                            ? '#A8E63A'
+                            : '#333333',
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            selected
+                              ? '#0D0D0D'
+                              : '#CCCCCC',
+                          fontSize:
+                            13,
+                          fontWeight:
+                            '700',
+                        }}
+                      >
+                        {
+                          group
+                        }
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                }
+              )}
+            </View>
+
+            <TouchableOpacity
+              activeOpacity={
+                0.8
+              }
+              onPress={() => {
+                const next =
+                  !isSpeciallyAbled;
+
+                setIsSpeciallyAbled(
+                  next
+                );
+
+                setShowDisabilityDropdown(
+                  next
+                );
+              }}
+              style={{
+                flexDirection:
+                  'row',
+                alignItems:
+                  'center',
+                justifyContent:
+                  'space-between',
+                backgroundColor:
+                  isSpeciallyAbled
+                    ? '#242424'
+                    : '#0D0D0D',
+                borderWidth: 1,
+                borderColor:
+                  isSpeciallyAbled
+                    ? '#A8E63A'
+                    : '#333333',
+                borderRadius:
+                  12,
+                padding: 14,
+              }}
+            >
+              <View
+                style={{
+                  flex: 1,
+                  paddingRight:
+                    10,
+                }}
+              >
+                <Text
+                  style={{
+                    color:
+                      '#FFFFFF',
+                    fontSize:
+                      13,
+                    fontWeight:
+                      '700',
+                  }}
+                >
+                  Blessed by Nature / Specially Abled 💚
+                </Text>
+
+                <Text
+                  style={{
+                    color:
+                      '#777777',
+                    fontSize:
+                      11,
+                    marginTop:
+                      3,
+                    lineHeight:
+                      16,
+                  }}
+                >
+                  Select this if you require accessible delivery assignments.
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius:
+                    6,
+                  borderWidth: 2,
+                  borderColor:
+                    isSpeciallyAbled
+                      ? '#A8E63A'
+                      : '#555555',
+                  backgroundColor:
+                    isSpeciallyAbled
+                      ? '#A8E63A'
+                      : 'transparent',
+                  alignItems:
+                    'center',
+                  justifyContent:
+                    'center',
+                }}
+              >
+                {isSpeciallyAbled && (
+                  <Text
+                    style={{
+                      color:
+                        '#0D0D0D',
+                      fontWeight:
+                        '900',
+                    }}
+                  >
+                    ✓
+                  </Text>
+                )}
+              </View>
+            </TouchableOpacity>
+
+            {isSpeciallyAbled && (
+              <View
+                style={{
+                  marginTop:
+                    12,
+                  backgroundColor:
+                    '#0D0D0D',
+                  borderRadius:
+                    12,
+                  borderWidth: 1,
+                  borderColor:
+                    '#333333',
+                  padding: 12,
+                }}
+              >
+                <TouchableOpacity
+                  onPress={() =>
+                    setShowDisabilityDropdown(
+                      (value) =>
+                        !value
+                    )
+                  }
+                  style={{
+                    flexDirection:
+                      'row',
+                    justifyContent:
+                      'space-between',
+                    alignItems:
+                      'center',
+                  }}
+                >
+                  <View
+                    style={{
+                      flex: 1,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color:
+                          '#777777',
+                        fontSize:
+                          10,
+                        fontWeight:
+                          '800',
+                        textTransform:
+                          'uppercase',
+                      }}
+                    >
+                      Disability Category
+                    </Text>
+
+                    <Text
+                      style={{
+                        color:
+                          '#A8E63A',
+                        fontSize:
+                          13,
+                        fontWeight:
+                          '700',
+                        marginTop:
+                          3,
+                      }}
+                    >
+                      {
+                        DISABILITY_OPTIONS.find(
+                          (item) =>
+                            item.id ===
+                            disabilityType
+                        )
+                          ?.label
+                      }
+                    </Text>
+                  </View>
+
+                  <Ionicons
+                    name={
+                      showDisabilityDropdown
+                        ? 'chevron-up'
+                        : 'chevron-down'
+                    }
+                    size={
+                      18
+                    }
+                    color="#A8E63A"
+                  />
+                </TouchableOpacity>
+
+                {showDisabilityDropdown &&
+                  DISABILITY_OPTIONS.map(
+                    (
+                      option
+                    ) => (
+                      <TouchableOpacity
+                        key={
+                          option.id
+                        }
+                        onPress={() => {
+                          setDisabilityType(
+                            option.id
+                          );
+
+                          setShowDisabilityDropdown(
+                            false
+                          );
+                        }}
+                        style={{
+                          paddingVertical:
+                            10,
+                          paddingHorizontal:
+                            8,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color:
+                              disabilityType ===
+                              option.id
+                                ? '#A8E63A'
+                                : '#CCCCCC',
+                            fontSize:
+                              13,
+                            fontWeight:
+                              disabilityType ===
+                              option.id
+                                ? '800'
+                                : '500',
+                          }}
+                        >
+                          {
+                            option.label
+                          }
+                        </Text>
+                      </TouchableOpacity>
+                    )
+                  )}
+              </View>
             )}
           </View>
 
-          {/* ------------------------------------------------ */}
-          {/* VEHICLE DETAILS */}
-          {/* ------------------------------------------------ */}
+          {/* ==================================================
+              VEHICLE DETAILS
+          ================================================== */}
 
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>
-              Vehicle Details
-            </Text>
-
-            {renderInput(
-              'Vehicle Type *',
-              vehicleType,
-              setVehicleType,
-              'Bike / Scooter / Cycle'
+          <View
+            style={{
+              backgroundColor:
+                '#1A1A1A',
+              borderRadius: 24,
+              padding: 20,
+              marginBottom: 16,
+              borderWidth: 1,
+              borderColor:
+                '#262626',
+            }}
+          >
+            {renderSectionHeader(
+              'bicycle-outline',
+              'Vehicle Details',
+              'Select your vehicle and provide its registration information.'
             )}
 
+            <Text
+              style={{
+                color:
+                  '#E0E0E0',
+                fontSize: 13,
+                fontWeight:
+                  '700',
+                marginBottom: 8,
+              }}
+            >
+              Vehicle Type *
+            </Text>
+
+            <View
+              style={{
+                flexDirection:
+                  'row',
+                flexWrap:
+                  'wrap',
+                gap: 8,
+                marginBottom:
+                  16,
+              }}
+            >
+              {VEHICLE_OPTIONS.map(
+                (option) => {
+                  const selected =
+                    vehicleType ===
+                    option.id;
+
+                  return (
+                    <TouchableOpacity
+                      key={
+                        option.id
+                      }
+                      activeOpacity={
+                        0.8
+                      }
+                      onPress={() =>
+                        setVehicleType(
+                          option.id
+                        )
+                      }
+                      style={{
+                        flexDirection:
+                          'row',
+                        alignItems:
+                          'center',
+                        backgroundColor:
+                          selected
+                            ? '#A8E63A'
+                            : '#0D0D0D',
+                        borderWidth: 1,
+                        borderColor:
+                          selected
+                            ? '#A8E63A'
+                            : '#333333',
+                        paddingHorizontal:
+                          12,
+                        paddingVertical:
+                          10,
+                        borderRadius:
+                          10,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize:
+                            15,
+                          marginRight:
+                            6,
+                        }}
+                      >
+                        {
+                          option.icon
+                        }
+                      </Text>
+
+                      <Text
+                        style={{
+                          color:
+                            selected
+                              ? '#0D0D0D'
+                              : '#CCCCCC',
+                          fontSize:
+                            12,
+                          fontWeight:
+                            '700',
+                        }}
+                      >
+                        {
+                          option.label
+                        }
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                }
+              )}
+            </View>
+
             {renderInput(
-              'Vehicle Number *',
+              `Vehicle Registration Number ${
+                isNoPlateRequired
+                  ? '(Optional)'
+                  : '*'
+              }`,
               vehicleNumber,
               (value) =>
                 setVehicleNumber(
                   value.toUpperCase()
                 ),
-              'e.g. MH12AB1234',
+              isNoPlateRequired
+                ? 'Optional for this vehicle'
+                : 'e.g. MH12AB1234',
               {
                 autoCapitalize:
                   'characters',
               }
             )}
 
-            <TouchableOpacity
-              style={[
-                styles.checkboxRow,
-                isSpeciallyAbled &&
-                  styles.checkboxRowActive,
-              ]}
-              onPress={() =>
-                setIsSpeciallyAbled(
-                  (previous) =>
-                    !previous
-                )
-              }
-              activeOpacity={0.8}
-            >
-              <View
-                style={[
-                  styles.checkbox,
-                  isSpeciallyAbled &&
-                    styles.checkboxActive,
-                ]}
-              >
-                {isSpeciallyAbled && (
-                  <Text
-                    style={
-                      styles.checkboxTick
-                    }
-                  >
-                    ✓
-                  </Text>
-                )}
-              </View>
-
+            {isNoPlateRequired && (
               <Text
-                style={
-                  styles.checkboxLabel
-                }
+                style={{
+                  color:
+                    '#777777',
+                  fontSize:
+                    11,
+                  marginTop:
+                    -8,
+                }}
               >
-                I am specially abled
+                Vehicle registration number is optional for Bicycle and EV.
               </Text>
-            </TouchableOpacity>
+            )}
           </View>
 
-          {/* ------------------------------------------------ */}
-          {/* ADDRESS */}
-          {/* ------------------------------------------------ */}
+          {/* ==================================================
+              ADDRESS
+          ================================================== */}
 
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>
-              Address
-            </Text>
+          <View
+            style={{
+              backgroundColor:
+                '#1A1A1A',
+              borderRadius: 24,
+              padding: 20,
+              marginBottom: 16,
+              borderWidth: 1,
+              borderColor:
+                '#262626',
+            }}
+          >
+            {renderSectionHeader(
+              'location-outline',
+              'Address Details',
+              'Enter your residential address and contact information.'
+            )}
 
             {renderInput(
               'Address *',
               address,
               setAddress,
-              'House / Street / Area',
+              'House / Flat / Street / Area',
               {
-                multiline: true,
+                multiline:
+                  true,
               }
             )}
 
-            {renderInput(
-              'City *',
-              city,
-              setCity,
-              'City'
-            )}
+            <View
+              style={{
+                flexDirection:
+                  'row',
+                gap: 10,
+              }}
+            >
+              <View
+                style={{
+                  flex: 1,
+                }}
+              >
+                {renderInput(
+                  'City *',
+                  city,
+                  setCity,
+                  'City'
+                )}
+              </View>
 
-            {renderInput(
-              'State *',
-              state,
-              setState,
-              'State'
-            )}
+              <View
+                style={{
+                  flex: 1,
+                }}
+              >
+                {renderInput(
+                  'State *',
+                  stateName,
+                  setStateName,
+                  'State'
+                )}
+              </View>
+            </View>
 
             {renderInput(
               'PIN Code *',
@@ -660,7 +2071,10 @@ export default function RegisterScreen() {
                       /[^0-9]/g,
                       ''
                     )
-                    .slice(0, 6)
+                    .slice(
+                      0,
+                      6
+                    )
                 ),
               '6-digit PIN code',
               {
@@ -671,30 +2085,38 @@ export default function RegisterScreen() {
             )}
           </View>
 
-          {/* ------------------------------------------------ */}
-          {/* EMERGENCY CONTACT */}
-          {/* ------------------------------------------------ */}
+          {/* ==================================================
+              EMERGENCY
+          ================================================== */}
 
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>
-              Emergency Contact
-            </Text>
-
-            {renderInput(
-              'Contact Name',
-              emergencyContactName,
-              setEmergencyContactName,
-              'Emergency contact name'
+          <View
+            style={{
+              backgroundColor:
+                '#1A1A1A',
+              borderRadius: 24,
+              padding: 20,
+              marginBottom: 16,
+              borderWidth: 1,
+              borderColor:
+                '#262626',
+            }}
+          >
+            {renderSectionHeader(
+              'call-outline',
+              'Emergency Contact',
+              'Keep an emergency contact available for rider safety.'
             )}
 
             {renderInput(
-              'Contact Number',
-              emergencyContactPhone,
+              'Emergency Contact Number',
+              emergencyContact,
               (value) =>
-                setEmergencyContactPhone(
-                  normalizePhone(value)
+                setEmergencyContact(
+                  normalizePhone(
+                    value
+                  )
                 ),
-              '10-digit mobile number',
+              '10-digit emergency number',
               {
                 keyboardType:
                   'phone-pad',
@@ -707,7 +2129,9 @@ export default function RegisterScreen() {
               alternateContact,
               (value) =>
                 setAlternateContact(
-                  normalizePhone(value)
+                  normalizePhone(
+                    value
+                  )
                 ),
               'Optional alternate number',
               {
@@ -718,31 +2142,40 @@ export default function RegisterScreen() {
             )}
           </View>
 
-          {/* ------------------------------------------------ */}
-          {/* BANK DETAILS */}
-          {/* ------------------------------------------------ */}
+          {/* ==================================================
+              BANK
+          ================================================== */}
 
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>
-              Bank Details
-            </Text>
-
-            <Text style={styles.optionalText}>
-              Optional — you can add these later.
-            </Text>
+          <View
+            style={{
+              backgroundColor:
+                '#1A1A1A',
+              borderRadius: 24,
+              padding: 20,
+              marginBottom: 16,
+              borderWidth: 1,
+              borderColor:
+                '#262626',
+            }}
+          >
+            {renderSectionHeader(
+              'wallet-outline',
+              'Bank Details',
+              'Optional payout information. You can add or update it later.'
+            )}
 
             {renderInput(
               'Account Holder Name',
               accountHolderName,
               setAccountHolderName,
-              'Account holder name'
+              'Name as per bank records'
             )}
 
             {renderInput(
               'Bank Name',
               bankName,
               setBankName,
-              'Bank name'
+              'e.g. HDFC Bank'
             )}
 
             {renderInput(
@@ -761,7 +2194,9 @@ export default function RegisterScreen() {
               ifscCode,
               (value) =>
                 setIfscCode(
-                  normalizeIfsc(value)
+                  normalizeIfsc(
+                    value
+                  )
                 ),
               'e.g. SBIN0001234',
               {
@@ -783,52 +2218,126 @@ export default function RegisterScreen() {
             )}
           </View>
 
-          {/* ------------------------------------------------ */}
-          {/* OPTIONAL KYC */}
-          {/* ------------------------------------------------ */}
+          {/* ==================================================
+              KYC
+          ================================================== */}
 
-          <View style={styles.card}>
+          <View
+            style={{
+              backgroundColor:
+                '#1A1A1A',
+              borderRadius: 24,
+              padding: 20,
+              marginBottom: 16,
+              borderWidth: 1,
+              borderColor:
+                '#262626',
+            }}
+          >
             <View
-              style={
-                styles.kycHeaderRow
-              }
+              style={{
+                flexDirection:
+                  'row',
+                justifyContent:
+                  'space-between',
+                alignItems:
+                  'flex-start',
+                marginBottom:
+                  8,
+              }}
             >
               <View
-                style={
-                  styles.kycHeaderTextContainer
-                }
+                style={{
+                  flex: 1,
+                  paddingRight:
+                    10,
+                }}
+              >
+                {renderSectionHeader(
+                  'shield-checkmark-outline',
+                  'KYC Information',
+                  'Provide KYC numbers now if available.'
+                )}
+              </View>
+
+              <View
+                style={{
+                  backgroundColor:
+                    '#24351E',
+                  borderRadius:
+                    8,
+                  paddingHorizontal:
+                    9,
+                  paddingVertical:
+                    5,
+                }}
               >
                 <Text
-                  style={
-                    styles.sectionTitle
-                  }
-                >
-                  KYC Information
-                </Text>
-
-                <Text
-                  style={
-                    styles.optionalBadge
-                  }
+                  style={{
+                    color:
+                      '#A8E63A',
+                    fontSize:
+                      9,
+                    fontWeight:
+                      '900',
+                  }}
                 >
                   OPTIONAL
                 </Text>
               </View>
             </View>
 
-            <Text style={styles.kycInfoText}>
-              You can skip KYC during registration.
-              Your account can be created now and
-              you can complete KYC later from your
-              rider profile.
-            </Text>
+            <View
+              style={{
+                backgroundColor:
+                  '#101810',
+                borderWidth: 1,
+                borderColor:
+                  '#31402B',
+                borderRadius:
+                  12,
+                padding: 13,
+                marginBottom:
+                  16,
+              }}
+            >
+              <Text
+                style={{
+                  color:
+                    '#A8E63A',
+                  fontSize:
+                    12,
+                  fontWeight:
+                    '800',
+                  marginBottom:
+                    4,
+                }}
+              >
+                KYC can be completed later
+              </Text>
+
+              <Text
+                style={{
+                  color:
+                    '#888888',
+                  fontSize:
+                    11,
+                  lineHeight:
+                    17,
+                }}
+              >
+                You do not need to provide KYC during registration. Missing Aadhaar, PAN, driving licence, RC or selfie documents can be completed later from your rider profile.
+              </Text>
+            </View>
 
             {renderInput(
               'Aadhaar Number',
               aadhaarNumber,
               (value) =>
                 setAadhaarNumber(
-                  normalizeAadhaar(value)
+                  normalizeAadhaar(
+                    value
+                  )
                 ),
               '12-digit Aadhaar number',
               {
@@ -843,7 +2352,9 @@ export default function RegisterScreen() {
               panNumber,
               (value) =>
                 setPanNumber(
-                  normalizePan(value)
+                  normalizePan(
+                    value
+                  )
                 ),
               '10-character PAN number',
               {
@@ -857,382 +2368,231 @@ export default function RegisterScreen() {
               'Driving Licence Number',
               drivingLicenseNumber,
               setDrivingLicenseNumber,
-              'Driving licence number'
+              'Driving licence number',
+              {
+                autoCapitalize:
+                  'characters',
+              }
             )}
 
             <View
-              style={
-                styles.kycLaterNotice
-              }
+              style={{
+                borderTopWidth: 1,
+                borderTopColor:
+                  '#292929',
+                paddingTop: 14,
+              }}
             >
               <Text
-                style={
-                  styles.kycLaterNoticeTitle
-                }
+                style={{
+                  color:
+                    '#777777',
+                  fontSize:
+                    11,
+                  lineHeight:
+                    17,
+                }}
               >
-                📋 Documents can be uploaded later
-              </Text>
-
-              <Text
-                style={
-                  styles.kycLaterNoticeText
-                }
-              >
-                Aadhaar, PAN, driving licence,
-                vehicle RC and selfie documents
-                are completed from the Complete
-                KYC section after registration.
+                📋 Document uploads are intentionally handled after registration. This prevents a storage upload failure from preventing rider account creation.
               </Text>
             </View>
           </View>
 
-          {/* ------------------------------------------------ */}
-          {/* REGISTER BUTTON */}
-          {/* ------------------------------------------------ */}
-
-          <TouchableOpacity
-            style={[
-              styles.registerButton,
-              loading &&
-                styles.registerButtonDisabled,
-            ]}
-            onPress={handleRegister}
-            disabled={loading}
-            activeOpacity={0.85}
-          >
-            {loading ? (
-              <ActivityIndicator
-                color="#FFFFFF"
-              />
-            ) : (
-              <Text
-                style={
-                  styles.registerButtonText
-                }
-              >
-                Create Rider Account
-              </Text>
-            )}
-          </TouchableOpacity>
-
-          {/* ------------------------------------------------ */}
-          {/* LOGIN */}
-          {/* ------------------------------------------------ */}
+          {/* ==================================================
+              DECLARATION
+          ================================================== */}
 
           <View
-            style={
-              styles.loginContainer
-            }
+            style={{
+              backgroundColor:
+                '#1A1A1A',
+              borderRadius: 24,
+              padding: 20,
+              marginBottom: 20,
+              borderWidth: 1,
+              borderColor:
+                '#262626',
+            }}
           >
             <Text
-              style={
-                styles.loginText
-              }
+              style={{
+                color:
+                  '#FFFFFF',
+                fontSize:
+                  16,
+                fontWeight:
+                  '900',
+                marginBottom:
+                  16,
+              }}
             >
-              Already have a rider account?
+              Declaration & Confirmation
             </Text>
 
+            {renderCheckbox(
+              confirmAccurate,
+              () =>
+                setConfirmAccurate(
+                  (value) =>
+                    !value
+                ),
+              'I confirm that all information provided by me is accurate.'
+            )}
+
+            {renderCheckbox(
+              agreeTerms,
+              () =>
+                setAgreeTerms(
+                  (value) =>
+                    !value
+                ),
+              'I agree to the Rivo Terms & Conditions and Privacy Policy.'
+            )}
+
+            {renderCheckbox(
+              understandKycOptional,
+              () =>
+                setUnderstandKycOptional(
+                  (value) =>
+                    !value
+                ),
+              'I understand that KYC is optional during registration and that I can complete missing KYC documents later from my rider profile.'
+            )}
+          </View>
+
+          {/* ==================================================
+              SUBMIT
+          ================================================== */}
+
+          <Animated.View
+            style={{
+              transform: [
+                {
+                  scale:
+                    buttonScale,
+                },
+              ],
+            }}
+          >
             <TouchableOpacity
-              onPress={() =>
-                router.replace(
-                  '/login'
-                )
+              activeOpacity={
+                1
               }
-              disabled={loading}
+              onPressIn={
+                handlePressIn
+              }
+              onPressOut={
+                handlePressOut
+              }
+              onPress={
+                handleRegister
+              }
+              disabled={
+                loading ||
+                !allDeclarationsChecked
+              }
+              style={{
+                height: 56,
+                borderRadius: 14,
+                backgroundColor:
+                  allDeclarationsChecked
+                    ? '#A8E63A'
+                    : '#333333',
+                opacity:
+                  allDeclarationsChecked
+                    ? 1
+                    : 0.6,
+                alignItems:
+                  'center',
+                justifyContent:
+                  'center',
+              }}
             >
+              {loading ? (
+                <ActivityIndicator
+                  size="small"
+                  color="#0D0D0D"
+                />
+              ) : (
+                <Text
+                  style={{
+                    color:
+                      allDeclarationsChecked
+                        ? '#0D0D0D'
+                        : '#888888',
+                    fontSize:
+                      16,
+                    fontWeight:
+                      '900',
+                  }}
+                >
+                  Create Rider Account
+                </Text>
+              )}
+            </TouchableOpacity>
+          </Animated.View>
+
+          {/* ==================================================
+              LOGIN
+          ================================================== */}
+
+          <TouchableOpacity
+            disabled={
+              loading
+            }
+            onPress={() =>
+              router.replace(
+                '/login'
+              )
+            }
+            style={{
+              alignItems:
+                'center',
+              marginTop: 20,
+              marginBottom:
+                24,
+            }}
+          >
+            <Text
+              style={{
+                color:
+                  '#777777',
+                fontSize:
+                  13,
+              }}
+            >
+              Already have a rider account?{' '}
               <Text
-                style={
-                  styles.loginLink
-                }
+                style={{
+                  color:
+                    '#A8E63A',
+                  fontWeight:
+                    '800',
+                }}
               >
                 Login
               </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* ------------------------------------------------ */}
-          {/* FOOTER */}
-          {/* ------------------------------------------------ */}
+            </Text>
+          </TouchableOpacity>
 
           <Text
-            style={
-              styles.footerText
-            }
+            style={{
+              color:
+                '#555555',
+              fontSize:
+                10,
+              lineHeight:
+                15,
+              textAlign:
+                'center',
+              paddingHorizontal:
+                20,
+            }}
           >
-            By creating an account, you agree
-            to Rivo's terms and privacy policy.
+            By creating a rider account, you agree to Rivo's terms and privacy policy.
           </Text>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        </Animated.View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
-}
-
-// ============================================================
-// STYLES
-// ============================================================
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F7F8FA',
-  },
-
-  keyboardContainer: {
-    flex: 1,
-  },
-
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-
-  header: {
-    alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 24,
-  },
-
-  logo: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: '#22CC71',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-    shadowColor: '#22CC71',
-    shadowOffset: {
-      width: 0,
-      height: 6,
-    },
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-
-  logoText: {
-    color: '#FFFFFF',
-    fontSize: 28,
-    fontWeight: '900',
-  },
-
-  title: {
-    color: '#0D0D0D',
-    fontSize: 25,
-    fontWeight: '900',
-  },
-
-  subtitle: {
-    color: '#64748B',
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: 5,
-  },
-
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 22,
-    padding: 18,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: '#EAEFF3',
-  },
-
-  sectionTitle: {
-    color: '#0D0D0D',
-    fontSize: 15,
-    fontWeight: '900',
-    marginBottom: 14,
-  },
-
-  fieldContainer: {
-    marginBottom: 14,
-  },
-
-  fieldLabel: {
-    color: '#0D0D0D',
-    fontSize: 11,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    marginBottom: 6,
-  },
-
-  input: {
-    width: '100%',
-    minHeight: 48,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    backgroundColor: '#F8FAFC',
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    color: '#0D0D0D',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-
-  multilineInput: {
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
-
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-
-  checkboxRowActive: {
-    opacity: 1,
-  },
-
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: '#CBD5E1',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-
-  checkboxActive: {
-    backgroundColor: '#22CC71',
-    borderColor: '#22CC71',
-  },
-
-  checkboxTick: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '900',
-  },
-
-  checkboxLabel: {
-    color: '#334155',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-
-  optionalText: {
-    color: '#94A3B8',
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: -8,
-    marginBottom: 14,
-  },
-
-  kycHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-
-  kycHeaderTextContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-
-  optionalBadge: {
-    color: '#22CC71',
-    backgroundColor: '#E8FBF0',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    fontSize: 9,
-    fontWeight: '900',
-    overflow: 'hidden',
-  },
-
-  kycInfoText: {
-    color: '#64748B',
-    fontSize: 12,
-    lineHeight: 18,
-    fontWeight: '500',
-    marginBottom: 16,
-  },
-
-  kycLaterNotice: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    padding: 13,
-    marginTop: 2,
-  },
-
-  kycLaterNoticeTitle: {
-    color: '#334155',
-    fontSize: 12,
-    fontWeight: '800',
-    marginBottom: 4,
-  },
-
-  kycLaterNoticeText: {
-    color: '#64748B',
-    fontSize: 11,
-    lineHeight: 16,
-    fontWeight: '500',
-  },
-
-  registerButton: {
-    width: '100%',
-    minHeight: 54,
-    borderRadius: 16,
-    backgroundColor: '#22CC71',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 4,
-    shadowColor: '#22CC71',
-    shadowOffset: {
-      width: 0,
-      height: 6,
-    },
-    shadowOpacity: 0.16,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-
-  registerButtonDisabled: {
-    opacity: 0.65,
-  },
-
-  registerButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '900',
-  },
-
-  loginContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 20,
-    gap: 5,
-  },
-
-  loginText: {
-    color: '#64748B',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-
-  loginLink: {
-    color: '#22CC71',
-    fontSize: 13,
-    fontWeight: '900',
-  },
-
-  footerText: {
-    color: '#94A3B8',
-    fontSize: 10,
-    lineHeight: 15,
-    textAlign: 'center',
-    marginTop: 22,
-    paddingHorizontal: 20,
-  },
-});
+            }
