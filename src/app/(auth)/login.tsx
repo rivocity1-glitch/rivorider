@@ -34,16 +34,16 @@ export default function LoginScreen() {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 800,
+        duration: 500,
         useNativeDriver: true,
       }),
       Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 600,
+        duration: 400,
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+  }, [fadeAnim, slideAnim]);
 
   const handlePressIn = () => {
     Animated.spring(buttonScale, {
@@ -88,7 +88,14 @@ export default function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={{ flex: 1, backgroundColor: theme.bg }}
     >
-      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }} bounces={false}>
+      <ScrollView
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: 'center',
+          paddingVertical: 24,
+        }}
+        bounces={false}
+      >
         <Animated.View
           style={{
             padding: 24,
@@ -96,26 +103,7 @@ export default function LoginScreen() {
             transform: [{ translateY: slideAnim }],
           }}
         >
-          {/* Brand/Header */}
           <View style={{ alignItems: 'center', marginBottom: 40 }}>
-            <View
-              style={{
-                width: 80,
-                height: 80,
-                borderRadius: 24,
-                backgroundColor: '#2ECC71',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: 16,
-                shadowColor: '#2ECC71',
-                shadowOffset: { width: 0, height: 8 },
-                shadowOpacity: 0.3,
-                shadowRadius: 12,
-                elevation: 6,
-              }}
-            >
-              <Text style={{ fontSize: 36, color: '#0D0D0D' }}>⚡</Text>
-            </View>
             <Text style={{ fontSize: 32, fontWeight: 'bold', color: theme.text }}>
               Rivo <Text style={{ color: '#2ECC71' }}>Rider</Text>
             </Text>
@@ -124,7 +112,6 @@ export default function LoginScreen() {
             </Text>
           </View>
 
-          {/* Form Card */}
           <View
             style={{
               backgroundColor: theme.cardBg,
@@ -134,7 +121,7 @@ export default function LoginScreen() {
               borderColor: theme.border,
               shadowColor: '#000000',
               shadowOffset: { width: 0, height: 12 },
-              shadowOpacity: 0.5,
+              shadowOpacity: 0.2,
               shadowRadius: 16,
               elevation: 8,
             }}
@@ -185,11 +172,7 @@ export default function LoginScreen() {
               />
               <TouchableOpacity
                 onPress={() => setSecureText(!secureText)}
-                style={{
-                  position: 'absolute',
-                  right: 16,
-                  top: 16,
-                }}
+                style={{ position: 'absolute', right: 16, top: 16 }}
               >
                 <Text style={{ color: '#2ECC71', fontSize: 14, fontWeight: '600' }}>
                   {secureText ? 'SHOW' : 'HIDE'}
@@ -197,7 +180,6 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Login Button */}
             <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
               <TouchableOpacity
                 onPressIn={handlePressIn}
@@ -224,7 +206,6 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </Animated.View>
 
-            {/* Register Route */}
             <TouchableOpacity
               onPress={() => router.push('/(auth)/register' as any)}
               style={{ marginTop: 20, alignItems: 'center' }}
