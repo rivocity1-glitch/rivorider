@@ -176,6 +176,8 @@ export default function DashboardScreen() {
     timestamp: string;
   } | null>(null);
   const [activeOrderContext, setActiveOrderContext] = useState<any>(null);
+  const [activeOrders, setActiveOrders] = useState<any[]>([]);
+  const [loadingActiveOrders, setLoadingActiveOrders] = useState<boolean>(false);
 
   const [showTutorial, setShowTutorial] = useState<boolean>(false);
   const [tutorialStep, setTutorialStep] = useState<number>(0);
@@ -559,19 +561,42 @@ export default function DashboardScreen() {
       );
       setVendors(enhancedVendors);
 
-      const { data: activeOrders } = await supabase
+      setLoadingActiveOrders(true);
+      const { data: activeOrdersData, error: activeOrdersError } = await supabase
         .from('orders')
-        .select('id, order_number, vendor_id, vendors(shop_name)')
+        .select(`
+          id,
+          order_number,
+          vendor_id,
+          rider_id,
+          order_status,
+          payment_method,
+          payment_status,
+          total_amount,
+          delivery_fee,
+          rider_earning,
+          delivery_distance_km,
+          actual_distance_km,
+          created_at,
+          updated_at,
+          delivered_at,
+          vendor:vendors(shop_name)
+        `)
         .eq('rider_id', profileData.id)
         .not('order_status', 'ilike', 'delivered')
         .not('order_status', 'ilike', 'cancel%')
-        .limit(1);
+        .order('updated_at', { ascending: false });
 
-      if (activeOrders && activeOrders.length > 0) {
-        setActiveOrderContext(activeOrders[0]);
-      } else {
+      if (activeOrdersError) {
+        console.error('Failed to load active rider orders:', activeOrdersError);
+        setActiveOrders([]);
         setActiveOrderContext(null);
+      } else {
+        const normalizedActiveOrders = activeOrdersData || [];
+        setActiveOrders(normalizedActiveOrders);
+        setActiveOrderContext(normalizedActiveOrders[0] || null);
       }
+      setLoadingActiveOrders(false);
 
       const unresolvedReport = await checkActiveUnresolvedSos(profileData.id);
       setActiveSosReport(unresolvedReport);
@@ -596,6 +621,9 @@ export default function DashboardScreen() {
       triggerEntranceAnimation();
     } catch (err) {
       console.error(err);
+      setActiveOrders([]);
+      setActiveOrderContext(null);
+      setLoadingActiveOrders(false);
       setErrorProfile(true);
       if (!isRefresh) setLoading(false);
     }
@@ -1079,6 +1107,50 @@ export default function DashboardScreen() {
     });
   };
 
+  const getActiveOrderStatusLabel = (status: string) => {
+    const normalized = (status || '').toLowerCase().replace(/_/g, ' ');
+    switch (normalized) {
+      case 'pending':
+        return 'Order Placed';
+      case 'confirmed':
+        return 'Confirmed';
+      case 'preparing':
+        return 'Preparing';
+      case 'ready':
+      case 'packed':
+        return 'Ready for Pickup';
+      case 'out for delivery':
+      case 'out_for_delivery':
+        return 'Out for Delivery';
+      case 'picked up':
+      case 'picked_up':
+        return 'Picked Up';
+      default:
+        return status ? status.replace(/_/g, ' ') : 'Active';
+    }
+  };
+
+  const getActiveOrderStatusColor = (status: string) => {
+    const normalized = (status || '').toLowerCase().replace(/_/g, ' ');
+    if (normalized === 'out for delivery' || normalized === 'picked up') {
+      return LOCAL_COLORS.emeraldGreen;
+    }
+    if (normalized === 'ready' || normalized === 'packed') {
+      return LOCAL_COLORS.blueBorder;
+    }
+    return LOCAL_COLORS.amberBorderLight;
+  };
+
+  const formatOrderAge = (createdAt: string) => {
+    if (!createdAt) return '';
+    const created = new Date(createdAt).getTime();
+    const diffMinutes = Math.max(0, Math.floor((Date.now() - created) / 60000));
+    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 60) return `${diffMinutes} min ago`;
+    const hours = Math.floor(diffMinutes / 60);
+    return `${hours}h ${diffMinutes % 60}m ago`;
+  };
+
   if (errorProfile) {
     return (
       <View style={[styles.centerContainer, { backgroundColor: theme.bg }]}>
@@ -1353,7 +1425,111 @@ export default function DashboardScreen() {
               </View>
             )}
 
-            {/* 8. ASSIGNED STORES */}
+            {/* 8. ACTIVE ORDERS */}
+            <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+              <View style={styles.activeOrdersHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.sectionTitle, { color: theme.text }]}>📦 Active Orders</Text>
+                  <Text style={[styles.activeOrdersSubtitle, { color: theme.textMuted }]}>
+                    Orders currently assigned to you
+                  </Text>
+                </View>
+                <View style={[styles.activeOrdersCount, { backgroundColor: activeOrders.length > 0 ? LOCAL_COLORS.emeraldGreen : theme.bg, borderColor: theme.border }]}>
+                  <Text style={{ color: activeOrders.length > 0 ? LOCAL_COLORS.white : theme.textMuted, fontSize: 12, fontWeight: '800' }}>
+                    {activeOrders.length}
+                  </Text>
+                </View>
+              </View>
+
+              {loadingActiveOrders ? (
+                <View style={styles.activeOrdersLoading}>
+                  <ActivityIndicator size="small" color={LOCAL_COLORS.emeraldGreen} />
+                  <Text style={[styles.emptyStateDesc, { color: theme.textMuted }]}>Loading active orders...</Text>
+                </View>
+              ) : activeOrders.length > 0 ? (
+                <View style={{ gap: 10, marginTop: 10 }}>
+                  {activeOrders.map((order) => {
+                    const statusColor = getActiveOrderStatusColor(order.order_status);
+                    const statusLabel = getActiveOrderStatusLabel(order.order_status);
+                    const vendorName = order.vendor?.shop_name || 'Rivo Store Point';
+
+                    return (
+                      <TouchableOpacity
+                        key={order.id}
+                        activeOpacity={0.85}
+                        onPress={() => router.push(`/order/${order.id}` as any)}
+                        style={[styles.activeOrderItem, { backgroundColor: theme.bg, borderColor: theme.border }]}
+                      >
+                        <View style={styles.activeOrderTopRow}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.activeOrderNumber, { color: theme.text }]}>
+                              #{order.order_number || order.id.substring(0, 8)}
+                            </Text>
+                            <Text style={[styles.activeOrderVendor, { color: theme.textMuted }]}>
+                              {vendorName}
+                            </Text>
+                          </View>
+
+                          <View style={[styles.activeOrderStatusBadge, { backgroundColor: `${statusColor}18`, borderColor: statusColor }]}>
+                            <View style={[styles.activeOrderStatusDot, { backgroundColor: statusColor }]} />
+                            <Text style={[styles.activeOrderStatusText, { color: statusColor }]}>
+                              {statusLabel}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={[styles.activeOrderDivider, { backgroundColor: theme.border }]} />
+
+                        <View style={styles.activeOrderMetaRow}>
+                          <View style={styles.activeOrderMetaItem}>
+                            <Text style={[styles.activeOrderMetaLabel, { color: theme.textMuted }]}>Order Total</Text>
+                            <Text style={[styles.activeOrderMetaValue, { color: theme.text }]}>
+                              ₹{Number(order.total_amount || 0).toFixed(0)}
+                            </Text>
+                          </View>
+
+                          <View style={styles.activeOrderMetaItem}>
+                            <Text style={[styles.activeOrderMetaLabel, { color: theme.textMuted }]}>Your Earning</Text>
+                            <Text style={[styles.activeOrderMetaValue, { color: LOCAL_COLORS.emeraldGreen }]}>
+                              ₹{Number(order.rider_earning || 0).toFixed(0)}
+                            </Text>
+                          </View>
+
+                          <View style={styles.activeOrderMetaItem}>
+                            <Text style={[styles.activeOrderMetaLabel, { color: theme.textMuted }]}>Distance</Text>
+                            <Text style={[styles.activeOrderMetaValue, { color: theme.text }]}>
+                              {Number(order.actual_distance_km || order.delivery_distance_km || 0).toFixed(1)} km
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.activeOrderBottomRow}>
+                          <Text style={[styles.activeOrderAge, { color: theme.textMuted }]}>
+                            {formatOrderAge(order.created_at)}
+                          </Text>
+                          <View style={styles.activeOrderOpenAction}>
+                            <Text style={{ color: LOCAL_COLORS.emeraldGreen, fontSize: 12, fontWeight: '800' }}>
+                              Open Order
+                            </Text>
+                            <Ionicons name="chevron-forward" size={15} color={LOCAL_COLORS.emeraldGreen} />
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ) : (
+                <View style={styles.emptyStateContainer}>
+                  <Text style={styles.emptyStateIcon}>📭</Text>
+                  <Text style={[styles.emptyStateTitle, { color: theme.text }]}>No active orders</Text>
+                  <Text style={[styles.emptyStateDesc, { color: theme.textMuted }]}>
+                    New orders assigned to you will appear here automatically.
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* 9. ASSIGNED STORES */}
             <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
               <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 4 }]}>🏪 Assigned Stores</Text>
               {vendors.length > 0 ? (
@@ -1377,7 +1553,7 @@ export default function DashboardScreen() {
               )}
             </View>
 
-            {/* 9. RECENT DELIVERIES */}
+            {/* 10. RECENT DELIVERIES */}
             <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
               <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 4 }]}>📋 Recent Deliveries</Text>
               {recentDeliveries.length > 0 ? (
@@ -1402,7 +1578,7 @@ export default function DashboardScreen() {
               )}
             </View>
 
-            {/* 10. CUSTOMER REVIEWS */}
+            {/* 11. CUSTOMER REVIEWS */}
             <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
               <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 4 }]}>💬 Customer Reviews</Text>
               {reviews.length > 0 ? (
@@ -1424,7 +1600,7 @@ export default function DashboardScreen() {
               )}
             </View>
 
-            {/* 11. EMERGENCY SOS CARD (PRESERVED) */}
+            {/* 12. EMERGENCY SOS CARD (PRESERVED) */}
             <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: LOCAL_COLORS.danger, borderWidth: 1, borderRadius: 20 }]}>
               <Text style={[styles.sectionTitle, { color: LOCAL_COLORS.danger }]}>🚨 Emergency SOS</Text>
               <Text style={[styles.metricLabel, { color: theme.textMuted, marginTop: 4, marginBottom: 14 }]}>
@@ -2626,6 +2802,101 @@ const styles = StyleSheet.create({
   orderBadgeText: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  activeOrdersHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  activeOrdersSubtitle: {
+    fontSize: 11,
+    marginTop: 3,
+  },
+  activeOrdersCount: {
+    minWidth: 30,
+    height: 30,
+    paddingHorizontal: 8,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  activeOrdersLoading: {
+    minHeight: 90,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  activeOrderItem: {
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  activeOrderTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  activeOrderNumber: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  activeOrderVendor: {
+    fontSize: 12,
+    marginTop: 3,
+  },
+  activeOrderStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 10,
+    borderWidth: 1,
+    maxWidth: 145,
+  },
+  activeOrderStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 5,
+  },
+  activeOrderStatusText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  activeOrderDivider: {
+    height: 1,
+    marginVertical: 11,
+  },
+  activeOrderMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  activeOrderMetaItem: {
+    flex: 1,
+  },
+  activeOrderMetaLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  activeOrderMetaValue: {
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 3,
+  },
+  activeOrderBottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  activeOrderAge: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  activeOrderOpenAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
   },
   reviewItem: {
     padding: 14,
