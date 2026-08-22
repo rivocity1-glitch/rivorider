@@ -272,6 +272,12 @@ export default function RegisterScreen() {
       .toUpperCase()
       .slice(0, 11);
 
+  const normalizeAccountNumber = (value: string) =>
+    value.replace(/[^0-9]/g, '');
+
+  const normalizeUpi = (value: string) =>
+    value.trim().toLowerCase();
+
   // ==========================================================
   // VEHICLE
   // ==========================================================
@@ -560,6 +566,60 @@ export default function RegisterScreen() {
     }
 
     // --------------------------------------------------------
+    // REQUIRED BANK DETAILS
+    // --------------------------------------------------------
+
+    const cleanAccountHolder =
+      accountHolderName.trim();
+
+    const cleanBankName =
+      bankName.trim();
+
+    const cleanAccountNumber =
+      normalizeAccountNumber(accountNumber);
+
+    const cleanIfsc =
+      normalizeIfsc(ifscCode);
+
+    const cleanUpi =
+      normalizeUpi(upiId);
+
+    if (!cleanAccountHolder) {
+      Alert.alert(
+        'Missing Bank Details',
+        'Please enter the account holder name.'
+      );
+      return;
+    }
+
+    if (!cleanBankName) {
+      Alert.alert(
+        'Missing Bank Details',
+        'Please enter the bank name.'
+      );
+      return;
+    }
+
+    if (
+      cleanAccountNumber.length < 9 ||
+      cleanAccountNumber.length > 18
+    ) {
+      Alert.alert(
+        'Invalid Account Number',
+        'Please enter a valid bank account number.'
+      );
+      return;
+    }
+
+    if (cleanIfsc.length !== 11) {
+      Alert.alert(
+        'Invalid IFSC',
+        'Please enter a valid 11-character IFSC code.'
+      );
+      return;
+    }
+
+    // --------------------------------------------------------
     // OPTIONAL EMERGENCY VALIDATION
     // --------------------------------------------------------
 
@@ -717,25 +777,19 @@ export default function RegisterScreen() {
             cleanAlternate || undefined,
 
           account_holder_name:
-            accountHolderName.trim() ||
-            undefined,
+            cleanAccountHolder,
 
           bank_name:
-            bankName.trim() ||
-            undefined,
+            cleanBankName,
 
           account_number:
-            accountNumber.trim() ||
-            undefined,
+            cleanAccountNumber,
 
           ifsc_code:
-            normalizeIfsc(
-              ifscCode
-            ) || undefined,
+            cleanIfsc,
 
           upi_id:
-            upiId.trim() ||
-            undefined,
+            cleanUpi || undefined,
 
           // --------------------------------------------------
           // OPTIONAL KYC NUMBERS
@@ -1063,64 +1117,52 @@ export default function RegisterScreen() {
 
           <View
             style={{
-              alignItems:
-                'center',
-              marginBottom: 28,
+              marginBottom: 24,
+              paddingTop: 4,
             }}
           >
-            <View
+            <TouchableOpacity
+              onPress={() => router.replace('/login')}
+              disabled={loading}
               style={{
-                width: 62,
-                height: 62,
-                borderRadius: 20,
-                backgroundColor:
-                  '#A8E63A',
-                alignItems:
-                  'center',
-                justifyContent:
-                  'center',
-                marginBottom: 14,
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                backgroundColor: '#1A1A1A',
+                borderWidth: 1,
+                borderColor: '#262626',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 20,
               }}
             >
-              <Text
-                style={{
-                  color:
-                    '#0D0D0D',
-                  fontSize: 28,
-                  fontWeight:
-                    '900',
-                }}
-              >
-                R
-              </Text>
-            </View>
+              <Ionicons
+                name="arrow-back"
+                size={20}
+                color="#FFFFFF"
+              />
+            </TouchableOpacity>
 
             <Text
               style={{
-                color:
-                  '#FFFFFF',
-                fontSize: 27,
-                fontWeight:
-                  '900',
-                textAlign:
-                  'center',
+                color: '#FFFFFF',
+                fontSize: 28,
+                fontWeight: '900',
+                letterSpacing: -0.5,
               }}
             >
-              Rider Registration
+              Create Rider Account
             </Text>
 
             <Text
               style={{
-                color:
-                  '#888888',
+                color: '#888888',
                 fontSize: 13,
-                marginTop: 6,
-                textAlign:
-                  'center',
+                marginTop: 7,
                 lineHeight: 19,
               }}
             >
-              Create your Rivo rider account
+              Complete your rider profile to get started with Rivo.
             </Text>
           </View>
 
@@ -2160,28 +2202,31 @@ export default function RegisterScreen() {
           >
             {renderSectionHeader(
               'wallet-outline',
-              'Bank Details',
-              'Optional payout information. You can add or update it later.'
+              'Bank Details *',
+              'Bank details are required for rider payments and settlements. UPI is optional.'
             )}
 
             {renderInput(
-              'Account Holder Name',
+              'Account Holder Name *',
               accountHolderName,
               setAccountHolderName,
               'Name as per bank records'
             )}
 
             {renderInput(
-              'Bank Name',
+              'Bank Name *',
               bankName,
               setBankName,
               'e.g. HDFC Bank'
             )}
 
             {renderInput(
-              'Account Number',
+              'Account Number *',
               accountNumber,
-              setAccountNumber,
+              (value) =>
+                setAccountNumber(
+                  normalizeAccountNumber(value)
+                ),
               'Bank account number',
               {
                 keyboardType:
@@ -2190,7 +2235,7 @@ export default function RegisterScreen() {
             )}
 
             {renderInput(
-              'IFSC Code',
+              'IFSC Code *',
               ifscCode,
               (value) =>
                 setIfscCode(
@@ -2209,7 +2254,10 @@ export default function RegisterScreen() {
             {renderInput(
               'UPI ID',
               upiId,
-              setUpiId,
+              (value) =>
+                setUpiId(
+                  normalizeUpi(value)
+                ),
               'example@upi',
               {
                 autoCapitalize:
@@ -2456,7 +2504,7 @@ export default function RegisterScreen() {
                   (value) =>
                     !value
                 ),
-              'I understand that KYC is optional during registration and that I can complete missing KYC documents later from my rider profile.'
+              'I understand that KYC documents are optional during registration and that I can complete missing KYC documents later from my rider profile. I understand that bank details are required for rider payments and settlements.'
             )}
           </View>
 
