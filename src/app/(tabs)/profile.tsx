@@ -7,6 +7,7 @@ import {
   Alert,
   Animated,
   Image,
+  Linking,
   Modal,
   Platform,
   ScrollView,
@@ -635,7 +636,6 @@ export default function ProfileScreen() {
       return;
     }
 
-    // BANK DETAILS ARE ALWAYS REQUIRED.
     if (!validateBankDetails()) {
       return;
     }
@@ -660,8 +660,6 @@ export default function ProfileScreen() {
       hasDrivingLicense ||
       !!qrCodeUri;
 
-    // Validate only documents the rider has started entering.
-    // Nothing is required as a complete bundle.
     if (
       aadhaarNumber.trim() &&
       aadhaarNumber.trim().length !== 12
@@ -766,7 +764,6 @@ export default function ProfileScreen() {
           now,
       };
 
-      // Only overwrite selfie when a new one was selected.
       if (finalSelfie) {
         riderUpdate.selfie_photo_url =
           finalSelfie;
@@ -775,8 +772,6 @@ export default function ProfileScreen() {
           now;
       }
 
-      // Set KYC pending only when the rider
-      // actually has document/KYC information.
       if (hasAnyDocument) {
         riderUpdate.kyc_status =
           'pending';
@@ -814,12 +809,6 @@ export default function ProfileScreen() {
         upi_id:
           upi.trim() || null,
       };
-
-      // --------------------------------------------------------
-      // IMPORTANT:
-      // Only update document fields when the rider has supplied
-      // that document. Existing documents are preserved.
-      // --------------------------------------------------------
 
       if (aadhaarNumber.trim()) {
         profilePayload.aadhaar_number =
@@ -1010,7 +999,6 @@ export default function ProfileScreen() {
           }
         } catch {
           // GPS coordinates were successfully captured.
-          // Reverse geocoding is optional.
         }
 
         Alert.alert(
@@ -1152,6 +1140,43 @@ export default function ProfileScreen() {
         setSavingLocation(false);
       }
     };
+
+  // ------------------------------------------------------------
+  // DELETE ACCOUNT
+  // ------------------------------------------------------------
+
+  const handleDeleteAccount = async () => {
+    const deleteAccountUrl =
+      'https://rivocity.com/delete-account';
+
+    try {
+      const supported =
+        await Linking.canOpenURL(
+          deleteAccountUrl
+        );
+
+      if (supported) {
+        await Linking.openURL(
+          deleteAccountUrl
+        );
+      } else {
+        Alert.alert(
+          'Unable to Open',
+          'Please visit the Rivo account deletion page from your browser.'
+        );
+      }
+    } catch (error) {
+      console.error(
+        'Failed to open account deletion page:',
+        error
+      );
+
+      Alert.alert(
+        'Unable to Open',
+        'Please try again later.'
+      );
+    }
+  };
 
   // ------------------------------------------------------------
   // LOGOUT
@@ -2085,6 +2110,46 @@ export default function ProfileScreen() {
               </Text>
             </TouchableOpacity>
           </View>
+
+          {/* DELETE ACCOUNT */}
+
+          <TouchableOpacity
+            style={[
+              styles.deleteAccountButton,
+              {
+                backgroundColor:
+                  theme.cardBg,
+                borderColor:
+                  '#FECACA',
+              },
+            ]}
+            onPress={
+              handleDeleteAccount
+            }
+          >
+            <Ionicons
+              name="trash-outline"
+              size={18}
+              color={
+                COLORS.danger
+              }
+              style={{
+                marginRight: 6,
+              }}
+            />
+
+            <Text
+              style={[
+                styles.deleteAccountText,
+                {
+                  color:
+                    COLORS.danger,
+                },
+              ]}
+            >
+              Delete Account
+            </Text>
+          </TouchableOpacity>
 
           {/* LOGOUT */}
 
@@ -3301,6 +3366,26 @@ const styles = StyleSheet.create({
     fontWeight:
       '700',
     fontSize: 15,
+  },
+
+  deleteAccountButton: {
+    flexDirection:
+      'row',
+    alignItems:
+      'center',
+    justifyContent:
+      'center',
+    height: 48,
+    borderRadius: 99,
+    borderWidth: 1,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+
+  deleteAccountText: {
+    fontWeight:
+      '700',
+    fontSize: 14,
   },
 
   logoutButton: {
