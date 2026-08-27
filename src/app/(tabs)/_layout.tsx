@@ -1,71 +1,8 @@
-// src/app/(tabs)/_layout.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
-import { Platform } from "react-native";
+import { Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../context/ThemeContext";
-
-export default function TabsLayout() {
-  const { theme } = useTheme();
-  const insets = useSafeAreaInsets();
-
-  const baseHeight = 64;
-  const bottomInset = Platform.OS === 'android' ? Math.max(insets.bottom, 8) : insets.bottom;
-
-  return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: "#2ECC71",
-        tabBarInactiveTintColor: theme.textMuted,
-        tabBarStyle: {
-          backgroundColor: theme.headerBg,
-          borderTopColor: theme.border,
-          height: baseHeight + bottomInset,
-          paddingBottom: bottomInset,
-          paddingTop: 8,
-        },
-      }}
-    >
-      <Tabs.Screen
-        name="dashboard"
-        options={{
-          title: "Home",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" size={size} color={color} />
-          ),
-        }}
-      />
-
-      <Tabs.Screen
-        name="deliveries"
-        options={{
-          title: "Deliveries",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="cube-outline" size={size} color={color} />
-          ),
-        }}
-      />
-
-      <Tabs.Screen
-        name="settlements"
-        options={{
-          title: "Earnings",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="wallet-outline" size={size} color={color} />
-          ),
-        }}
-      />
-
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: "Profile",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
-          ),
-        }}
-      />
-    </Tabs>
-  );
-}
+import FeedbackFloating from "../../components/FeedbackFloating";
+import FeedbackDeliveryPrompt from "../../components/FeedbackDeliveryPrompt";
+export default function TabsLayout(){const{theme}=useTheme();const insets=useSafeAreaInsets();const baseHeight=64;const bottomInset=Platform.OS==='android'?Math.max(insets.bottom,8):insets.bottom;return <View style={{flex:1}}><Tabs screenOptions={{headerShown:false,tabBarActiveTintColor:'#2ECC71',tabBarInactiveTintColor:theme.textMuted,tabBarStyle:{backgroundColor:theme.headerBg,borderTopColor:theme.border,height:baseHeight+bottomInset,paddingBottom:bottomInset,paddingTop:8}}}><Tabs.Screen name="dashboard" options={{title:'Home',tabBarIcon:({color,size})=><Ionicons name="home-outline" size={size} color={color}/>}}/><Tabs.Screen name="deliveries" options={{title:'Deliveries',tabBarIcon:({color,size})=><Ionicons name="cube-outline" size={size} color={color}/>}}/><Tabs.Screen name="settlements" options={{title:'Earnings',tabBarIcon:({color,size})=><Ionicons name="wallet-outline" size={size} color={color}/>}}/><Tabs.Screen name="profile" options={{title:'Profile',tabBarIcon:({color,size})=><Ionicons name="person-outline" size={size} color={color}/>}}/></Tabs><FeedbackFloating/><FeedbackDeliveryPrompt/></View>}
