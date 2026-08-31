@@ -9,13 +9,9 @@ import { ThemeProvider } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 
 export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    ...Ionicons.font,
-  });
-
+  const [loaded, error] = useFonts({ ...Ionicons.font });
   const [session, setSession] = useState<any>(null);
   const [authInitialized, setAuthInitialized] = useState(false);
-
   const router = useRouter();
   const segments = useSegments();
   const insets = useSafeAreaInsets();
@@ -25,43 +21,26 @@ export default function RootLayout() {
       setSession(session);
       setAuthInitialized(true);
     });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       setAuthInitialized(true);
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
     if (!authInitialized || (!loaded && !error)) return;
-
     const inAuthGroup = segments[0] === '(auth)';
-
-    if (!session && !inAuthGroup) {
-      router.replace('/(auth)/login' as any);
-    } else if (session && inAuthGroup) {
-      router.replace('/(tabs)/dashboard' as any);
-    }
+    if (!session && !inAuthGroup) router.replace('/(auth)/login' as any);
+    else if (session && inAuthGroup) router.replace('/(tabs)/dashboard' as any);
   }, [session, authInitialized, loaded, error, segments, router]);
 
   if ((!loaded && !error) || !authInitialized) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="small" color="#A8E63A" />
-      </View>
-    );
+    return <View style={styles.loading}><ActivityIndicator size="small" color="#A8E63A" /></View>;
   }
 
   const section = String(segments[0] ?? '');
-  const showFeedbackButton =
-    Boolean(session) &&
-    section !== '(auth)' &&
-    section !== 'feedback' &&
-    section !== 'support';
+  const showSupportButton = Boolean(session) && section !== '(auth)' && section !== 'feedback' && section !== 'support' && section !== 'support-lite';
 
   return (
     <ThemeProvider>
@@ -72,24 +51,20 @@ export default function RootLayout() {
           <Stack.Screen name="(auth)" options={{ headerShown: false }} />
           <Stack.Screen name="feedback" options={{ headerShown: false }} />
           <Stack.Screen name="support" options={{ headerShown: false }} />
+          <Stack.Screen name="support-lite" options={{ headerShown: false }} />
         </Stack>
-
-        {showFeedbackButton && (
+        {showSupportButton && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Send rider feedback"
-            onPress={() => router.push('/feedback' as any)}
+            accessibilityLabel="Help and support"
+            onPress={() => router.push('/support' as any)}
             style={({ pressed }) => [
               styles.feedbackButton,
-              { bottom: Math.max(insets.bottom, 8) + 16 },
+              { bottom: Math.max(insets.bottom, 12) + 20 },
               pressed && styles.feedbackPressed,
             ]}
           >
-            <Ionicons
-              name="chatbubble-ellipses-outline"
-              size={21}
-              color="#0D0D0D"
-            />
+            <Ionicons name="headset-outline" size={21} color="#0D0D0D" />
           </Pressable>
         )}
       </View>
@@ -98,15 +73,8 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-  },
-  loading: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0D0D0D',
-  },
+  root: { flex: 1 },
+  loading: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0D0D0D' },
   feedbackButton: {
     position: 'absolute',
     right: 16,
@@ -123,8 +91,5 @@ const styles = StyleSheet.create({
     elevation: 6,
     zIndex: 100,
   },
-  feedbackPressed: {
-    opacity: 0.78,
-    transform: [{ scale: 0.96 }],
-  },
+  feedbackPressed: { opacity: 0.78, transform: [{ scale: 0.96 }] },
 });
