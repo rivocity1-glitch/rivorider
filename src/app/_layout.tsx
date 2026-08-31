@@ -60,7 +60,7 @@ export default function RootLayout() {
             onPress={() => router.push('/support' as any)}
             style={({ pressed }) => [
               styles.feedbackButton,
-              { bottom: Math.max(insets.bottom, 12) + 20 },
+              { bottom: Math.max(insets.bottom, 12) + 96 },
               pressed && styles.feedbackPressed,
             ]}
           >
