@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Rivo.City Rider",
+    "name": "RivoCity Rider",
     "slug": "rivorider",
     "version": "1.0.0",
     "owner": "rivo.ved",
@@ -58,7 +58,7 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow Rivo.City Rider to access your location."
+          "locationAlwaysAndWhenInUsePermission": "Allow RivoCity Rider to access your location."
         }
       ],
       "expo-web-browser",
