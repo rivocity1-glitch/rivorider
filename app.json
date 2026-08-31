@@ -16,7 +16,7 @@
     "android": {
       "package": "com.rivo.ved.rivorider",
       "adaptiveIcon": {
-        "backgroundColor": "#0D0D0D",
+        "backgroundColor": "#16A34A",
         "foregroundImage": "./assets/adaptive-icon.png",
         "monochromeImage": "./assets/notification-icon.png"
       },
@@ -44,9 +44,14 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#0D0D0D",
+          "backgroundColor": "#FFFFFF",
           "image": "./assets/splash-icon.png",
-          "imageWidth": 220
+          "imageWidth": 180,
+          "resizeMode": "contain",
+          "dark": {
+            "backgroundColor": "#FFFFFF",
+            "image": "./assets/splash-icon.png"
+          }
         }
       ],
       "expo-audio",
