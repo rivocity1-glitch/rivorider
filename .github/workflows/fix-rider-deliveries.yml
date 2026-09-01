@@ -1,0 +1,89 @@
+name: Fix Rider Delivery UI
+
+on:
+  push:
+    branches:
+      - rider-payment-auth-improvements
+
+permissions:
+  contents: write
+
+jobs:
+  fix-deliveries:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: rider-payment-auth-improvements
+
+      - name: Apply targeted delivery UI fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("src/app/(tabs)/deliveries.tsx")
+          text = path.read_text(encoding="utf-8")
+          original = text
+
+          # Use React Native's Image for the owner's fixed UPI QR.
+          text = text.replace(
+              "  ActivityIndicator,\n  Alert,",
+              "  ActivityIndicator,\n  Alert,\n  Image,",
+              1,
+          )
+          text = text.replace('import QRCode from "react-native-qrcode-svg";\n', "", 1)
+
+          # Remove source-level emoji characters from call buttons.
+          text = text.replace("📞 Call Customer", "Call Customer")
+          text = text.replace("📞 Call Vendor", "Call Vendor")
+
+          # Avoid Android mojibake for the rupee symbol by using a JS unicode escape.
+          # This only targets the literal currency symbol in this screen.
+          text = text.replace("₹", "{'\\u20B9'}")
+
+          # Replace the generated/dummy QR with the fixed bank QR image supplied locally.
+          qr_pattern = re.compile(
+              r'''<QRCode\n\s+value=\{`upi://pay\?pa=YOUR_UPI_ID_HERE&pn=Rivo%20City&am=\$\{selectedOrder\?\.total_amount\}&cu=INR&tn=Order%20\$\{selectedOrder\?\.order_number\}`\}\n\s+size=\{220\}\n\s+/>'''
+          )
+          text, qr_count = qr_pattern.subn(
+              '''<Image\n                      source={require('../../../assets/images/upi-qr.png')}\n                      style={{ width: 220, height: 220 }}\n                      resizeMode="contain"\n                    />''',
+              text,
+              count=1,
+          )
+          if qr_count != 1:
+              raise SystemExit(f"Expected exactly 1 generated QR block, found {qr_count}")
+
+          text = text.replace(
+              "<Text style={[styles.upiMetaValueText, { color: theme.text }]}>Rivo City</Text>",
+              "<Text style={[styles.upiMetaValueText, { color: theme.text }]}>RivoCity</Text>",
+              1,
+          )
+          text = text.replace(
+              "<Text style={[styles.upiMetaValueText, { color: theme.text }]}>YOUR_UPI_ID_HERE</Text>",
+              "<Text style={[styles.upiMetaValueText, { color: theme.text }]}>atharvavedpanditrao-1@okicici</Text>",
+              1,
+          )
+
+          if "YOUR_UPI_ID_HERE" in text:
+              raise SystemExit("Dummy UPI ID remains in deliveries.tsx")
+          if "<QRCode" in text or "react-native-qrcode-svg" in text:
+              raise SystemExit("Generated QR implementation remains in deliveries.tsx")
+          if "📞" in text:
+              raise SystemExit("Phone emoji remains in deliveries.tsx")
+
+          if text == original:
+              raise SystemExit("No changes were made to deliveries.tsx")
+
+          path.write_text(text, encoding="utf-8", newline="\n")
+          PY
+
+      - name: Commit and remove one-time workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/fix-rider-deliveries.yml
+          git add "src/app/(tabs)/deliveries.tsx" .github/workflows/fix-rider-deliveries.yml
+          git commit -m "fix: clean rider delivery payment UI"
+          git push origin rider-payment-auth-improvements
