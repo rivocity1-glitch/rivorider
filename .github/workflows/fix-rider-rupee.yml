@@ -1,0 +1,52 @@
+name: Fix Rider Rupee Rendering
+
+on:
+  push:
+    branches:
+      - rider-payment-auth-improvements
+
+permissions:
+  contents: write
+
+jobs:
+  fix-rupee:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: rider-payment-auth-improvements
+
+      - name: Replace escaped currency text with runtime-safe constant
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/app/(tabs)/deliveries.tsx")
+          text = path.read_text(encoding="utf-8")
+
+          marker = "const RUPEE = String.fromCharCode(0x20B9);"
+          if marker not in text:
+              anchor = "import { supabase } from '../../lib/supabase';\n"
+              if anchor not in text:
+                  raise SystemExit("Could not find import anchor")
+              text = text.replace(anchor, anchor + "\n" + marker + "\n", 1)
+
+          text = text.replace("{'\\\\u20B9'}", "{RUPEE}")
+
+          if "{'\\\\u20B9'}" in text:
+              raise SystemExit("Double-escaped rupee expression remains")
+          if "{RUPEE}" not in text:
+              raise SystemExit("RUPEE constant is not used")
+
+          path.write_text(text, encoding="utf-8", newline="\n")
+          PY
+
+      - name: Commit and remove one-time workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/fix-rider-rupee.yml
+          git add "src/app/(tabs)/deliveries.tsx" .github/workflows/fix-rider-rupee.yml
+          git commit -m "fix: render rider rupee currency safely"
+          git push origin rider-payment-auth-improvements
