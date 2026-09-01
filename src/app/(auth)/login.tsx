@@ -32,31 +32,17 @@ export default function LoginScreen() {
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 400,
-        useNativeDriver: true,
-      }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 400, useNativeDriver: true }),
     ]).start();
   }, [fadeAnim, slideAnim]);
 
   const handlePressIn = () => {
-    Animated.spring(buttonScale, {
-      toValue: 0.95,
-      useNativeDriver: true,
-    }).start();
+    Animated.spring(buttonScale, { toValue: 0.95, useNativeDriver: true }).start();
   };
 
   const handlePressOut = () => {
-    Animated.spring(buttonScale, {
-      toValue: 1,
-      useNativeDriver: true,
-    }).start();
+    Animated.spring(buttonScale, { toValue: 1, useNativeDriver: true }).start();
   };
 
   const handleLogin = async () => {
@@ -89,20 +75,10 @@ export default function LoginScreen() {
       style={{ flex: 1, backgroundColor: theme.bg }}
     >
       <ScrollView
-        contentContainerStyle={{
-          flexGrow: 1,
-          justifyContent: 'center',
-          paddingVertical: 24,
-        }}
+        contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingVertical: 24 }}
         bounces={false}
       >
-        <Animated.View
-          style={{
-            padding: 24,
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }],
-          }}
-        >
+        <Animated.View style={{ padding: 24, opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
           <View style={{ alignItems: 'center', marginBottom: 40 }}>
             <Text style={{ fontSize: 32, fontWeight: 'bold', color: theme.text }}>
               Rivo <Text style={{ color: '#2ECC71' }}>Rider</Text>
@@ -151,7 +127,7 @@ export default function LoginScreen() {
             <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600', marginBottom: 8 }}>
               Password
             </Text>
-            <View style={{ position: 'relative', marginBottom: 28 }}>
+            <View style={{ position: 'relative', marginBottom: 18 }}>
               <TextInput
                 placeholder="Enter your password"
                 placeholderTextColor={theme.textMuted}
@@ -159,6 +135,7 @@ export default function LoginScreen() {
                 onChangeText={setPassword}
                 secureTextEntry={secureText}
                 autoCapitalize="none"
+                maxLength={6}
                 style={{
                   backgroundColor: theme.bg,
                   borderWidth: 1,
@@ -170,15 +147,21 @@ export default function LoginScreen() {
                   fontSize: 15,
                 }}
               />
-              <TouchableOpacity
-                onPress={() => setSecureText(!secureText)}
-                style={{ position: 'absolute', right: 16, top: 16 }}
-              >
+              <TouchableOpacity onPress={() => setSecureText(!secureText)} style={{ position: 'absolute', right: 16, top: 16 }}>
                 <Text style={{ color: '#2ECC71', fontSize: 14, fontWeight: '600' }}>
                   {secureText ? 'SHOW' : 'HIDE'}
                 </Text>
               </TouchableOpacity>
             </View>
+
+            <TouchableOpacity
+              onPress={() => router.push('/(auth)/forgot-password' as any)}
+              style={{ alignItems: 'flex-end', marginBottom: 20 }}
+            >
+              <Text style={{ color: '#A8E63A', fontSize: 14, fontWeight: '600' }}>
+                Forgot password?
+              </Text>
+            </TouchableOpacity>
 
             <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
               <TouchableOpacity
@@ -187,21 +170,12 @@ export default function LoginScreen() {
                 onPress={handleLogin}
                 disabled={loading}
                 activeOpacity={1}
-                style={{
-                  backgroundColor: '#2ECC71',
-                  padding: 16,
-                  borderRadius: 12,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  height: 56,
-                }}
+                style={{ backgroundColor: '#2ECC71', padding: 16, borderRadius: 12, alignItems: 'center', justifyContent: 'center', height: 56 }}
               >
                 {loading ? (
                   <ActivityIndicator color="#0D0D0D" />
                 ) : (
-                  <Text style={{ color: '#0D0D0D', fontWeight: 'bold', fontSize: 16 }}>
-                    Log In
-                  </Text>
+                  <Text style={{ color: '#0D0D0D', fontWeight: 'bold', fontSize: 16 }}>Log In</Text>
                 )}
               </TouchableOpacity>
             </Animated.View>
