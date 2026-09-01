@@ -3,10 +3,26 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemeProvider } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
+
+function getHashParams(url: string) {
+  const hash = url.includes('#') ? url.split('#')[1] : '';
+  const query = url.includes('?') ? url.split('?')[1].split('#')[0] : '';
+  const raw = [query, hash].filter(Boolean).join('&');
+  const params: Record<string, string> = {};
+
+  raw.split('&').forEach((part) => {
+    if (!part) return;
+    const [rawKey, ...rawValue] = part.split('=');
+    if (!rawKey) return;
+    params[decodeURIComponent(rawKey)] = decodeURIComponent(rawValue.join('=').replace(/\+/g, ' '));
+  });
+
+  return params;
+}
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({ ...Ionicons.font });
@@ -17,22 +33,77 @@ export default function RootLayout() {
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
+    let mounted = true;
+
+    const handleAuthUrl = async (url: string | null) => {
+      if (!url || !url.includes('reset-password')) return;
+
+      const params = getHashParams(url);
+      const accessToken = params.access_token;
+      const refreshToken = params.refresh_token;
+
+      if (!accessToken || !refreshToken) return;
+
+      const { data, error: sessionError } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+
+      if (sessionError) {
+        console.error('Password recovery session error:', sessionError);
+        return;
+      }
+
+      if (mounted && data.session) {
+        setSession(data.session);
+        router.replace('/(auth)/reset-password' as any);
+      }
+    };
+
+    Linking.getInitialURL().then(handleAuthUrl).catch((err) => {
+      console.error('Initial auth deep link error:', err);
+    });
+
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      handleAuthUrl(url).catch((err) => {
+        console.error('Auth deep link error:', err);
+      });
+    });
+
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
       setSession(session);
       setAuthInitialized(true);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+
+    const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (!mounted) return;
       setSession(nextSession);
       setAuthInitialized(true);
+
+      if (event === 'PASSWORD_RECOVERY') {
+        router.replace('/(auth)/reset-password' as any);
+      }
     });
-    return () => subscription.unsubscribe();
-  }, []);
+
+    return () => {
+      mounted = false;
+      subscription.remove();
+      authSubscription.unsubscribe();
+    };
+  }, [router]);
 
   useEffect(() => {
     if (!authInitialized || (!loaded && !error)) return;
+
     const inAuthGroup = segments[0] === '(auth)';
-    if (!session && !inAuthGroup) router.replace('/(auth)/login' as any);
-    else if (session && inAuthGroup) router.replace('/(tabs)/dashboard' as any);
+    const inResetPassword = inAuthGroup && segments[1] === 'reset-password';
+
+    if (!session && !inAuthGroup) {
+      router.replace('/(auth)/login' as any);
+    } else if (session && inAuthGroup && !inResetPassword) {
+      router.replace('/(tabs)/dashboard' as any);
+    }
   }, [session, authInitialized, loaded, error, segments, router]);
 
   if ((!loaded && !error) || !authInitialized) {
