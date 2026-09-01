@@ -1,4 +1,4 @@
-// src/app/(auth)/register.tsx
+﻿// src/app/(auth)/register.tsx
 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -25,27 +25,27 @@ const VEHICLE_OPTIONS = [
   {
     id: 'bike',
     label: 'Bike (Motorcycle)',
-    icon: '🏍️',
+    icon: 'ðŸï¸',
   },
   {
     id: 'scooty',
     label: 'Scooty / Scooter',
-    icon: '🛵',
+    icon: 'ðŸ›µ',
   },
   {
     id: 'ev',
     label: 'Electric Vehicle (EV)',
-    icon: '⚡',
+    icon: 'âš¡',
   },
   {
     id: 'ev_gear',
     label: 'EV Gearbike',
-    icon: '🔋',
+    icon: 'ðŸ”‹',
   },
   {
     id: 'bicycle',
     label: 'Bicycle / Cycle',
-    icon: '🚲',
+    icon: 'ðŸš²',
   },
 ];
 
@@ -291,65 +291,7 @@ export default function RegisterScreen() {
   // PASSWORD
   // ==========================================================
 
-  const passwordHasMinLength =
-    password.length >= 8;
-
-  const passwordHasUpper =
-    /[A-Z]/.test(password);
-
-  const passwordHasLower =
-    /[a-z]/.test(password);
-
-  const passwordHasNumber =
-    /[0-9]/.test(password);
-
-  const passwordValid =
-    passwordHasMinLength &&
-    passwordHasUpper &&
-    passwordHasLower &&
-    passwordHasNumber;
-
-  const getPasswordStrength = () => {
-    if (!password) {
-      return {
-        label: '',
-        color: '#555555',
-        score: 0,
-      };
-    }
-
-    let score = 0;
-
-    if (passwordHasMinLength) score++;
-    if (passwordHasUpper) score++;
-    if (passwordHasLower) score++;
-    if (passwordHasNumber) score++;
-
-    if (score <= 2) {
-      return {
-        label: 'Weak',
-        color: '#E74C3C',
-        score,
-      };
-    }
-
-    if (score === 3) {
-      return {
-        label: 'Medium',
-        color: '#F39C12',
-        score,
-      };
-    }
-
-    return {
-      label: 'Strong',
-      color: '#22CC71',
-      score,
-    };
-  };
-
-  const passwordStrength =
-    getPasswordStrength();
+  const passwordValid = password.length === 6;
 
   // ==========================================================
   // BUTTON ANIMATION
@@ -994,7 +936,7 @@ export default function RegisterScreen() {
                   '900',
               }}
             >
-              ✓
+              âœ“
             </Text>
           )}
         </View>
@@ -1684,7 +1626,7 @@ export default function RegisterScreen() {
                       '700',
                   }}
                 >
-                  Blessed by Nature / Specially Abled 💚
+                  Blessed by Nature / Specially Abled ðŸ’š
                 </Text>
 
                 <Text
@@ -1733,7 +1675,7 @@ export default function RegisterScreen() {
                         '900',
                     }}
                   >
-                    ✓
+                    âœ“
                   </Text>
                 )}
               </View>
@@ -2441,7 +2383,7 @@ export default function RegisterScreen() {
                     17,
                 }}
               >
-                📋 Document uploads are intentionally handled after registration. This prevents a storage upload failure from preventing rider account creation.
+                ðŸ“‹ Document uploads are intentionally handled after registration. This prevents a storage upload failure from preventing rider account creation.
               </Text>
             </View>
           </View>
@@ -2644,3 +2586,4 @@ export default function RegisterScreen() {
     </KeyboardAvoidingView>
   );
             }
+
