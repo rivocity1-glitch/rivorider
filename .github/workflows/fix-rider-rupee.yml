@@ -34,10 +34,11 @@ jobs:
                   raise SystemExit("Could not find import anchor")
               text = text.replace(anchor, anchor + "\n" + marker + "\n", 1)
 
-          text = text.replace("{'\\\\u20B9'}", "{RUPEE}")
+          needle = r"{'\u20B9'}"
+          text = text.replace(needle, "{RUPEE}")
 
-          if "{'\\\\u20B9'}" in text:
-              raise SystemExit("Double-escaped rupee expression remains")
+          if needle in text:
+              raise SystemExit("Escaped rupee expression remains")
           if "{RUPEE}" not in text:
               raise SystemExit("RUPEE constant is not used")
 
