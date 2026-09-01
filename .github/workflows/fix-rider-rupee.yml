@@ -1,21 +1,23 @@
 name: Fix Rider Rupee Rendering
 
 on:
-  push:
+  pull_request:
+    types: [opened, synchronize]
     branches:
-      - rider-payment-auth-improvements
+      - main
 
 permissions:
   contents: write
 
 jobs:
   fix-rupee:
+    if: github.event.pull_request.head.ref == 'rider-payment-auth-improvements'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout branch
+      - name: Checkout Rider branch
         uses: actions/checkout@v4
         with:
-          ref: rider-payment-auth-improvements
+          ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Replace escaped currency text with runtime-safe constant
         run: |
@@ -42,11 +44,11 @@ jobs:
           path.write_text(text, encoding="utf-8", newline="\n")
           PY
 
-      - name: Commit and remove one-time workflow
+      - name: Remove temporary workflows and commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          rm -f .github/workflows/fix-rider-rupee.yml
-          git add "src/app/(tabs)/deliveries.tsx" .github/workflows/fix-rider-rupee.yml
-          git commit -m "fix: render rider rupee currency safely"
+          rm -f .github/workflows/fix-rider-rupee.yml .github/workflows/fix-rider-deliveries.yml
+          git add "src/app/(tabs)/deliveries.tsx" .github/workflows/fix-rider-rupee.yml .github/workflows/fix-rider-deliveries.yml
+          git commit -m "fix: clean rider delivery payment UI"
           git push origin rider-payment-auth-improvements
