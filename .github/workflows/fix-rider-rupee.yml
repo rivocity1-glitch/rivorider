@@ -50,6 +50,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           rm -f .github/workflows/fix-rider-rupee.yml .github/workflows/fix-rider-deliveries.yml
-          git add "src/app/(tabs)/deliveries.tsx" .github/workflows/fix-rider-rupee.yml .github/workflows/fix-rider-deliveries.yml
+          git add -A
           git commit -m "fix: clean rider delivery payment UI"
           git push origin rider-payment-auth-improvements
