@@ -8,11 +8,9 @@
     "icon": "./assets/icon.png",
     "scheme": "rivorider",
     "userInterfaceStyle": "automatic",
-
     "ios": {
       "icon": "./assets/icon.png"
     },
-
     "android": {
       "package": "com.rivo.ved.rivorider",
       "adaptiveIcon": {
@@ -33,12 +31,10 @@
         "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
-
     "web": {
       "output": "static",
       "favicon": "./assets/favicon.png"
     },
-
     "plugins": [
       "expo-router",
       [
@@ -62,14 +58,13 @@
         }
       ],
       "expo-web-browser",
-      "expo-asset"
+      "expo-asset",
+      "expo-image"
     ],
-
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
     },
-
     "extra": {
       "router": {},
       "eas": {
