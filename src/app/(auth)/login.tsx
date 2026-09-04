@@ -135,7 +135,6 @@ export default function LoginScreen() {
                 onChangeText={setPassword}
                 secureTextEntry={secureText}
                 autoCapitalize="none"
-                maxLength={6}
                 style={{
                   backgroundColor: theme.bg,
                   borderWidth: 1,

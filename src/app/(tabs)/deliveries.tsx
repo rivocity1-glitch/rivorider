@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Animated,
   Linking,
   Modal,
@@ -16,9 +17,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import QRCode from "react-native-qrcode-svg";
 import { COLORS, useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../lib/supabase';
+
+const RUPEE = String.fromCharCode(0x20B9);
 
 interface Order {
   id: string;
@@ -895,14 +897,14 @@ export default function DeliveriesScreen() {
                             <View style={styles.financialRowItem}>
                               <Text style={[styles.financialRowLabel, { color: theme.textMuted }]}>Cash Received from Customer:</Text>
                               <Text style={[styles.financialRowValue, { color: COLORS.emeraldGreen }]}>
-                                ₹{item.cash_received ?? item.total_amount}
+                                {RUPEE}{item.cash_received ?? item.total_amount}
                               </Text>
                             </View>
 
                             <View style={styles.financialRowItem}>
                               <Text style={[styles.financialRowLabel, { color: theme.textMuted }]}>Change Given to Customer:</Text>
                               <Text style={[styles.financialRowValue, { color: COLORS.danger }]}>
-                                ₹{item.change_returned ?? 0}
+                                {RUPEE}{item.change_returned ?? 0}
                               </Text>
                             </View>
                           </>
@@ -910,7 +912,7 @@ export default function DeliveriesScreen() {
                           <View style={styles.financialRowItem}>
                             <Text style={[styles.financialRowLabel, { color: theme.textMuted }]}>Amount Collected:</Text>
                             <Text style={[styles.financialRowValue, { color: COLORS.emeraldGreen }]}>
-                              ₹{item.total_amount} (Online/UPI)
+                              {RUPEE}{item.total_amount} (Online/UPI)
                             </Text>
                           </View>
                         )}
@@ -942,11 +944,11 @@ export default function DeliveriesScreen() {
                     <View style={styles.amountSection}>
                       <View style={styles.amountBox}>
                         <Text style={[styles.amountLabel, { color: theme.textMuted, fontSize: 12 }]}>Total Order</Text>
-                        <Text style={[styles.amountValue, { color: theme.text, fontSize: 18 }]}>₹{item.total_amount}</Text>
+                        <Text style={[styles.amountValue, { color: theme.text, fontSize: 18 }]}>{RUPEE}{item.total_amount}</Text>
                       </View>
                       <View style={[styles.amountBox, { alignItems: 'flex-end' }]}>
                         <Text style={[styles.amountLabel, { color: COLORS.emeraldGreen, fontWeight: '700', fontSize: 12 }]}>Your Earnings</Text>
-                        <Text style={[styles.amountValue, { color: COLORS.emeraldGreen, fontSize: 20, fontWeight: '900' }]}>₹{item.rider_earning || 0}</Text>
+                        <Text style={[styles.amountValue, { color: COLORS.emeraldGreen, fontSize: 20, fontWeight: '900' }]}>{RUPEE}{item.rider_earning || 0}</Text>
                       </View>
                     </View>
 
@@ -958,7 +960,7 @@ export default function DeliveriesScreen() {
                             style={[styles.callButton, { borderColor: theme.border, backgroundColor: theme.bg }]}
                             onPress={() => handleCallContact('vendor', item)}
                           >
-                            <Text style={[styles.callButtonText, { color: theme.text }]}>📞 Call Vendor</Text>
+                            <Text style={[styles.callButtonText, { color: theme.text }]}>Call Vendor</Text>
                           </TouchableOpacity>
 
                           <TouchableOpacity
@@ -979,7 +981,7 @@ export default function DeliveriesScreen() {
                             style={[styles.callButton, { borderColor: theme.border, backgroundColor: theme.bg }]}
                             onPress={() => handleCallContact('customer', item)}
                           >
-                            <Text style={[styles.callButtonText, { color: theme.text }]}>📞 Call Customer</Text>
+                            <Text style={[styles.callButtonText, { color: theme.text }]}>Call Customer</Text>
                           </TouchableOpacity>
 
                           <TouchableOpacity
@@ -1000,7 +1002,7 @@ export default function DeliveriesScreen() {
                             style={[styles.callButton, { borderColor: theme.border, backgroundColor: theme.bg }]}
                             onPress={() => handleCallContact('customer', item)}
                           >
-                            <Text style={[styles.callButtonText, { color: theme.text }]}>📞 Call Customer</Text>
+                            <Text style={[styles.callButtonText, { color: theme.text }]}>Call Customer</Text>
                           </TouchableOpacity>
 
                           <TouchableOpacity
@@ -1097,7 +1099,7 @@ export default function DeliveriesScreen() {
 
             <View style={[styles.modalSummaryRow, { backgroundColor: theme.bg, borderColor: theme.border }]}>
               <Text style={[styles.modalSummaryLabel, { color: theme.textMuted }]}>Order Total</Text>
-              <Text style={[styles.modalSummaryValue, { color: COLORS.emeraldGreen }]}>₹{selectedOrder?.total_amount}</Text>
+              <Text style={[styles.modalSummaryValue, { color: COLORS.emeraldGreen }]}>{RUPEE}{selectedOrder?.total_amount}</Text>
             </View>
 
             <Text style={[styles.fieldLabel, { color: theme.text }]}>Payment Collected Via</Text>
@@ -1134,21 +1136,21 @@ export default function DeliveriesScreen() {
                 <View style={[styles.summaryMetricCard, { backgroundColor: theme.bg, borderColor: theme.border }]}>
                   <View style={styles.summaryMetricItem}>
                     <Text style={[styles.summaryMetricLabelText, { color: theme.textMuted }]}>Order Total</Text>
-                    <Text style={[styles.summaryMetricValueText, { color: theme.text }]}>₹{selectedOrder?.total_amount || 0}</Text>
+                    <Text style={[styles.summaryMetricValueText, { color: theme.text }]}>{RUPEE}{selectedOrder?.total_amount || 0}</Text>
                   </View>
                   <View style={styles.summaryMetricItem}>
                     <Text style={[styles.summaryMetricLabelText, { color: theme.textMuted }]}>Received</Text>
                     <Text style={[styles.summaryMetricValueText, { color: COLORS.emeraldGreen }]}>
-                      ₹{amountReceived ? parseFloat(amountReceived) || 0 : 0}
+                      {RUPEE}{amountReceived ? parseFloat(amountReceived) || 0 : 0}
                     </Text>
                   </View>
                   <View style={styles.summaryMetricItem}>
                     <Text style={[styles.summaryMetricLabelText, { color: theme.textMuted }]}>Change</Text>
-                    <Text style={[styles.summaryMetricValueText, { color: COLORS.danger }]}>₹{calculatedChange().toFixed(0)}</Text>
+                    <Text style={[styles.summaryMetricValueText, { color: COLORS.danger }]}>{RUPEE}{calculatedChange().toFixed(0)}</Text>
                   </View>
                 </View>
 
-                <Text style={[styles.fieldLabel, { color: theme.text }]}>Amount Received (₹)</Text>
+                <Text style={[styles.fieldLabel, { color: theme.text }]}>Amount Received ({RUPEE})</Text>
                 <TextInput
                   style={[styles.modalInput, { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text }]}
                   keyboardType="numeric"
@@ -1180,23 +1182,24 @@ export default function DeliveriesScreen() {
               <View style={styles.formContainer}>
                 <View style={[styles.upiScreenContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
                   <Text style={[styles.upiAmountLabel, { color: theme.textMuted }]}>Amount To Collect</Text>
-                  <Text style={[styles.upiAmountValue, { color: COLORS.emeraldGreen }]}>₹{selectedOrder?.total_amount}</Text>
+                  <Text style={[styles.upiAmountValue, { color: COLORS.emeraldGreen }]}>{RUPEE}{selectedOrder?.total_amount}</Text>
 
                   <View style={[styles.qrContainerBox, { backgroundColor: '#FFFFFF', borderColor: theme.border }]}>
-                    <QRCode
-                      value={`upi://pay?pa=YOUR_UPI_ID_HERE&pn=Rivo%20City&am=${selectedOrder?.total_amount}&cu=INR&tn=Order%20${selectedOrder?.order_number}`}
-                      size={220}
+                    <Image
+                      source={require('../../../assets/images/upi-qr.png')}
+                      style={{ width: 220, height: 220 }}
+                      resizeMode="contain"
                     />
                   </View>
 
                   <View style={styles.upiDetailsMetaBox}>
                     <View style={styles.upiMetaRowItem}>
                       <Text style={[styles.upiMetaLabelText, { color: theme.textMuted }]}>Receiver</Text>
-                      <Text style={[styles.upiMetaValueText, { color: theme.text }]}>Rivo City</Text>
+                      <Text style={[styles.upiMetaValueText, { color: theme.text }]}>RivoCity</Text>
                     </View>
                     <View style={styles.upiMetaRowItem}>
                       <Text style={[styles.upiMetaLabelText, { color: theme.textMuted }]}>UPI ID</Text>
-                      <Text style={[styles.upiMetaValueText, { color: theme.text }]}>YOUR_UPI_ID_HERE</Text>
+                      <Text style={[styles.upiMetaValueText, { color: theme.text }]}>atharvavedpanditrao-1@okicici</Text>
                     </View>
                   </View>
 
