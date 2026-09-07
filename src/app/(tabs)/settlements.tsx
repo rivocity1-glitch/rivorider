@@ -260,7 +260,7 @@ export default function Settlements() {
   const getStatusBadgeConfig = (status: string) => {
     switch (status) {
       case "REQUESTED":
-        return { bg: isDarkMode ? '#451A03' : '#FFEFE6', text: '#FF7A00', label: 'Requested' };
+        return { bg: isDarkMode ? '#451A03' : '#FFEFE6', text: '#FF7A00', label: 'Processing' };
       case "PAID":
         return { bg: isDarkMode ? '#064E3B' : '#DCFCE7', text: '#16A34A', label: 'Paid' };
       case "AVAILABLE":
@@ -337,7 +337,7 @@ export default function Settlements() {
               <View style={[styles.badgeContainerStatus, { backgroundColor: theme.bg }]}>
                 <View style={[styles.statusIndicatorDot, { backgroundColor: stats.hasPendingSettlement ? '#FF7A00' : COLORS.emeraldGreen }]} />
                 <Text style={[styles.balanceSubtext, { color: theme.text }]}>
-                  {stats.hasPendingSettlement ? 'Withdrawal in progress' : 'Ready for withdrawal'}
+                  {stats.hasPendingSettlement ? 'Payout in progress' : 'Payouts are scheduled'}
                 </Text>
               </View>
             </View>
@@ -366,7 +366,7 @@ export default function Settlements() {
                 <View style={styles.iconStatWrapper}>
                   <Ionicons name="time-outline" size={18} color="#FF7A00" />
                 </View>
-                <Text style={[styles.statLabel, { color: theme.textMuted }]}>PENDING WITHDRAWAL</Text>
+                <Text style={[styles.statLabel, { color: theme.textMuted }]}>PENDING PAYOUT</Text>
                 <Text style={[styles.statValue, { color: '#FF7A00' }]}>₹{stats.pendingSettlement.toLocaleString("en-IN")}</Text>
               </View>
 
@@ -390,13 +390,13 @@ export default function Settlements() {
               </Animated.View>
 
               {stats.hasPendingSettlement && (
-                <Text style={styles.approvalWaitSubtext}>Waiting for Admin Approval</Text>
+                <Text style={styles.approvalWaitSubtext}>Payout processing</Text>
               )}
             </View>
 
             {/* HISTORY RECORD SECTIONS */}
             <View style={styles.historySection}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Withdrawal History</Text>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Payout History</Text>
 
               {history.length === 0 ? (
                 <View style={styles.emptyStateContainer}>
@@ -430,7 +430,7 @@ export default function Settlements() {
 
                       <View style={styles.cardDetailsRow}>
                         <View>
-                          <Text style={[styles.detailsLabel, { color: theme.textMuted }]}>REQUESTED ON</Text>
+                          <Text style={[styles.detailsLabel, { color: theme.textMuted }]}>PAYOUT CREATED</Text>
                           <Text style={[styles.detailsValue, { color: theme.text }]}>{createdTimeInfo.formattedDate} {createdTimeInfo.formattedTime}</Text>
                         </View>
                       </View>

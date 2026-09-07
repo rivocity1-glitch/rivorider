@@ -1397,33 +1397,6 @@ export default function DashboardScreen() {
               </TouchableOpacity>
             </Animated.View>
 
-            {/* 3. SHIFT EXTENSION PROMPT */}
-            {shiftTimeRemaining > 0 && shiftTimeRemaining <= 1800 && (
-              <View style={[styles.extensionCard, { backgroundColor: isDarkMode ? '#451A03' : LOCAL_COLORS.amberBgLight }]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.extensionTitle}>Shift Ending in {Math.ceil(shiftTimeRemaining / 60)} Mins!</Text>
-                  <Text style={[styles.extensionSub, { color: theme.textMuted }]}>Want to keep working? Reserve the next shift slot now!</Text>
-                </View>
-                <TouchableOpacity onPress={() => setShiftModalVisible(true)} style={styles.extensionBtn}>
-                  <Text style={{ color: LOCAL_COLORS.white, fontWeight: '700', fontSize: 12 }}>Reserve Next</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* 4. POST-SHIFT REST TIMER */}
-            {restTimeRemaining > 0 && !activeShift && (
-              <View style={[styles.restCard, { backgroundColor: isDarkMode ? '#172554' : LOCAL_COLORS.blueBg }]}>
-                <Ionicons name="cafe-outline" size={20} color={LOCAL_COLORS.blueText} style={{ marginRight: 8 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.restTitle}>10-Minute Rest Window</Text>
-                  <Text style={[styles.restSub, { color: theme.textMuted }]}>Take a breather before your next slot ({formatTimer(restTimeRemaining)})</Text>
-                </View>
-                <TouchableOpacity onPress={() => setShiftModalVisible(true)} style={styles.restBtn}>
-                  <Text style={{ color: LOCAL_COLORS.blueText, fontWeight: '700', fontSize: 12 }}>Book Next</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
             {/* 5. STATS GRID */}
             <View style={styles.gridContainer}>
               <View style={[styles.gridItem, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
