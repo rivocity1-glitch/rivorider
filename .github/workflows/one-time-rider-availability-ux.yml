@@ -1,0 +1,296 @@
+name: One-time Rider Availability UX Patch
+
+on:
+  push:
+    branches:
+      - test/all-rider
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'chore: apply rider availability UX patch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout testing branch
+        uses: actions/checkout@v6
+        with:
+          ref: test/all-rider
+
+      - name: Apply rider availability UX changes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/app/(tabs)/dashboard.tsx')
+          text = path.read_text(encoding='utf-8')
+
+          old = """      if (shiftData && shiftData.length > 0) {
+        setActiveShift(shiftData[0]);
+      } else {
+        setActiveShift(null);
+      }
+
+      const { data: scheduled } = await supabase"""
+          new = """      if (shiftData && shiftData.length > 0) {
+        setActiveShift(shiftData[0]);
+      } else {
+        setActiveShift(null);
+
+        // A rider cannot remain online without an active shift.
+        if (profileData.availability_status?.toLowerCase() === 'available') {
+          try {
+            const offlineProfile = await updateAvailabilityStatus('offline');
+            if (offlineProfile) {
+              setRider((prev: any) => ({ ...prev, ...offlineProfile }));
+            }
+          } catch (availabilityError) {
+            console.error('Failed to reset availability without an active shift:', availabilityError);
+          }
+        }
+      }
+
+      const { data: scheduled } = await supabase"""
+          if old not in text:
+              raise SystemExit('Patch anchor 1 not found')
+          text = text.replace(old, new, 1)
+
+          old = """      const isRiderOnline = profileData.availability_status?.toLowerCase() === 'available';
+      const isFullyEligible = isRiderOnline && !!shiftData?.[0];"""
+          new = """      const hasActiveShift = !!shiftData?.[0];
+      const isRiderOnline = hasActiveShift && profileData.availability_status?.toLowerCase() === 'available';
+      const isFullyEligible = isRiderOnline && hasActiveShift;"""
+          if old not in text:
+              raise SystemExit('Patch anchor 2 not found')
+          text = text.replace(old, new, 1)
+
+          old = """      if (error) throw error;
+
+      setShiftModalVisible(false);
+      Alert.alert(
+        isToday ? 'Shift Started!' : 'Shift Reserved!',"""
+          new = """      if (error) throw error;
+
+      // Starting today's shift automatically makes the rider available.
+      if (isToday) {
+        try {
+          const updatedRider = await updateAvailabilityStatus('available');
+          if (updatedRider) {
+            setRider((prev: any) => ({ ...prev, ...updatedRider }));
+          }
+        } catch (availabilityError) {
+          console.error('Failed to enable availability after starting shift:', availabilityError);
+        }
+      }
+
+      setShiftModalVisible(false);
+      Alert.alert(
+        isToday ? 'Shift Started!' : 'Shift Reserved!',"""
+          if old not in text:
+              raise SystemExit('Patch anchor 3 not found')
+          text = text.replace(old, new, 1)
+
+          old = """  async function toggleAvailability() {
+    if (!rider) return;
+    if (rider.kyc_status === 'pending') {"""
+          new = """  async function toggleAvailability() {
+    if (!rider) return;
+    if (rider.kyc_status === 'pending') {"""
+          if old not in text:
+              raise SystemExit('Patch anchor 4 not found')
+          # Keep the existing KYC guards first, then block availability changes without a shift.
+
+          old = """    if (rider.kyc_status === 'rejected') {
+      Alert.alert('KYC Required', 'Complete your KYC verification first.');
+      return;
+    }
+
+    Animated.sequence(["""
+          new = """    if (rider.kyc_status === 'rejected') {
+      Alert.alert('KYC Required', 'Complete your KYC verification first.');
+      return;
+    }
+
+    if (!activeShift) {
+      setShiftModalVisible(true);
+      return;
+    }
+
+    Animated.sequence(["""
+          if old not in text:
+              raise SystemExit('Patch anchor 5 not found')
+          text = text.replace(old, new, 1)
+
+          old = """            {/* 2. OPERATIONAL STATUS PILL */}
+            <Animated.View style={{ transform: [{ scale: onlineBtnScale }], marginBottom: 16 }}>
+              <TouchableOpacity
+                activeOpacity={rider?.kyc_status === 'verified' ? 0.9 : 1}
+                onPress={toggleAvailability}
+                style={[
+                  styles.statusLargePill,
+                  {
+                    backgroundColor: isFullyEligible ? (isDarkMode ? '#064E3B' : '#ECFDF5') : isAvailable ? (isDarkMode ? '#451A03' : LOCAL_COLORS.amberBgLight) : theme.cardBg,
+                    borderColor: isFullyEligible ? LOCAL_COLORS.emeraldGreen : isAvailable ? LOCAL_COLORS.amberBorderLight : theme.border,
+                    opacity: rider?.kyc_status === 'verified' ? 1 : 0.6,
+                  },
+                ]}
+              >
+                <View style={[styles.statusIndicatorDot, { backgroundColor: isFullyEligible ? LOCAL_COLORS.emeraldGreen : isAvailable ? LOCAL_COLORS.amberBorderLight : '#9CA3AF' }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.statusPillTitle, { color: isFullyEligible ? (isDarkMode ? '#A7F3D0' : '#065F46') : isAvailable ? (isDarkMode ? '#FDE68A' : LOCAL_COLORS.amberTextLight) : theme.text }]}>
+                    {isFullyEligible ? '🟢 Online — Shift Active' : isAvailable ? '🟡 Online — No Active Shift' : '⚫ Offline'}
+                  </Text>
+                  <Text style={[styles.statusPillSubtitle, { color: theme.textMuted }]}>
+                    {isFullyEligible ? 'Receiving Delivery Requests' : isAvailable ? 'Not Receiving Orders — Select or Reserve Shift' : 'Tap to go Online'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </Animated.View>"""
+          new = """            {/* 2. SHIFT + AVAILABILITY STATUS */}
+            <Animated.View style={{ transform: [{ scale: onlineBtnScale }], marginBottom: 16 }}>
+              <TouchableOpacity
+                activeOpacity={rider?.kyc_status === 'verified' ? 0.9 : 1}
+                onPress={toggleAvailability}
+                style={[
+                  styles.statusLargePill,
+                  {
+                    backgroundColor: !hasShift
+                      ? theme.cardBg
+                      : isAvailable
+                      ? (isDarkMode ? '#064E3B' : '#ECFDF5')
+                      : (isDarkMode ? '#1F2937' : '#F9FAFB'),
+                    borderColor: !hasShift
+                      ? theme.border
+                      : isAvailable
+                      ? LOCAL_COLORS.emeraldGreen
+                      : theme.border,
+                    opacity: rider?.kyc_status === 'verified' ? 1 : 0.6,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.statusIndicatorDot,
+                    {
+                      backgroundColor: !hasShift
+                        ? '#9CA3AF'
+                        : isAvailable
+                        ? LOCAL_COLORS.emeraldGreen
+                        : '#9CA3AF',
+                    },
+                  ]}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.statusPillTitle,
+                      {
+                        color: !hasShift
+                          ? theme.text
+                          : isAvailable
+                          ? (isDarkMode ? '#A7F3D0' : '#065F46')
+                          : theme.text,
+                      },
+                    ]}
+                  >
+                    {!hasShift ? '⚪ Offline — Select a Shift' : isAvailable ? '🟢 Online — Shift Active' : '⚫ Offline — Shift Active'}
+                  </Text>
+                  <Text style={[styles.statusPillSubtitle, { color: theme.textMuted }]}>
+                    {!hasShift
+                      ? 'Select a shift to start working'
+                      : isAvailable
+                      ? 'Receiving orders • Tap to go offline'
+                      : 'You are offline • Tap to go online'}
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.statusActionBadge,
+                    {
+                      backgroundColor: !hasShift
+                        ? LOCAL_COLORS.emeraldGreen
+                        : isAvailable
+                        ? LOCAL_COLORS.danger
+                        : LOCAL_COLORS.emeraldGreen,
+                    },
+                  ]}
+                >
+                  <Text style={styles.statusActionBadgeText}>
+                    {!hasShift ? 'Select Shift' : isAvailable ? 'Go Offline' : 'Go Online'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </Animated.View>"""
+          if old not in text:
+              raise SystemExit('Patch anchor 6 not found')
+          text = text.replace(old, new, 1)
+
+          old = """                    onPress={() => {
+                      if (rider?.kyc_status !== 'verified') {
+                        Alert.alert('KYC Required', 'Complete your KYC verification first.');
+                      } else if (!isAvailable) {
+                        Alert.alert('Offline', 'You must be Online to select a shift. Turn your status to Online first.');
+                      } else {
+                        setShiftModalVisible(true);
+                      }
+                    }}
+                    style={[styles.actionBtn, { backgroundColor: isAvailable ? LOCAL_COLORS.emeraldGreen : '#9CA3AF' }]}
+                  >
+                    <Text style={styles.actionBtnText}>Select / Reserve Shift</Text>"""
+          new = """                    onPress={() => {
+                      if (rider?.kyc_status !== 'verified') {
+                        Alert.alert('KYC Required', 'Complete your KYC verification first.');
+                      } else {
+                        setShiftModalVisible(true);
+                      }
+                    }}
+                    style={[styles.actionBtn, { backgroundColor: LOCAL_COLORS.emeraldGreen }]}
+                  >
+                    <Text style={styles.actionBtnText}>Select / Reserve Shift</Text>"""
+          if old not in text:
+              raise SystemExit('Patch anchor 7 not found')
+          text = text.replace(old, new, 1)
+
+          old = """    { title: 'Operational Status', desc: 'Securely switch online or offline to manage incoming dispatches.' },"""
+          new = """    { title: 'Shift & Availability', desc: 'Select a shift to start working, then go offline or online anytime during that shift.' },"""
+          if old not in text:
+              raise SystemExit('Patch anchor 8 not found')
+          text = text.replace(old, new, 1)
+
+          old = """  statusPillSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },"""
+          new = """  statusPillSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  statusActionBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
+    marginLeft: 10,
+  },
+  statusActionBadgeText: {
+    color: LOCAL_COLORS.white,
+    fontSize: 11,
+    fontWeight: '800',
+  },"""
+          if old not in text:
+              raise SystemExit('Patch anchor 9 not found')
+          text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          print('Rider availability UX patch applied successfully.')
+
+      - name: Commit and push code changes, remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "src/app/(tabs)/dashboard.tsx"
+          git rm .github/workflows/one-time-rider-availability-ux.yml
+          git commit -m "feat: simplify rider shift availability UX"
+          git push origin test/all-rider
