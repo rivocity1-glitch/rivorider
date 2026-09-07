@@ -256,62 +256,6 @@ export default function Settlements() {
     fetchData(riderId, true);
   };
 
-  const handleRequestSettlement = async () => {
-    if (!riderId || stats.availableBalance < 500 || !stats.isDaysEligible || stats.hasPendingSettlement) return;
-
-    setSubmitting(true);
-    try {
-      const { data: deliveredOrders, error: ordersError } = await supabase
-        .from("orders")
-        .select("id, rider_earning")
-        .eq("rider_id", riderId)
-        .eq("order_status", "delivered")
-        .eq("settled_rider", false);
-
-      if (ordersError) throw ordersError;
-
-      const ordersList = deliveredOrders || [];
-      const orderIds = ordersList.map(o => o.id);
-      const deliveryCount = ordersList.length;
-      const totalAmount = ordersList.reduce((acc, curr) => acc + (Number(curr.rider_earning) || 0), 0);
-
-      const payload = {
-        rider_id: riderId,
-        amount: totalAmount,
-        delivery_count: deliveryCount,
-        order_ids: orderIds,
-        status: "REQUESTED",
-        settlement_type: "request",
-        requested_by: "rider",
-        created_at: new Date().toISOString()
-      };
-
-      console.log("Submitting Rider Settlement", {
-        rider_id: riderId,
-        amount: totalAmount,
-        delivery_count: deliveryCount,
-        order_ids: orderIds,
-        status: "REQUESTED",
-        settlement_type: "request",
-        requested_by: "rider"
-      });
-
-      const { error } = await supabase.from("rider_settlements").insert([payload]);
-
-      if (error) {
-        console.error(error);
-        throw error;
-      }
-
-      Alert.alert("Success", "Withdrawal Request Submitted Successfully");
-      fetchData(riderId, true);
-    } catch (error: any) {
-      console.error("Error submitting settlement request:", error);
-      Alert.alert("Submission Failed", error.message || "Could not process request");
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const getStatusBadgeConfig = (status: string) => {
     switch (status) {
@@ -328,18 +272,17 @@ export default function Settlements() {
 
   const getStatusMessage = () => {
     if (stats.hasPendingSettlement) {
-      return "Your withdrawal request is being processed.";
+      return "Your previous payout is being processed.";
     }
     if (stats.availableBalance < 500) {
-      return "Minimum ₹500 balance required to withdraw.";
+      return "Your eligible earnings are included in the next weekly payout.";
     }
     if (!stats.isDaysEligible) {
-      return "Withdrawals are available 7 days after completed deliveries.";
+      return "Payouts are processed automatically every 7 days from your joining date.";
     }
-    return "Your earnings are ready for withdrawal.";
+    return "Your eligible earnings will be included in the next weekly payout.";
   };
 
-  const isActionDisabled = stats.availableBalance < 500 || !stats.isDaysEligible || stats.hasPendingSettlement || submitting || loading || !riderId;
 
   const SkeletonCard = () => (
     <View style={[styles.orderCard, { backgroundColor: theme.cardBg, borderColor: theme.border, opacity: 0.6 }]}>
@@ -359,9 +302,9 @@ export default function Settlements() {
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="wallet-outline" size={22} color={theme.text} />
-              <Text style={[styles.headerTitle, { color: theme.text }]}>Earnings & Withdrawals</Text>
+              <Text style={[styles.headerTitle, { color: theme.text }]}>Earnings & Payouts</Text>
             </View>
-            <Text style={[styles.headerSubtitle, { color: theme.textMuted }]}>Track earnings and request payouts.</Text>
+            <Text style={[styles.headerSubtitle, { color: theme.textMuted }]}>Track earnings and automatic weekly payouts.</Text>
           </View>
         </View>
       </View>
@@ -388,7 +331,7 @@ export default function Settlements() {
             
             {/* HERO CARD */}
             <View style={[styles.balanceCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
-              <Text style={[styles.balanceLabel, { color: theme.textMuted }]}>AVAILABLE TO WITHDRAW</Text>
+              <Text style={[styles.balanceLabel, { color: theme.textMuted }]}>AVAILABLE EARNINGS</Text>
               <Text style={[styles.balanceValue, { color: theme.text }]}>₹{stats.availableBalance.toLocaleString("en-IN")}</Text>
               
               <View style={[styles.badgeContainerStatus, { backgroundColor: theme.bg }]}>
@@ -413,7 +356,7 @@ export default function Settlements() {
                 <View style={styles.iconStatWrapper}>
                   <Ionicons name="card-outline" size={18} color={COLORS.emeraldGreen} />
                 </View>
-                <Text style={[styles.statLabel, { color: theme.textMuted }]}>AVAILABLE TO WITHDRAW</Text>
+                <Text style={[styles.statLabel, { color: theme.textMuted }]}>AVAILABLE EARNINGS</Text>
                 <Text style={[styles.statValue, { color: COLORS.emeraldGreen }]}>₹{stats.availableBalance.toLocaleString("en-IN")}</Text>
               </View>
             </View>
@@ -443,24 +386,7 @@ export default function Settlements() {
               </Text>
               
               <Animated.View style={{ transform: [{ scale: actionButtonScale }], marginTop: 14 }}>
-                <TouchableOpacity
-                  onPressIn={animateButtonPressIn}
-                  onPressOut={animateButtonPressOut}
-                  onPress={handleRequestSettlement}
-                  disabled={isActionDisabled}
-                  style={[
-                    styles.button, 
-                    isActionDisabled ? { backgroundColor: isDarkMode ? '#333333' : '#E5E7EB' } : { backgroundColor: COLORS.emeraldGreen }
-                  ]}
-                >
-                  {submitting ? (
-                    <ActivityIndicator color="#ffffff" size="small" />
-                  ) : (
-                    <Text style={[styles.buttonText, isActionDisabled && styles.buttonTextDisabled]}>
-                      Request Withdrawal
-                    </Text>
-                  )}
-                </TouchableOpacity>
+                <View style={[styles.autoPayoutCard, { backgroundColor: theme.bg, borderColor: theme.border }]}><View style={styles.autoPayoutIcon}><Ionicons name="calendar-outline" size={21} color={COLORS.emeraldGreen} /></View><View style={{ flex: 1 }}><Text style={[styles.autoPayoutTitle, { color: theme.text }]}>Automatic Weekly Payout</Text><Text style={[styles.autoPayoutText, { color: theme.textMuted }]}>Eligible earnings are sent automatically every 7 days based on your joining date and credited to your registered bank account on working days.</Text></View></View>
               </Animated.View>
 
               {stats.hasPendingSettlement && (
@@ -664,6 +590,10 @@ const styles = StyleSheet.create({
   buttonTextDisabled: {
     color: '#888888',
   },
+  autoPayoutCard: { flexDirection: 'row', alignItems: 'flex-start', borderRadius: 16, borderWidth: 1, padding: 14, marginTop: 12 },
+  autoPayoutIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.emeraldGreen + '18', marginRight: 11 },
+  autoPayoutTitle: { fontSize: 13, fontWeight: '800', marginBottom: 3 },
+  autoPayoutText: { fontSize: 11, lineHeight: 16 },
   approvalWaitSubtext: {
     fontSize: 12,
     fontWeight: '600',

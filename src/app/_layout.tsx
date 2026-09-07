@@ -96,8 +96,9 @@ export default function RootLayout() {
   useEffect(() => {
     if (!authInitialized || (!loaded && !error)) return;
 
-    const inAuthGroup = segments[0] === '(auth)';
-    const inResetPassword = inAuthGroup && segments[1] === 'reset-password';
+    const segmentList = segments as string[];
+    const inAuthGroup = segmentList[0] === '(auth)';
+    const inResetPassword = inAuthGroup && segmentList[1] === 'reset-password';
 
     if (!session && !inAuthGroup) {
       router.replace('/(auth)/login' as any);

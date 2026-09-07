@@ -23,6 +23,7 @@ import { supabase } from '../../lib/supabase';
 
 interface Rider {
   id: string;
+  created_at?: string;
   auth_user_id: string;
   rider_code?: string;
   rider_name: string;
@@ -1675,6 +1676,23 @@ export default function ProfileScreen() {
             </Text>
           </View>
 
+          {/* RIDER INFORMATION */}
+          <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+            <View style={styles.sectionHeaderRow}><View style={{ flex: 1 }}><Text style={[styles.cardTitle, { color: theme.text }]}>Rider Information</Text><Text style={[styles.sectionDescription, { color: theme.textMuted }]}>All registered details and submitted information.</Text></View><Ionicons name="person-circle-outline" size={24} color={COLORS.emeraldGreen} /></View>
+            <View style={styles.infoGrid}>{[["FULL NAME", rider.rider_name], ["RIDER ID", rider.rider_code], ["PHONE", rider.phone], ["EMAIL", rider.email], ["GENDER", rider.gender], ["BLOOD GROUP", rider.blood_group], ["VEHICLE", rider.vehicle_type], ["STATUS", rider.status], ["JOINED", rider.created_at ? new Date(rider.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : null], ["KYC STATUS", kycStatus.replace('_', ' ') ]].map(([label, value]) => (<View key={String(label)} style={styles.infoGridItem}><Text style={[styles.infoLabel, { color: theme.textMuted }]}>{label}</Text><Text style={[styles.infoValue, { color: theme.text }]}>{value || '—'}</Text></View>))}</View>
+            <View style={[styles.infoDivider, { backgroundColor: theme.border }]} />
+            <Text style={[styles.cardTitle, { color: theme.text, marginBottom: 10 }]}>Submitted Documents</Text>
+            {[['Selfie', selfieUri], ['Aadhaar', aadhaarFrontUri || aadhaarBackUri], ['PAN', panUri], ['Driving Licence', drivingLicenseUri], ['Payment QR', qrCodeUri]].map(([label, uri]) => (<View key={String(label)} style={styles.documentStatusRow}><Ionicons name={uri ? 'checkmark-circle' : 'ellipse-outline'} size={18} color={uri ? COLORS.emeraldGreen : theme.textMuted} /><Text style={[styles.documentStatusText, { color: theme.text }]}>{label} {uri ? 'uploaded' : 'not uploaded'}</Text></View>))}
+            <View style={[styles.infoDivider, { backgroundColor: theme.border }]} />
+            <Text style={[styles.cardTitle, { color: theme.text, marginBottom: 10 }]}>Bank & Payment</Text>
+            <View style={styles.detailLine}><Text style={[styles.infoLabel, { color: theme.textMuted }]}>ACCOUNT HOLDER</Text><Text style={[styles.infoValue, { color: theme.text }]}>{accountHolder || '—'}</Text></View>
+            <View style={styles.detailLine}><Text style={[styles.infoLabel, { color: theme.textMuted }]}>BANK</Text><Text style={[styles.infoValue, { color: theme.text }]}>{bankName || '—'}</Text></View>
+            <View style={styles.detailLine}><Text style={[styles.infoLabel, { color: theme.textMuted }]}>ACCOUNT</Text><Text style={[styles.infoValue, { color: theme.text }]}>{accountNumber ? `•••• ${accountNumber.slice(-4)}` : '—'}</Text></View>
+            <View style={styles.detailLine}><Text style={[styles.infoLabel, { color: theme.textMuted }]}>IFSC</Text><Text style={[styles.infoValue, { color: theme.text }]}>{ifsc || '—'}</Text></View>
+            <View style={styles.detailLine}><Text style={[styles.infoLabel, { color: theme.textMuted }]}>UPI</Text><Text style={[styles.infoValue, { color: theme.text }]}>{upi || '—'}</Text></View>
+            <TouchableOpacity style={[styles.submitButton, { backgroundColor: COLORS.emeraldGreen, marginTop: 14 }]} onPress={() => setIsKycModalOpen(true)}><Text style={styles.submitButtonText}>View / Update Documents & Bank</Text></TouchableOpacity>
+          </View>
+
           {/* RESIDENCE LOCATION */}
 
           <View
@@ -1719,7 +1737,7 @@ export default function ProfileScreen() {
                     },
                   ]}
                 >
-                  Add where you live. Use GPS or enter the address manually.
+                  Your saved residence location. Update it only when you need to add or change it.
                 </Text>
               </View>
 
@@ -1767,7 +1785,7 @@ export default function ProfileScreen() {
                       styles.locationButtonText
                     }
                   >
-                    Use My Current Location
+                    Update Location with GPS
                   </Text>
                 </>
               )}
@@ -3039,6 +3057,13 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
 
+  infoGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
+  infoGridItem: { width: '50%', paddingHorizontal: 5, marginBottom: 12 },
+  infoValue: { fontSize: 13, fontWeight: '700' },
+  infoDivider: { height: 1, marginVertical: 12 },
+  documentStatusRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 9 },
+  documentStatusText: { fontSize: 13, fontWeight: '600', marginLeft: 8 },
+  detailLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 7 },
   centeredContainer: {
     flex: 1,
     justifyContent:

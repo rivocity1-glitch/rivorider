@@ -124,6 +124,7 @@ export default function DashboardScreen() {
 
   const [rider, setRider] = useState<any>(null);
   const [activeShift, setActiveShift] = useState<any>(null);
+  const hasActiveShift = !!activeShift;
   const [scheduledShifts, setScheduledShifts] = useState<any[]>([]);
   const [dueReservedShift, setDueReservedShift] = useState<any>(null);
 
@@ -1461,20 +1462,7 @@ export default function DashboardScreen() {
                   <TouchableOpacity onPress={promptEndShiftConfirmation} style={[styles.actionBtn, { backgroundColor: LOCAL_COLORS.danger }]}>
                     <Text style={styles.actionBtnText}>End Shift</Text>
                   </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    onPress={() => {
-                      if (rider?.kyc_status !== 'verified') {
-                        Alert.alert('KYC Required', 'Complete your KYC verification first.');
-                      } else {
-                        setShiftModalVisible(true);
-                      }
-                    }}
-                    style={[styles.actionBtn, { backgroundColor: LOCAL_COLORS.emeraldGreen }]}
-                  >
-                    <Text style={styles.actionBtnText}>Select / Reserve Shift</Text>
-                  </TouchableOpacity>
-                )}
+                ) : null}
               </View>
             </View>
 
