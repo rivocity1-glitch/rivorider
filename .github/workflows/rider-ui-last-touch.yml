@@ -1,0 +1,61 @@
+name: Rider UI last touch
+
+on:
+  push:
+    branches:
+      - test/all-rider
+
+permissions:
+  contents: write
+
+jobs:
+  polish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test/all-rider
+          fetch-depth: 0
+      - name: Finalize single shift entry and payout wording
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          p = Path('src/app/(tabs)/dashboard.tsx')
+          s = p.read_text(encoding='utf-8')
+          # Only the main availability/shift pill should open shift selection.
+          a = s.find('            {/* 3. SHIFT EXTENSION PROMPT */}')
+          b = s.find('            {/* 5. STATS GRID */}')
+          if a >= 0 and b > a:
+              s = s[:a] + s[b:]
+          # Remove the separate post-shift booking/rest entry point as well.
+          a = s.find('            {/* 4. POST-SHIFT REST TIMER */}')
+          if a >= 0:
+              b = s.find('            {/* 5. STATS GRID */}', a)
+              if b > a:
+                  s = s[:a] + s[b:]
+          p.write_text(s, encoding='utf-8')
+
+          p = Path('src/app/(tabs)/settlements.tsx')
+          s = p.read_text(encoding='utf-8')
+          replacements = {
+              'Withdrawal in progress': 'Payout in progress',
+              'Ready for withdrawal': 'Payouts are scheduled',
+              'PENDING WITHDRAWAL': 'PENDING PAYOUT',
+              'Withdrawal History': 'Payout History',
+              'REQUESTED ON': 'PAYOUT CREATED',
+              "label: 'Requested'": "label: 'Processing'",
+              'Waiting for Admin Approval': 'Payout processing',
+          }
+          for old, new in replacements.items():
+              s = s.replace(old, new)
+          p.write_text(s, encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "src/app/(tabs)/dashboard.tsx" "src/app/(tabs)/settlements.tsx"
+          git commit -m "Finalize rider shift and payout UX"
+          git rm -f .github/workflows/rider-ui-last-touch.yml
+          git commit -m "Remove temporary rider UI workflow"
+          git push origin test/all-rider
