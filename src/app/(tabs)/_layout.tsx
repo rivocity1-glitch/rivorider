@@ -1,4 +1,3 @@
-// src/app/(tabs)/_layout.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { Platform } from "react-native";
@@ -9,8 +8,8 @@ export default function TabsLayout() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
 
-  const baseHeight = 64;
   const bottomInset = Platform.OS === 'android' ? Math.max(insets.bottom, 8) : insets.bottom;
+  const tabBarHeight = 66 + bottomInset;
 
   return (
     <Tabs
@@ -18,12 +17,26 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: "#2ECC71",
         tabBarInactiveTintColor: theme.textMuted,
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: "700",
+          marginTop: -2,
+          marginBottom: 1,
+        },
+        tabBarIconStyle: {
+          marginTop: 2,
+        },
         tabBarStyle: {
           backgroundColor: theme.headerBg,
           borderTopColor: theme.border,
-          height: baseHeight + bottomInset,
+          borderTopWidth: 1,
+          height: tabBarHeight,
           paddingBottom: bottomInset,
-          paddingTop: 8,
+          paddingTop: 6,
+          elevation: 12,
+          shadowOpacity: 0.08,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: -3 },
         },
       }}
     >
@@ -31,8 +44,12 @@ export default function TabsLayout() {
         name="dashboard"
         options={{
           title: "Home",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? "home" : "home-outline"}
+              size={focused ? 23 : 22}
+              color={color}
+            />
           ),
         }}
       />
@@ -41,8 +58,12 @@ export default function TabsLayout() {
         name="deliveries"
         options={{
           title: "Deliveries",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="cube-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? "cube" : "cube-outline"}
+              size={focused ? 23 : 22}
+              color={color}
+            />
           ),
         }}
       />
@@ -51,8 +72,12 @@ export default function TabsLayout() {
         name="settlements"
         options={{
           title: "Earnings",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="wallet-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? "wallet" : "wallet-outline"}
+              size={focused ? 23 : 22}
+              color={color}
+            />
           ),
         }}
       />
@@ -61,8 +86,12 @@ export default function TabsLayout() {
         name="profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? "person" : "person-outline"}
+              size={focused ? 23 : 22}
+              color={color}
+            />
           ),
         }}
       />
