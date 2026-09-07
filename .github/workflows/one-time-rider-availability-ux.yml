@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   patch:
-    if: github.event.head_commit.message == 'chore: apply rider availability UX patch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout testing branch
@@ -19,7 +18,7 @@ jobs:
           ref: test/all-rider
 
       - name: Apply rider availability UX changes
-        shell: python
+        shell: python {0}
         run: |
           from pathlib import Path
 
@@ -91,16 +90,6 @@ jobs:
               raise SystemExit('Patch anchor 3 not found')
           text = text.replace(old, new, 1)
 
-          old = """  async function toggleAvailability() {
-    if (!rider) return;
-    if (rider.kyc_status === 'pending') {"""
-          new = """  async function toggleAvailability() {
-    if (!rider) return;
-    if (rider.kyc_status === 'pending') {"""
-          if old not in text:
-              raise SystemExit('Patch anchor 4 not found')
-          # Keep the existing KYC guards first, then block availability changes without a shift.
-
           old = """    if (rider.kyc_status === 'rejected') {
       Alert.alert('KYC Required', 'Complete your KYC verification first.');
       return;
@@ -119,7 +108,7 @@ jobs:
 
     Animated.sequence(["""
           if old not in text:
-              raise SystemExit('Patch anchor 5 not found')
+              raise SystemExit('Patch anchor 4 not found')
           text = text.replace(old, new, 1)
 
           old = """            {/* 2. OPERATIONAL STATUS PILL */}
@@ -155,12 +144,12 @@ jobs:
                 style={[
                   styles.statusLargePill,
                   {
-                    backgroundColor: !hasShift
+                    backgroundColor: !hasActiveShift
                       ? theme.cardBg
                       : isAvailable
                       ? (isDarkMode ? '#064E3B' : '#ECFDF5')
                       : (isDarkMode ? '#1F2937' : '#F9FAFB'),
-                    borderColor: !hasShift
+                    borderColor: !hasActiveShift
                       ? theme.border
                       : isAvailable
                       ? LOCAL_COLORS.emeraldGreen
@@ -173,7 +162,7 @@ jobs:
                   style={[
                     styles.statusIndicatorDot,
                     {
-                      backgroundColor: !hasShift
+                      backgroundColor: !hasActiveShift
                         ? '#9CA3AF'
                         : isAvailable
                         ? LOCAL_COLORS.emeraldGreen
@@ -186,7 +175,7 @@ jobs:
                     style={[
                       styles.statusPillTitle,
                       {
-                        color: !hasShift
+                        color: !hasActiveShift
                           ? theme.text
                           : isAvailable
                           ? (isDarkMode ? '#A7F3D0' : '#065F46')
@@ -194,10 +183,10 @@ jobs:
                       },
                     ]}
                   >
-                    {!hasShift ? '⚪ Offline — Select a Shift' : isAvailable ? '🟢 Online — Shift Active' : '⚫ Offline — Shift Active'}
+                    {!hasActiveShift ? '⚪ Offline — Select a Shift' : isAvailable ? '🟢 Online — Shift Active' : '⚫ Offline — Shift Active'}
                   </Text>
                   <Text style={[styles.statusPillSubtitle, { color: theme.textMuted }]}>
-                    {!hasShift
+                    {!hasActiveShift
                       ? 'Select a shift to start working'
                       : isAvailable
                       ? 'Receiving orders • Tap to go offline'
@@ -208,7 +197,7 @@ jobs:
                   style={[
                     styles.statusActionBadge,
                     {
-                      backgroundColor: !hasShift
+                      backgroundColor: !hasActiveShift
                         ? LOCAL_COLORS.emeraldGreen
                         : isAvailable
                         ? LOCAL_COLORS.danger
@@ -217,13 +206,13 @@ jobs:
                   ]}
                 >
                   <Text style={styles.statusActionBadgeText}>
-                    {!hasShift ? 'Select Shift' : isAvailable ? 'Go Offline' : 'Go Online'}
+                    {!hasActiveShift ? 'Select Shift' : isAvailable ? 'Go Offline' : 'Go Online'}
                   </Text>
                 </View>
               </TouchableOpacity>
             </Animated.View>"""
           if old not in text:
-              raise SystemExit('Patch anchor 6 not found')
+              raise SystemExit('Patch anchor 5 not found')
           text = text.replace(old, new, 1)
 
           old = """                    onPress={() => {
@@ -249,13 +238,13 @@ jobs:
                   >
                     <Text style={styles.actionBtnText}>Select / Reserve Shift</Text>"""
           if old not in text:
-              raise SystemExit('Patch anchor 7 not found')
+              raise SystemExit('Patch anchor 6 not found')
           text = text.replace(old, new, 1)
 
           old = """    { title: 'Operational Status', desc: 'Securely switch online or offline to manage incoming dispatches.' },"""
           new = """    { title: 'Shift & Availability', desc: 'Select a shift to start working, then go offline or online anytime during that shift.' },"""
           if old not in text:
-              raise SystemExit('Patch anchor 8 not found')
+              raise SystemExit('Patch anchor 7 not found')
           text = text.replace(old, new, 1)
 
           old = """  statusPillSubtitle: {
@@ -280,7 +269,7 @@ jobs:
     fontWeight: '800',
   },"""
           if old not in text:
-              raise SystemExit('Patch anchor 9 not found')
+              raise SystemExit('Patch anchor 8 not found')
           text = text.replace(old, new, 1)
 
           path.write_text(text, encoding='utf-8')
