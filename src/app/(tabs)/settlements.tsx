@@ -272,15 +272,15 @@ export default function Settlements() {
 
   const getStatusMessage = () => {
     if (stats.hasPendingSettlement) {
-      return "Your previous payout is being processed.";
+      return "Your previous automatic withdrawal is being processed.";
     }
     if (stats.availableBalance < 500) {
-      return "Your eligible earnings are included in the next weekly payout.";
+      return "Your eligible earnings will be sent automatically on your next withdrawal date.";
     }
     if (!stats.isDaysEligible) {
-      return "Payouts are processed automatically every 7 days from your joining date.";
+      return "Automatic withdrawals are sent every 7 days from your joining date.";
     }
-    return "Your eligible earnings will be included in the next weekly payout.";
+    return "Your eligible earnings will be sent automatically on your next withdrawal date.";
   };
 
 
@@ -302,9 +302,9 @@ export default function Settlements() {
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="wallet-outline" size={22} color={theme.text} />
-              <Text style={[styles.headerTitle, { color: theme.text }]}>Earnings & Payouts</Text>
+              <Text style={[styles.headerTitle, { color: theme.text }]}>Earnings</Text>
             </View>
-            <Text style={[styles.headerSubtitle, { color: theme.textMuted }]}>Track earnings and automatic weekly payouts.</Text>
+            <Text style={[styles.headerSubtitle, { color: theme.textMuted }]}>Your earnings are automatically sent to your registered bank account.</Text>
           </View>
         </View>
       </View>
@@ -337,7 +337,7 @@ export default function Settlements() {
               <View style={[styles.badgeContainerStatus, { backgroundColor: theme.bg }]}>
                 <View style={[styles.statusIndicatorDot, { backgroundColor: stats.hasPendingSettlement ? '#FF7A00' : COLORS.emeraldGreen }]} />
                 <Text style={[styles.balanceSubtext, { color: theme.text }]}>
-                  {stats.hasPendingSettlement ? 'Payout in progress' : 'Payouts are scheduled'}
+                  {stats.hasPendingSettlement ? 'Automatic withdrawal in progress' : 'Automatic withdrawal scheduled'}
                 </Text>
               </View>
             </View>
@@ -386,24 +386,24 @@ export default function Settlements() {
               </Text>
               
               <Animated.View style={{ transform: [{ scale: actionButtonScale }], marginTop: 14 }}>
-                <View style={[styles.autoPayoutCard, { backgroundColor: theme.bg, borderColor: theme.border }]}><View style={styles.autoPayoutIcon}><Ionicons name="calendar-outline" size={21} color={COLORS.emeraldGreen} /></View><View style={{ flex: 1 }}><Text style={[styles.autoPayoutTitle, { color: theme.text }]}>Automatic Weekly Payout</Text><Text style={[styles.autoPayoutText, { color: theme.textMuted }]}>Eligible earnings are sent automatically every 7 days based on your joining date and credited to your registered bank account on working days.</Text></View></View>
+                <View style={[styles.autoPayoutCard, { backgroundColor: theme.bg, borderColor: theme.border }]}><View style={styles.autoPayoutIcon}><Ionicons name="calendar-outline" size={21} color={COLORS.emeraldGreen} /></View><View style={{ flex: 1 }}><Text style={[styles.autoPayoutTitle, { color: theme.text }]}>Automatic Withdrawal</Text><Text style={[styles.autoPayoutText, { color: theme.textMuted }]}>Your eligible earnings are automatically sent to your registered bank account every 7 days based on your joining date. Credit may take a few working days.</Text></View></View>
               </Animated.View>
 
               {stats.hasPendingSettlement && (
-                <Text style={styles.approvalWaitSubtext}>Payout processing</Text>
+                <Text style={styles.approvalWaitSubtext}>Automatic withdrawal processing</Text>
               )}
             </View>
 
             {/* HISTORY RECORD SECTIONS */}
             <View style={styles.historySection}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>Payout History</Text>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Withdrawal History</Text>
 
               {history.length === 0 ? (
                 <View style={styles.emptyStateContainer}>
                   <Ionicons name="receipt-outline" size={48} color={theme.textMuted} style={{ marginBottom: 8 }} />
                   <Text style={[styles.emptyStateTitle, { color: theme.text }]}>No withdrawals yet</Text>
                   <Text style={[styles.emptyStateDesc, { color: theme.textMuted }]}>
-                    Your completed payouts will appear here.
+                    Your completed automatic withdrawals will appear here.
                   </Text>
                 </View>
               ) : (
@@ -430,7 +430,7 @@ export default function Settlements() {
 
                       <View style={styles.cardDetailsRow}>
                         <View>
-                          <Text style={[styles.detailsLabel, { color: theme.textMuted }]}>PAYOUT CREATED</Text>
+                          <Text style={[styles.detailsLabel, { color: theme.textMuted }]}>WITHDRAWAL SENT</Text>
                           <Text style={[styles.detailsValue, { color: theme.text }]}>{createdTimeInfo.formattedDate} {createdTimeInfo.formattedTime}</Text>
                         </View>
                       </View>

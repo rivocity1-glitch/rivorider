@@ -1201,7 +1201,7 @@ export default function DashboardScreen() {
   const tutorialSteps = [
     { title: 'Dashboard V2', desc: 'Monitor metrics, stores, and active shift timers smoothly.' },
     { title: 'Fulfillment Nodes', desc: 'Track live store locations and total assigned pending count.' },
-    { title: 'Shift & Availability', desc: 'Select a shift to start working, then go offline or online anytime during that shift.' },
+    { title: 'Shift & Availability', desc: 'Select a shift to go online, then go offline or online anytime during that shift.' },
     { title: 'SOS Emergency Support', desc: 'Report vehicle logs or road barriers instantly to active support.' },
   ];
 
@@ -1302,25 +1302,6 @@ export default function DashboardScreen() {
               </View>
             )}
 
-            {/* 1. DUE RESERVED SHIFT ALERT BANNER */}
-            {dueReservedShift && (
-              <View style={[styles.reservedAlertBanner, { backgroundColor: isDarkMode ? '#172554' : LOCAL_COLORS.blueBg }]}>
-                <Ionicons name="time-outline" size={24} color={LOCAL_COLORS.blueText} style={{ marginRight: 10 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.reservedAlertTitle}>Your Reserved Shift is Ready!</Text>
-                  <Text style={[styles.reservedAlertSub, { color: theme.textMuted }]}>You reserved a shift for right now. Do you want to start now?</Text>
-                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-                    <TouchableOpacity onPress={() => handleStartReservedShift(dueReservedShift.id)} style={styles.btnStartNow}>
-                      <Text style={{ color: LOCAL_COLORS.white, fontWeight: '700', fontSize: 12 }}>Start Shift Now</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => handleCancelReservedShift(dueReservedShift.id)} style={styles.btnCancelShift}>
-                      <Text style={{ color: LOCAL_COLORS.danger, fontWeight: '700', fontSize: 12 }}>Cancel</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            )}
-
             {/* 2. SHIFT + AVAILABILITY STATUS */}
             <Animated.View style={{ transform: [{ scale: onlineBtnScale }], marginBottom: 16 }}>
               <TouchableOpacity
@@ -1368,14 +1349,14 @@ export default function DashboardScreen() {
                       },
                     ]}
                   >
-                    {!hasActiveShift ? '⚪ Offline — Select a Shift' : isAvailable ? '🟢 Online — Shift Active' : '⚫ Offline — Shift Active'}
+                    {!hasActiveShift ? '⚪ Offline' : isAvailable ? '🟢 Online' : '⚫ Offline'}
                   </Text>
                   <Text style={[styles.statusPillSubtitle, { color: theme.textMuted }]}>
                     {!hasActiveShift
-                      ? 'Select a shift to start working'
+                      ? 'Select a shift to go online'
                       : isAvailable
                       ? 'Receiving orders • Tap to go offline'
-                      : 'You are offline • Tap to go online'}
+                      : 'Shift active • Tap to go online'}
                   </Text>
                 </View>
                 <View
