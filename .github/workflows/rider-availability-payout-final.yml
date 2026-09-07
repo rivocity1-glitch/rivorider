@@ -1,0 +1,89 @@
+name: Final rider availability and withdrawal UX
+
+on:
+  push:
+    branches:
+      - test/all-rider
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test/all-rider
+          fetch-depth: 0
+
+      - name: Apply final UI changes
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          # Dashboard: one and only one shift/availability entry point.
+          p = Path('src/app/(tabs)/dashboard.tsx')
+          s = p.read_text(encoding='utf-8')
+
+          # Remove the due-reserved-shift action banner. It duplicates the main
+          # Shift + Online/Offline control with another Start Shift action.
+          start = s.find('            {/* 1. DUE RESERVED SHIFT ALERT BANNER */}')
+          end = s.find('            {/* 2. SHIFT + AVAILABILITY STATUS */}', start)
+          if start != -1 and end != -1 and end > start:
+              s = s[:start] + s[end:]
+
+          # Make the single combined control unmistakably the only control.
+          s = s.replace('⚪ Offline — Select a Shift', '⚪ Offline')
+          s = s.replace('🟢 Online — Shift Active', '🟢 Online')
+          s = s.replace('⚫ Offline — Shift Active', '⚫ Offline')
+          s = s.replace('Select a shift to start working', 'Select a shift to go online')
+          s = s.replace('Shift active • Tap to go online', 'Shift active • Tap to go online')
+
+          p.write_text(s, encoding='utf-8')
+
+          # Earnings: concise automatic-withdrawal messaging.
+          p = Path('src/app/(tabs)/settlements.tsx')
+          s = p.read_text(encoding='utf-8')
+
+          s = s.replace(
+              'Your earnings are automatically sent to your registered bank account.',
+              'Auto withdrawal is sent to your registered bank account every 7 days.'
+          )
+          s = s.replace(
+              'Your eligible earnings are automatically sent to your registered bank account every 7 days based on your joining date. Credit may take a few working days.',
+              'Auto withdrawal is sent every 7 days based on your joining date. It may take a few working days to reach your bank account.'
+          )
+          s = s.replace('PENDING PAYOUT', 'PENDING AUTO WITHDRAWAL')
+          s = s.replace('Automatic withdrawal in progress', 'Auto withdrawal processing')
+          s = s.replace('Automatic withdrawal scheduled', 'Auto withdrawal scheduled')
+          s = s.replace('Withdrawal History', 'Auto Withdrawal History')
+          s = s.replace('No withdrawals yet', 'No auto withdrawals yet')
+          s = s.replace('Your completed automatic withdrawals will appear here.', 'Sent auto withdrawals will appear here.')
+
+          # Make the explanatory action panel short and direct.
+          s = s.replace(
+              'Your previous automatic withdrawal is being processed.',
+              'Auto withdrawal is being processed.'
+          )
+          s = s.replace(
+              'Your eligible earnings will be sent automatically on your next withdrawal date.',
+              'Auto withdrawal will be sent on your next withdrawal date.'
+          )
+          s = s.replace(
+              'Automatic withdrawals are sent every 7 days from your joining date.',
+              'Auto withdrawal is sent every 7 days from your joining date.'
+          )
+          s = s.replace('Automatic withdrawal processing', 'Auto withdrawal processing')
+          s = s.replace('Automatic Withdrawal', 'Auto Withdrawal')
+
+          p.write_text(s, encoding='utf-8')
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "src/app/(tabs)/dashboard.tsx" "src/app/(tabs)/settlements.tsx"
+          git commit -m "Finalize rider shift and auto withdrawal UX"
+          git push origin test/all-rider
