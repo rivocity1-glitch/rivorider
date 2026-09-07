@@ -1,0 +1,84 @@
+name: Final rider UI cleanup
+
+on:
+  push:
+    branches:
+      - test/all-rider
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test/all-rider
+          fetch-depth: 0
+
+      - name: Apply requested rider UI cleanup
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          p = Path('src/app/(tabs)/settlements.tsx')
+          s = p.read_text(encoding='utf-8')
+
+          # Rider-facing wording: automatic withdrawal only.
+          replacements = {
+              'Earnings & Payouts': 'Earnings',
+              'Track earnings and automatic weekly payouts.': 'Your earnings are automatically sent to your registered bank account.',
+              'AVAILABLE EARNINGS': 'AVAILABLE EARNINGS',
+              'Automatic Weekly Payout': 'Automatic Withdrawal',
+              'Eligible earnings are sent automatically every 7 days based on your joining date and credited to your registered bank account on working days.': 'Your eligible earnings are automatically sent to your registered bank account every 7 days based on your joining date. Credit may take a few working days.',
+              'Payout in progress': 'Automatic withdrawal in progress',
+              'Payouts are scheduled': 'Automatic withdrawal scheduled',
+              'Payout History': 'Withdrawal History',
+              'PAYOUT CREATED': 'WITHDRAWAL SENT',
+              'Payout processing': 'Automatic withdrawal processing',
+              'Your previous payout is being processed.': 'Your previous automatic withdrawal is being processed.',
+              'Your eligible earnings are included in the next weekly payout.': 'Your eligible earnings will be sent automatically on your next withdrawal date.',
+              'Payouts are processed automatically every 7 days from your joining date.': 'Automatic withdrawals are sent every 7 days from your joining date.',
+              'Your eligible earnings will be included in the next weekly payout.': 'Your eligible earnings will be sent automatically on your next withdrawal date.',
+              'No withdrawals yet': 'No withdrawals yet',
+              'Your completed payouts will appear here.': 'Your completed automatic withdrawals will appear here.',
+          }
+          for old, new in replacements.items():
+              s = s.replace(old, new)
+
+          # Remove stale manual-withdraw wording wherever it remains visible.
+          s = s.replace('Request Withdrawal', 'Automatic Withdrawal')
+          s = s.replace('request payouts', 'automatic withdrawals')
+          s = s.replace('withdrawal', 'withdrawal')
+
+          p.write_text(s, encoding='utf-8')
+
+          p = Path('src/app/(tabs)/dashboard.tsx')
+          s = p.read_text(encoding='utf-8')
+
+          # Keep the existing single combined Shift + Availability control.
+          s = s.replace('⚪ Offline — Select a Shift', '⚪ Offline')
+          s = s.replace('🟢 Online — Shift Active', '🟢 Online')
+          s = s.replace('⚫ Offline — Shift Active', '⚫ Offline')
+          s = s.replace('Select a shift to start working', 'Select a shift to go online')
+          s = s.replace('Receiving orders • Tap to go offline', 'Receiving orders • Tap to go offline')
+          s = s.replace('You are offline • Tap to go online', 'Shift active • Tap to go online')
+
+          # Keep only the main control as the selection entry point; remove the
+          # in-dashboard reserved-shift alert action that duplicates selection/start.
+          block_start = s.find('            {/* 1. DUE RESERVED SHIFT ALERT BANNER */}')
+          block_end = s.find('            {/* 2. SHIFT + AVAILABILITY STATUS */}', block_start)
+          if block_start >= 0 and block_end > block_start:
+              s = s[:block_start] + s[block_end:]
+
+          p.write_text(s, encoding='utf-8')
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "src/app/(tabs)/dashboard.tsx" "src/app/(tabs)/settlements.tsx"
+          git commit -m "Simplify rider shift and withdrawal UX" || exit 0
+          git push origin test/all-rider
