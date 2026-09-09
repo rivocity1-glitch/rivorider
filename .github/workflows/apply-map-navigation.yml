@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feature/map-navigation
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -19,12 +22,9 @@ jobs:
           fetch-depth: 0
 
       - name: Apply navigation changes
-        env:
-          FILE: src/app/(tabs)/deliveries.tsx
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
           path = Path('src/app/(tabs)/deliveries.tsx')
           text = path.read_text()
