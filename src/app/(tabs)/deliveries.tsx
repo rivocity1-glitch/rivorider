@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { COLORS, useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../lib/supabase';
+import { navigateToCustomer } from '../../lib/customerNavigation';
 
 const RUPEE = String.fromCharCode(0x20B9);
 
@@ -44,6 +45,7 @@ interface Order {
   cash_received?: number | null;
   change_returned?: number | null;
   customer_address_id?: string | null;
+  vendor_location: { latitude: number | null; longitude: number | null } | null;
   customer: { customer_name: string; phone?: string | null } | null;
   vendor: { shop_name: string; phone?: string | null } | null;
   customer_addresses: {
@@ -322,6 +324,34 @@ export default function DeliveriesScreen() {
         JSON.stringify(ordersData, null, 2)
       );
 
+      const vendorIds = Array.from(
+        new Set(
+          (ordersData || [])
+            .map((order: any) => order.vendor_id)
+            .filter(Boolean)
+        )
+      );
+
+      const vendorLocationsMap: Record<string, { latitude: number | null; longitude: number | null }> = {};
+
+      if (vendorIds.length > 0) {
+        const { data: vendorProfiles, error: vendorProfilesError } = await supabase
+          .from('vendor_profiles')
+          .select('vendor_id, latitude, longitude')
+          .in('vendor_id', vendorIds);
+
+        if (vendorProfilesError) {
+          console.warn('Vendor location lookup warning:', vendorProfilesError);
+        } else if (vendorProfiles) {
+          vendorProfiles.forEach((profile: any) => {
+            vendorLocationsMap[profile.vendor_id] = {
+              latitude: profile.latitude ?? null,
+              longitude: profile.longitude ?? null,
+            };
+          });
+        }
+      }
+
       const orderIds = (ordersData || []).map((o: any) => o.id);
       let collectionsMap: Record<string, any> = {};
 
@@ -398,6 +428,7 @@ export default function DeliveriesScreen() {
           cash_received: order.cash_received !== undefined ? order.cash_received : null,
           change_returned: order.change_returned !== undefined ? order.change_returned : null,
           customer_address_id: order.customer_address_id || null,
+          vendor_location: vendorLocationsMap[order.vendor_id] || null,
           customer: Array.isArray(order.customer) ? order.customer[0] : order.customer,
           vendor: Array.isArray(order.vendor) ? order.vendor[0] : order.vendor,
           customer_addresses: resolvedAddress,
@@ -415,6 +446,17 @@ export default function DeliveriesScreen() {
       console.error('Error fetching deliveries:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleNavigateToCustomer = async (order: Order) => {
+    const opened = await navigateToCustomer(
+      order.vendor_location || {},
+      order.customer_addresses || {}
+    );
+
+    if (opened) {
+      showSuccessToast('Opening Google Maps Navigation');
     }
   };
 
@@ -984,7 +1026,26 @@ export default function DeliveriesScreen() {
                             <Text style={[styles.callButtonText, { color: theme.text }]}>Call Customer</Text>
                           </TouchableOpacity>
 
-                          <TouchableOpacity
+                                    <TouchableOpacity
+            activeOpacity={0.8}
+            style={{
+              flex: 1,
+              flexDirection: 'row',
+              paddingVertical: 10,
+              borderRadius: 99,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: COLORS.emeraldGreen,
+              marginRight: 8,
+            }}
+            onPress={() => handleNavigateToCustomer(item)}
+            disabled={submitting}
+          >
+            <Ionicons name="navigate-outline" size={18} color={COLORS.white} style={{ marginRight: 6 }} />
+            <Text style={styles.completeButtonText}>Navigate</Text>
+          </TouchableOpacity>
+
+<TouchableOpacity
                             activeOpacity={0.8}
                             style={[styles.completeButton, { backgroundColor: '#3498DB' }]}
                             disabled={submitting}
