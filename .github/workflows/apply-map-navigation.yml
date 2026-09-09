@@ -1,0 +1,138 @@
+name: Apply rider customer navigation
+
+on:
+  push:
+    branches:
+      - feature/map-navigation
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/map-navigation
+          fetch-depth: 0
+
+      - name: Apply navigation changes
+        env:
+          FILE: src/app/(tabs)/deliveries.tsx
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('src/app/(tabs)/deliveries.tsx')
+          text = path.read_text()
+
+          if 'handleNavigateToCustomer' in text:
+              print('Navigation patch already applied; nothing to do.')
+              raise SystemExit(0)
+
+          text = text.replace(
+              "  vendor: { shop_name: string; phone?: string | null } | null;",
+              "  vendor: { shop_name: string; phone?: string | null } | null;\n  vendor_location: { latitude: number | null; longitude: number | null } | null;",
+              1,
+          )
+
+          anchor = "      const parsedOrders = (ordersData || []).map((order: any) => {"
+          vendor_fetch = '''      const vendorIds = Array.from(new Set((ordersData || []).map((order: any) => order.vendor_id).filter(Boolean)));
+      const vendorLocationsMap: Record<string, { latitude: number | null; longitude: number | null }> = {};
+
+      if (vendorIds.length > 0) {
+        const { data: vendorProfiles, error: vendorProfilesError } = await supabase
+          .from('vendor_profiles')
+          .select('vendor_id, latitude, longitude')
+          .in('vendor_id', vendorIds);
+
+        if (vendorProfilesError) {
+          console.warn('Vendor location lookup warning:', vendorProfilesError);
+        } else if (vendorProfiles) {
+          vendorProfiles.forEach((profile: any) => {
+            vendorLocationsMap[profile.vendor_id] = {
+              latitude: profile.latitude ?? null,
+              longitude: profile.longitude ?? null,
+            };
+          });
+        }
+      }
+
+'''
+          if anchor not in text:
+              raise SystemExit('Could not find parsedOrders anchor')
+          text = text.replace(anchor, vendor_fetch + anchor, 1)
+
+          text = text.replace(
+              "          vendor: Array.isArray(order.vendor) ? order.vendor[0] : order.vendor,\n          customer_addresses: resolvedAddress,",
+              "          vendor: Array.isArray(order.vendor) ? order.vendor[0] : order.vendor,\n          vendor_location: vendorLocationsMap[order.vendor_id] || null,\n          customer_addresses: resolvedAddress,",
+              1,
+          )
+
+          nav_function = '''  const handleNavigateToCustomer = async (order: Order) => {
+    const vendorLocation = order.vendor_location;
+    const customerLocation = order.customer_addresses;
+
+    if (
+      vendorLocation?.latitude == null ||
+      vendorLocation?.longitude == null ||
+      customerLocation?.latitude == null ||
+      customerLocation?.longitude == null
+    ) {
+      Alert.alert(
+        'Location Unavailable',
+        'The vendor or customer location is not available for this order.'
+      );
+      return;
+    }
+
+    const origin = `${vendorLocation.latitude},${vendorLocation.longitude}`;
+    const destination = `${customerLocation.latitude},${customerLocation.longitude}`;
+    const mapsUrl =
+      `https://www.google.com/maps/dir/?api=1` +
+      `&origin=${encodeURIComponent(origin)}` +
+      `&destination=${encodeURIComponent(destination)}` +
+      `&travelmode=two-wheeler` +
+      `&dir_action=navigate`;
+
+    try {
+      const canOpen = await Linking.canOpenURL(mapsUrl);
+      if (!canOpen) {
+        Alert.alert('Navigation Unavailable', 'Unable to open Google Maps on this device.');
+        return;
+      }
+      await Linking.openURL(mapsUrl);
+    } catch (error) {
+      console.error('Error opening Google Maps navigation:', error);
+      Alert.alert('Navigation Error', 'Unable to open Google Maps navigation.');
+    }
+  };
+
+'''
+          anchor = "  const handleCallContact = (type: 'vendor' | 'customer', order: Order) => {"
+          if anchor not in text:
+              raise SystemExit('Could not find contact handler anchor')
+          text = text.replace(anchor, nav_function + anchor, 1)
+
+          action_anchor = '''                      {isOutForDelivery && (\n                        <>\n                          <TouchableOpacity'''
+          navigation_button = '''                      {isOutForDelivery && (\n                        <>\n                          <TouchableOpacity\n                            activeOpacity={0.8}\n                            style={[styles.completeButton, { backgroundColor: COLORS.emeraldGreen }]}\n                            onPress={() => handleNavigateToCustomer(item)}\n                          >\n                            <Ionicons name="navigate-outline" size={18} color={COLORS.white} style={{ marginRight: 6 }} />\n                            <Text style={styles.completeButtonText}>Navigate to Customer</Text>\n                          </TouchableOpacity>\n\n                          <TouchableOpacity'''
+          if action_anchor not in text:
+              raise SystemExit('Could not find out-for-delivery action anchor')
+          text = text.replace(action_anchor, navigation_button, 1)
+
+          path.write_text(text)
+          print('Navigation patch applied successfully.')
+          PY
+
+      - name: Commit changes and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/'(tabs)'/deliveries.tsx .github/workflows/apply-map-navigation.yml
+          git commit -m "Add rider navigation to customer"
+          git rm .github/workflows/apply-map-navigation.yml
+          git commit -m "Remove temporary navigation patch workflow"
+          git push origin feature/map-navigation
