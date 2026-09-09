@@ -56,5 +56,3 @@ export async function navigateToCustomer(
     return false;
   }
 }
-
-// Branch test trigger: keep navigation helper behavior unchanged.
