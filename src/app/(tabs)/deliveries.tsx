@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { COLORS, useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../lib/supabase';
+import { navigateToCustomer } from '../../lib/customerNavigation';
 
 const RUPEE = String.fromCharCode(0x20B9);
 
@@ -44,6 +45,7 @@ interface Order {
   cash_received?: number | null;
   change_returned?: number | null;
   customer_address_id?: string | null;
+  vendor_location: { latitude: number | null; longitude: number | null } | null;
   customer: { customer_name: string; phone?: string | null } | null;
   vendor: { shop_name: string; phone?: string | null } | null;
   customer_addresses: {
@@ -83,7 +85,6 @@ export default function DeliveriesScreen() {
   const channelRef = useRef<any>(null);
   const notifiedOrderIdsRef = useRef<Set<string>>(new Set());
 
-  // Modal Workflow State
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'upi'>('cash');
@@ -91,12 +92,10 @@ export default function DeliveriesScreen() {
   const [transactionRef, setTransactionRef] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Success Toast state mechanics
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const toastFadeAnim = useRef(new Animated.Value(0)).current;
 
-  // OTP Verification States
   const [otpModalVisible, setOtpModalVisible] = useState(false);
   const [otpValues, setOtpValues] = useState<string[]>(['', '', '', '', '', '']);
   const [otpAttempts, setOtpAttempts] = useState(0);
@@ -322,6 +321,34 @@ export default function DeliveriesScreen() {
         JSON.stringify(ordersData, null, 2)
       );
 
+      const vendorIds = Array.from(
+        new Set(
+          (ordersData || [])
+            .map((order: any) => order.vendor_id)
+            .filter(Boolean)
+        )
+      );
+
+      const vendorLocationsMap: Record<string, { latitude: number | null; longitude: number | null }> = {};
+
+      if (vendorIds.length > 0) {
+        const { data: vendorProfiles, error: vendorProfilesError } = await supabase
+          .from('vendor_profiles')
+          .select('vendor_id, latitude, longitude')
+          .in('vendor_id', vendorIds);
+
+        if (vendorProfilesError) {
+          console.warn('Vendor location lookup warning:', vendorProfilesError);
+        } else if (vendorProfiles) {
+          vendorProfiles.forEach((profile: any) => {
+            vendorLocationsMap[profile.vendor_id] = {
+              latitude: profile.latitude ?? null,
+              longitude: profile.longitude ?? null,
+            };
+          });
+        }
+      }
+
       const orderIds = (ordersData || []).map((o: any) => o.id);
       let collectionsMap: Record<string, any> = {};
 
@@ -338,7 +365,6 @@ export default function DeliveriesScreen() {
         }
       }
 
-      // Collect missing address IDs where embedded query returned null
       const missingAddressIds = Array.from(
         new Set(
           (ordersData || [])
@@ -371,7 +397,6 @@ export default function DeliveriesScreen() {
           resolvedAddress = rawAddress;
         }
 
-        // Apply fallback from batch fetch if embedded query was null
         if (!resolvedAddress && order.customer_address_id && fallbackAddressMap[order.customer_address_id]) {
           resolvedAddress = fallbackAddressMap[order.customer_address_id];
         }
@@ -398,6 +423,7 @@ export default function DeliveriesScreen() {
           cash_received: order.cash_received !== undefined ? order.cash_received : null,
           change_returned: order.change_returned !== undefined ? order.change_returned : null,
           customer_address_id: order.customer_address_id || null,
+          vendor_location: vendorLocationsMap[order.vendor_id] || null,
           customer: Array.isArray(order.customer) ? order.customer[0] : order.customer,
           vendor: Array.isArray(order.vendor) ? order.vendor[0] : order.vendor,
           customer_addresses: resolvedAddress,
@@ -415,6 +441,17 @@ export default function DeliveriesScreen() {
       console.error('Error fetching deliveries:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleNavigateToCustomer = async (order: Order) => {
+    const opened = await navigateToCustomer(
+      order.vendor_location || {},
+      order.customer_addresses || {}
+    );
+
+    if (opened) {
+      showSuccessToast('Opening Google Maps Navigation');
     }
   };
 
@@ -758,14 +795,12 @@ export default function DeliveriesScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.headerBg, borderColor: theme.border }]}>
         <View style={styles.headerTopRow}>
           <Text style={[styles.headerTitle, { color: theme.text }]}>Deliveries</Text>
         </View>
       </View>
 
-      {/* Search Input */}
       <View style={styles.searchContainer}>
         <View style={[styles.searchBar, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
           <Ionicons name="search" size={20} color={theme.textMuted} style={styles.searchIcon} />
@@ -779,7 +814,6 @@ export default function DeliveriesScreen() {
         </View>
       </View>
 
-      {/* Tabs */}
       <View style={styles.tabContainer}>
         {(['active', 'completed', 'cancelled'] as const).map((tab) => (
           <TouchableOpacity
@@ -798,7 +832,6 @@ export default function DeliveriesScreen() {
         ))}
       </View>
 
-      {/* Scroll View */}
       {loading ? (
         <View style={styles.centerLayout}>
           <ActivityIndicator size="large" color={COLORS.emeraldGreen} />
@@ -820,7 +853,6 @@ export default function DeliveriesScreen() {
               const isPickedUp = item.order_status?.toLowerCase() === 'picked_up';
               const isOutForDelivery = item.order_status?.toLowerCase() === 'out_for_delivery';
 
-              // Return workflow calculations
               const collection = item.rider_collection;
               const isReturning = isDelivered && collection?.status === 'returning_to_store';
               const isReturned = isDelivered && collection?.status === 'returned_to_store';
@@ -865,7 +897,6 @@ export default function DeliveriesScreen() {
                       </Text>
                     </View>
 
-                    {/* RETURNING TO STORE CARD */}
                     {isReturning && (
                       <View style={[styles.completedFinancialBox, { backgroundColor: theme.bg, borderColor: theme.border }]}>
                         <TouchableOpacity
@@ -878,12 +909,9 @@ export default function DeliveriesScreen() {
                       </View>
                     )}
 
-                    {/* FINANCIAL BREAKDOWN SECTION FOR COMPLETED & RETURNED DELIVERIES */}
                     {isReturned && (
                       <View style={[styles.completedFinancialBox, { backgroundColor: theme.bg, borderColor: theme.border }]}>
-                        <Text style={[styles.completedFinancialHeaderTitle, { color: theme.text }]}>
-                          Payment & Settlement Breakdown
-                        </Text>
+                        <Text style={[styles.completedFinancialHeaderTitle, { color: theme.text }]}>Payment & Settlement Breakdown</Text>
                         
                         <View style={styles.financialRowItem}>
                           <Text style={[styles.financialRowLabel, { color: theme.textMuted }]}>Payment Method:</Text>
@@ -896,24 +924,17 @@ export default function DeliveriesScreen() {
                           <>
                             <View style={styles.financialRowItem}>
                               <Text style={[styles.financialRowLabel, { color: theme.textMuted }]}>Cash Received from Customer:</Text>
-                              <Text style={[styles.financialRowValue, { color: COLORS.emeraldGreen }]}>
-                                {RUPEE}{item.cash_received ?? item.total_amount}
-                              </Text>
+                              <Text style={[styles.financialRowValue, { color: COLORS.emeraldGreen }]}>{RUPEE}{item.cash_received ?? item.total_amount}</Text>
                             </View>
-
                             <View style={styles.financialRowItem}>
                               <Text style={[styles.financialRowLabel, { color: theme.textMuted }]}>Change Given to Customer:</Text>
-                              <Text style={[styles.financialRowValue, { color: COLORS.danger }]}>
-                                {RUPEE}{item.change_returned ?? 0}
-                              </Text>
+                              <Text style={[styles.financialRowValue, { color: COLORS.danger }]}>{RUPEE}{item.change_returned ?? 0}</Text>
                             </View>
                           </>
                         ) : (
                           <View style={styles.financialRowItem}>
                             <Text style={[styles.financialRowLabel, { color: theme.textMuted }]}>Amount Collected:</Text>
-                            <Text style={[styles.financialRowValue, { color: COLORS.emeraldGreen }]}>
-                              {RUPEE}{item.total_amount} (Online/UPI)
-                            </Text>
+                            <Text style={[styles.financialRowValue, { color: COLORS.emeraldGreen }]}>{RUPEE}{item.total_amount} (Online/UPI)</Text>
                           </View>
                         )}
 
@@ -922,16 +943,12 @@ export default function DeliveriesScreen() {
                             <Ionicons name="checkmark-circle" size={16} color={COLORS.emeraldGreen} />
                             <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.emeraldGreen }}>Returned Successfully</Text>
                           </View>
-                          <Text style={{ fontSize: 11, color: theme.textMuted }}>
-                            Return Status: Returned To Store
-                          </Text>
+                          <Text style={{ fontSize: 11, color: theme.textMuted }}>Return Status: Returned To Store</Text>
                         </View>
 
                         {deliveredTimestamp && (
                           <View style={{ marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: theme.border }}>
-                            <Text style={{ fontSize: 11, color: theme.textMuted }}>
-                              Delivered on: {deliveredTimestamp.date} at {deliveredTimestamp.time}
-                            </Text>
+                            <Text style={{ fontSize: 11, color: theme.textMuted }}>Delivered on: {deliveredTimestamp.date} at {deliveredTimestamp.time}</Text>
                           </View>
                         )}
                       </View>
@@ -986,6 +1003,25 @@ export default function DeliveriesScreen() {
 
                           <TouchableOpacity
                             activeOpacity={0.8}
+                            style={{
+                              flex: 1,
+                              flexDirection: 'row',
+                              paddingVertical: 10,
+                              borderRadius: 99,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: COLORS.emeraldGreen,
+                              marginRight: 8,
+                            }}
+                            onPress={() => handleNavigateToCustomer(item)}
+                            disabled={submitting}
+                          >
+                            <Ionicons name="navigate-outline" size={18} color={COLORS.white} style={{ marginRight: 6 }} />
+                            <Text style={styles.completeButtonText}>Navigate</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            activeOpacity={0.8}
                             style={[styles.completeButton, { backgroundColor: '#3498DB' }]}
                             disabled={submitting}
                             onPress={() => updateOrderStatusDirectly(item.id, 'out_for_delivery')}
@@ -1007,6 +1043,25 @@ export default function DeliveriesScreen() {
 
                           <TouchableOpacity
                             activeOpacity={0.8}
+                            style={{
+                              flex: 1,
+                              flexDirection: 'row',
+                              paddingVertical: 10,
+                              borderRadius: 99,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: COLORS.emeraldGreen,
+                              marginRight: 8,
+                            }}
+                            onPress={() => handleNavigateToCustomer(item)}
+                            disabled={submitting}
+                          >
+                            <Ionicons name="navigate-outline" size={18} color={COLORS.white} style={{ marginRight: 6 }} />
+                            <Text style={styles.completeButtonText}>Navigate</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            activeOpacity={0.8}
                             style={[styles.completeButton, { backgroundColor: COLORS.emeraldGreen }]}
                             onPress={() => startOtpVerificationWorkflow(item)}
                           >
@@ -1023,7 +1078,6 @@ export default function DeliveriesScreen() {
         </ScrollView>
       )}
 
-      {/* OTP Modal */}
       <Modal animationType="slide" transparent={true} visible={otpModalVisible} onRequestClose={() => setOtpModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalDismissArea} activeOpacity={1} onPress={() => setOtpModalVisible(false)} />
@@ -1045,11 +1099,7 @@ export default function DeliveriesScreen() {
                       ref={(ref) => {
                         if (ref) otpInputsRef.current[idx] = ref;
                       }}
-                      style={[
-                        styles.otpSingleBoxField,
-                        { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text },
-                        otpValues[idx] !== '' && { borderColor: COLORS.emeraldGreen },
-                      ]}
+                      style={[styles.otpSingleBoxField, { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text }, otpValues[idx] !== '' && { borderColor: COLORS.emeraldGreen }]}
                       maxLength={6}
                       keyboardType="numeric"
                       autoFocus={idx === 0}
@@ -1072,11 +1122,7 @@ export default function DeliveriesScreen() {
 
                 <TouchableOpacity
                   activeOpacity={0.8}
-                  style={[
-                    styles.submitButton,
-                    { backgroundColor: COLORS.emeraldGreen, marginTop: 24 },
-                    (otpAttempts >= 3 || otpSuccess) && { backgroundColor: '#CCCCCC', opacity: 0.6 },
-                  ]}
+                  style={[styles.submitButton, { backgroundColor: COLORS.emeraldGreen, marginTop: 24 }, (otpAttempts >= 3 || otpSuccess) && { backgroundColor: '#CCCCCC', opacity: 0.6 }]}
                   disabled={otpAttempts >= 3 || otpSuccess}
                   onPress={verifyDeliveryOtpCode}
                 >
@@ -1088,7 +1134,6 @@ export default function DeliveriesScreen() {
         </View>
       </Modal>
 
-      {/* Completion Bottom Sheet */}
       <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalDismissArea} activeOpacity={1} onPress={() => setModalVisible(false)} />
@@ -1104,28 +1149,12 @@ export default function DeliveriesScreen() {
 
             <Text style={[styles.fieldLabel, { color: theme.text }]}>Payment Collected Via</Text>
             <View style={styles.methodSelector}>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                style={[
-                  styles.methodTab,
-                  { borderColor: theme.border, backgroundColor: theme.cardBg },
-                  paymentMethod === 'cash' && { backgroundColor: COLORS.jetBlack, borderColor: COLORS.jetBlack },
-                ]}
-                onPress={() => setPaymentMethod('cash')}
-              >
+              <TouchableOpacity activeOpacity={0.8} style={[styles.methodTab, { borderColor: theme.border, backgroundColor: theme.cardBg }, paymentMethod === 'cash' && { backgroundColor: COLORS.jetBlack, borderColor: COLORS.jetBlack }]} onPress={() => setPaymentMethod('cash')}>
                 <Ionicons name="cash-outline" size={18} color={paymentMethod === 'cash' ? COLORS.white : theme.textMuted} style={{ marginRight: 6 }} />
                 <Text style={[styles.methodTabText, { color: theme.textMuted }, paymentMethod === 'cash' && { color: COLORS.white }]}>Cash</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                activeOpacity={0.8}
-                style={[
-                  styles.methodTab,
-                  { borderColor: theme.border, backgroundColor: theme.cardBg },
-                  paymentMethod === 'upi' && { backgroundColor: COLORS.jetBlack, borderColor: COLORS.jetBlack },
-                ]}
-                onPress={() => setPaymentMethod('upi')}
-              >
+              <TouchableOpacity activeOpacity={0.8} style={[styles.methodTab, { borderColor: theme.border, backgroundColor: theme.cardBg }, paymentMethod === 'upi' && { backgroundColor: COLORS.jetBlack, borderColor: COLORS.jetBlack }]} onPress={() => setPaymentMethod('upi')}>
                 <Ionicons name="qr-code-outline" size={18} color={paymentMethod === 'upi' ? COLORS.white : theme.textMuted} style={{ marginRight: 6 }} />
                 <Text style={[styles.methodTabText, { color: theme.textMuted }, paymentMethod === 'upi' && { color: COLORS.white }]}>UPI</Text>
               </TouchableOpacity>
@@ -1140,9 +1169,7 @@ export default function DeliveriesScreen() {
                   </View>
                   <View style={styles.summaryMetricItem}>
                     <Text style={[styles.summaryMetricLabelText, { color: theme.textMuted }]}>Received</Text>
-                    <Text style={[styles.summaryMetricValueText, { color: COLORS.emeraldGreen }]}>
-                      {RUPEE}{amountReceived ? parseFloat(amountReceived) || 0 : 0}
-                    </Text>
+                    <Text style={[styles.summaryMetricValueText, { color: COLORS.emeraldGreen }]}>{RUPEE}{amountReceived ? parseFloat(amountReceived) || 0 : 0}</Text>
                   </View>
                   <View style={styles.summaryMetricItem}>
                     <Text style={[styles.summaryMetricLabelText, { color: theme.textMuted }]}>Change</Text>
@@ -1151,29 +1178,10 @@ export default function DeliveriesScreen() {
                 </View>
 
                 <Text style={[styles.fieldLabel, { color: theme.text }]}>Amount Received ({RUPEE})</Text>
-                <TextInput
-                  style={[styles.modalInput, { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text }]}
-                  keyboardType="numeric"
-                  placeholder="Enter cash given by customer"
-                  placeholderTextColor={theme.textMuted}
-                  value={amountReceived}
-                  onChangeText={(val) => setAmountReceived(val)}
-                />
-
-                {amountReceived !== '' && !receivedInputValid() && (
-                  <Text style={styles.validationErrorBannerText}>
-                    Received cash amount cannot be less than the total order billing rate.
-                  </Text>
-                )}
-
+                <TextInput style={[styles.modalInput, { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text }]} keyboardType="numeric" placeholder="Enter cash given by customer" placeholderTextColor={theme.textMuted} value={amountReceived} onChangeText={(val) => setAmountReceived(val)} />
+                {amountReceived !== '' && !receivedInputValid() && <Text style={styles.validationErrorBannerText}>Received cash amount cannot be less than the total order billing rate.</Text>}
                 <View style={styles.actionChipRowContainer}>
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    style={[styles.exactAmountOptionBtn, { backgroundColor: COLORS.emeraldGreen }]}
-                    onPress={() => {
-                      if (selectedOrder) setAmountReceived(selectedOrder.total_amount.toString());
-                    }}
-                  >
+                  <TouchableOpacity activeOpacity={0.8} style={[styles.exactAmountOptionBtn, { backgroundColor: COLORS.emeraldGreen }]} onPress={() => { if (selectedOrder) setAmountReceived(selectedOrder.total_amount.toString()); }}>
                     <Text style={styles.exactAmountOptionBtnText}>Customer Gave Exact Amount</Text>
                   </TouchableOpacity>
                 </View>
@@ -1183,15 +1191,9 @@ export default function DeliveriesScreen() {
                 <View style={[styles.upiScreenContainer, { backgroundColor: theme.bg, borderColor: theme.border }]}>
                   <Text style={[styles.upiAmountLabel, { color: theme.textMuted }]}>Amount To Collect</Text>
                   <Text style={[styles.upiAmountValue, { color: COLORS.emeraldGreen }]}>{RUPEE}{selectedOrder?.total_amount}</Text>
-
                   <View style={[styles.qrContainerBox, { backgroundColor: '#FFFFFF', borderColor: theme.border }]}>
-                    <Image
-                      source={require('../../../assets/images/upi-qr.png')}
-                      style={{ width: 220, height: 220 }}
-                      resizeMode="contain"
-                    />
+                    <Image source={require('../../../assets/images/upi-qr.png')} style={{ width: 220, height: 220 }} resizeMode="contain" />
                   </View>
-
                   <View style={styles.upiDetailsMetaBox}>
                     <View style={styles.upiMetaRowItem}>
                       <Text style={[styles.upiMetaLabelText, { color: theme.textMuted }]}>Receiver</Text>
@@ -1202,40 +1204,21 @@ export default function DeliveriesScreen() {
                       <Text style={[styles.upiMetaValueText, { color: theme.text }]}>atharvavedpanditrao-1@okicici</Text>
                     </View>
                   </View>
-
-                  <Text style={[styles.upiHelperNoteText, { color: theme.textMuted }]}>
-                    "Ask the customer to scan this QR using any UPI app."
-                  </Text>
+                  <Text style={[styles.upiHelperNoteText, { color: theme.textMuted }]}>"Ask the customer to scan this QR using any UPI app."</Text>
                 </View>
 
                 <Text style={[styles.fieldLabel, { color: theme.text, marginTop: 16 }]}>Transaction Reference (Optional)</Text>
-                <TextInput
-                  style={[styles.modalInput, { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text }]}
-                  placeholder="Enter transaction reference number"
-                  placeholderTextColor={theme.textMuted}
-                  value={transactionRef}
-                  onChangeText={setTransactionRef}
-                />
+                <TextInput style={[styles.modalInput, { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text }]} placeholder="Enter transaction reference number" placeholderTextColor={theme.textMuted} value={transactionRef} onChangeText={setTransactionRef} />
               </View>
             )}
 
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={[
-                styles.submitButton,
-                { backgroundColor: COLORS.emeraldGreen },
-                isSubmitDisabled && { backgroundColor: COLORS.emeraldGreen, opacity: 0.4 },
-              ]}
-              disabled={submitting || isSubmitDisabled}
-              onPress={handleCompleteDelivery}
-            >
+            <TouchableOpacity activeOpacity={0.8} style={[styles.submitButton, { backgroundColor: COLORS.emeraldGreen }, isSubmitDisabled && { backgroundColor: COLORS.emeraldGreen, opacity: 0.4 }]} disabled={submitting || isSubmitDisabled} onPress={handleCompleteDelivery}>
               {submitting ? <ActivityIndicator size="small" color={COLORS.white} /> : <Text style={styles.submitButtonText}>Confirm & Complete</Text>}
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* Toast */}
       {toastVisible && (
         <Animated.View style={[styles.toastContainer, { opacity: toastFadeAnim }]}>
           <View style={styles.toastContent}>
@@ -1249,461 +1232,88 @@ export default function DeliveriesScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    paddingTop: Platform.OS === 'ios' ? 64 : 44,
-    paddingBottom: 24,
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
-  },
-  headerTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 26,
-    fontWeight: '700',
-  },
-  searchContainer: {
-    paddingHorizontal: 16,
-    marginTop: -16,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    height: 52,
-    borderWidth: 1,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  input: {
-    flex: 1,
-    height: '100%',
-    fontSize: 15,
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    marginTop: 24,
-    marginBottom: 8,
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderRadius: 99,
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  centerLayout: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  scrollList: {
-    padding: 16,
-  },
-  emptyCard: {
-    borderRadius: 24,
-    padding: 32,
-    alignItems: 'center',
-    marginTop: 20,
-    borderWidth: 1,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    paddingHorizontal: 16,
-    lineHeight: 20,
-  },
-  orderCard: {
-    borderRadius: 24,
-    padding: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  orderNumberText: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  timeText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  cardDivider: {
-    height: 1,
-    marginVertical: 16,
-  },
-  cardBody: {
-    gap: 10,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  bodyLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  bodyValue: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  completedFinancialBox: {
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginTop: 8,
-    gap: 6,
-  },
-  completedFinancialHeaderTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    marginBottom: 4,
-  },
-  financialRowItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  financialRowLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  financialRowValue: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  paymentMethodTag: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  paymentMethodTagText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  cardFooter: {
-    flexDirection: 'column',
-    gap: 12,
-  },
-  amountSection: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    width: '100%',
-  },
-  amountBox: {
-    justifyContent: 'center',
-  },
-  actionsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    width: '100%',
-  },
-  callButton: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 99,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  callButtonText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  amountLabel: {
-    fontSize: 14,
-  },
-  amountValue: {
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  completeButton: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 99,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  completeButtonText: {
-    color: COLORS.white,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalDismissArea: {
-    flex: 1,
-  },
-  bottomSheetContainer: {
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    paddingHorizontal: 24,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 44 : 32,
-  },
-  modalKnob: {
-    width: 40,
-    height: 4,
-    borderRadius: 99,
-    alignSelf: 'center',
-    marginBottom: 20,
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  modalSummaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 18,
-    borderRadius: 18,
-    marginBottom: 24,
-    borderWidth: 1,
-  },
-  modalSummaryLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  modalSummaryValue: {
-    fontSize: 22,
-    fontWeight: '800',
-  },
-  fieldLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 10,
-  },
-  methodSelector: {
-    flexDirection: 'row',
-    marginBottom: 24,
-    gap: 12,
-  },
-  methodTab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderRadius: 16,
-  },
-  methodTabText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  formContainer: {
-    marginBottom: 28,
-  },
-  summaryMetricCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginBottom: 20,
-  },
-  summaryMetricItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  summaryMetricLabelText: {
-    fontSize: 11,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  summaryMetricValueText: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  modalInput: {
-    borderWidth: 1,
-    height: 52,
-    paddingHorizontal: 16,
-    fontSize: 15,
-    borderRadius: 16,
-  },
-  validationErrorBannerText: {
-    color: COLORS.danger,
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 8,
-    paddingHorizontal: 4,
-  },
-  actionChipRowContainer: {
-    marginTop: 16,
-    gap: 12,
-  },
-  exactAmountOptionBtn: {
-    paddingVertical: 12,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-  },
-  exactAmountOptionBtnText: {
-    color: COLORS.white,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  submitButton: {
-    height: 52,
-    borderRadius: 99,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  submitButtonText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  toastContainer: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 60 : 40,
-    left: 16,
-    right: 16,
-    zIndex: 9999,
-    alignItems: 'center',
-  },
-  toastContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#2E7D32',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 99,
-  },
-  toastText: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  otpInputsWrapperRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-    gap: 6,
-  },
-  otpSingleBoxField: {
-    flex: 1,
-    height: 50,
-    borderWidth: 1.5,
-    borderRadius: 12,
-    textAlign: 'center',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  otpFeedbackMessageText: {
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: 16,
-    lineHeight: 18,
-  },
-  otpSuccessContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 16,
-  },
-  upiScreenContainer: {
-    alignItems: 'center',
-    padding: 20,
-    borderRadius: 24,
-    borderWidth: 1,
-    marginBottom: 4,
-  },
-  upiAmountLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  upiAmountValue: {
-    fontSize: 32,
-    fontWeight: '900',
-    marginBottom: 20,
-  },
-  qrContainerBox: {
-    padding: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-    marginBottom: 20,
-  },
-  upiDetailsMetaBox: {
-    width: '100%',
-    gap: 8,
-    marginBottom: 16,
-    paddingHorizontal: 8,
-  },
-  upiMetaRowItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  upiMetaLabelText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  upiMetaValueText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  upiHelperNoteText: {
-    fontSize: 12,
-    textAlign: 'center',
-    fontStyle: 'italic',
-    paddingHorizontal: 12,
-    lineHeight: 16,
-  },
+  header: { paddingTop: Platform.OS === 'ios' ? 64 : 44, paddingBottom: 24, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 },
+  headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerTitle: { fontSize: 26, fontWeight: '700' },
+  searchContainer: { paddingHorizontal: 16, marginTop: -16 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, paddingHorizontal: 14, height: 52, borderWidth: 1 },
+  searchIcon: { marginRight: 8 },
+  input: { flex: 1, height: '100%', fontSize: 15 },
+  tabContainer: { flexDirection: 'row', paddingHorizontal: 16, marginTop: 24, marginBottom: 8, justifyContent: 'space-between', gap: 8 },
+  tab: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 99 },
+  tabText: { fontSize: 14, fontWeight: '700' },
+  centerLayout: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  scrollList: { padding: 16 },
+  emptyCard: { borderRadius: 24, padding: 32, alignItems: 'center', marginTop: 20, borderWidth: 1 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', marginBottom: 4 },
+  emptySubtitle: { fontSize: 14, textAlign: 'center', paddingHorizontal: 16, lineHeight: 20 },
+  orderCard: { borderRadius: 24, padding: 20, marginBottom: 16, borderWidth: 1 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  orderNumberText: { fontSize: 16, fontWeight: '700' },
+  timeText: { fontSize: 12, fontWeight: '600' },
+  statusBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+  statusText: { fontSize: 11, fontWeight: '800' },
+  cardDivider: { height: 1, marginVertical: 16 },
+  cardBody: { gap: 10 },
+  infoRow: { flexDirection: 'row', alignItems: 'center' },
+  bodyLabel: { fontSize: 14, fontWeight: '500' },
+  bodyValue: { fontSize: 14, fontWeight: '700' },
+  completedFinancialBox: { padding: 12, borderRadius: 14, borderWidth: 1, marginTop: 8, gap: 6 },
+  completedFinancialHeaderTitle: { fontSize: 13, fontWeight: '800', marginBottom: 4 },
+  financialRowItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  financialRowLabel: { fontSize: 12, fontWeight: '600' },
+  financialRowValue: { fontSize: 13, fontWeight: '800' },
+  paymentMethodTag: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
+  paymentMethodTagText: { fontSize: 11, fontWeight: '700' },
+  cardFooter: { flexDirection: 'column', gap: 12 },
+  amountSection: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' },
+  amountBox: { justifyContent: 'center' },
+  actionsContainer: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%' },
+  callButton: { flex: 1, paddingVertical: 10, borderRadius: 99, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  callButtonText: { fontSize: 13, fontWeight: '700' },
+  amountLabel: { fontSize: 14 },
+  amountValue: { fontSize: 20, fontWeight: '800' },
+  completeButton: { flex: 1, paddingVertical: 10, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
+  completeButtonText: { color: COLORS.white, fontSize: 13, fontWeight: '700' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalDismissArea: { flex: 1 },
+  bottomSheetContainer: { borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingHorizontal: 24, paddingTop: 12, paddingBottom: Platform.OS === 'ios' ? 44 : 32 },
+  modalKnob: { width: 40, height: 4, borderRadius: 99, alignSelf: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 22, fontWeight: '800', textAlign: 'center' },
+  modalSubtitle: { fontSize: 14, textAlign: 'center', marginBottom: 24 },
+  modalSummaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 18, borderRadius: 18, marginBottom: 24, borderWidth: 1 },
+  modalSummaryLabel: { fontSize: 15, fontWeight: '600' },
+  modalSummaryValue: { fontSize: 22, fontWeight: '800' },
+  fieldLabel: { fontSize: 14, fontWeight: '700', marginBottom: 10 },
+  methodSelector: { flexDirection: 'row', marginBottom: 24, gap: 12 },
+  methodTab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderWidth: 1, borderRadius: 16 },
+  methodTabText: { fontSize: 14, fontWeight: '700' },
+  formContainer: { marginBottom: 28 },
+  summaryMetricCard: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, borderRadius: 20, borderWidth: 1, marginBottom: 20 },
+  summaryMetricItem: { alignItems: 'center', flex: 1 },
+  summaryMetricLabelText: { fontSize: 11, fontWeight: '600', marginBottom: 4 },
+  summaryMetricValueText: { fontSize: 16, fontWeight: '800' },
+  modalInput: { borderWidth: 1, height: 52, paddingHorizontal: 16, fontSize: 15, borderRadius: 16 },
+  validationErrorBannerText: { color: COLORS.danger, fontSize: 12, fontWeight: '600', marginTop: 8, paddingHorizontal: 4 },
+  actionChipRowContainer: { marginTop: 16, gap: 12 },
+  exactAmountOptionBtn: { paddingVertical: 12, borderRadius: 16, alignItems: 'center', justifyContent: 'center', width: '100%' },
+  exactAmountOptionBtnText: { color: COLORS.white, fontSize: 13, fontWeight: '700' },
+  submitButton: { height: 52, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
+  submitButtonText: { color: COLORS.white, fontSize: 16, fontWeight: '800' },
+  toastContainer: { position: 'absolute', top: Platform.OS === 'ios' ? 60 : 40, left: 16, right: 16, zIndex: 9999, alignItems: 'center' },
+  toastContent: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#2E7D32', paddingVertical: 14, paddingHorizontal: 20, borderRadius: 99 },
+  toastText: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
+  otpInputsWrapperRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8, gap: 6 },
+  otpSingleBoxField: { flex: 1, height: 50, borderWidth: 1.5, borderRadius: 12, textAlign: 'center', fontSize: 18, fontWeight: '700' },
+  otpFeedbackMessageText: { fontSize: 13, fontWeight: '600', textAlign: 'center', marginTop: 16, lineHeight: 18 },
+  otpSuccessContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 16 },
+  upiScreenContainer: { alignItems: 'center', padding: 20, borderRadius: 24, borderWidth: 1, marginBottom: 4 },
+  upiAmountLabel: { fontSize: 13, fontWeight: '600', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
+  upiAmountValue: { fontSize: 32, fontWeight: '900', marginBottom: 20 },
+  qrContainerBox: { padding: 16, borderRadius: 20, borderWidth: 1, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 3, marginBottom: 20 },
+  upiDetailsMetaBox: { width: '100%', gap: 8, marginBottom: 16, paddingHorizontal: 8 },
+  upiMetaRowItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  upiMetaLabelText: { fontSize: 13, fontWeight: '600' },
+  upiMetaValueText: { fontSize: 14, fontWeight: '700' },
+  upiHelperNoteText: { fontSize: 12, textAlign: 'center', fontStyle: 'italic', paddingHorizontal: 12, lineHeight: 16 },
 });

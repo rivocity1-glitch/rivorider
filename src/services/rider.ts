@@ -11,7 +11,7 @@ export async function getCurrentRiderProfile() {
     .from('riders')
     .select('*')
     .eq('auth_user_id', user.id)
-    .maybeSingle(); // Returns null safely instead of throwing an error if no row exists[cite: 3]
+    .maybeSingle();
 
   if (error) throw error;
 
@@ -29,7 +29,7 @@ export async function getAssignedVendors() {
     .from('riders')
     .select('id')
     .eq('auth_user_id', user.id)
-    .maybeSingle(); // Returns null safely instead of throwing an error if no row exists[cite: 3]
+    .maybeSingle();
 
   if (riderError || !rider) return [];
 
@@ -63,7 +63,7 @@ export async function updateAvailabilityStatus(status: string) {
     .update({ availability_status: status })
     .eq('auth_user_id', user.id)
     .select()
-    .maybeSingle(); // Swapped for consistency and runtime safety[cite: 3]
+    .maybeSingle();
 
   if (error) throw error;
 
@@ -71,13 +71,14 @@ export async function updateAvailabilityStatus(status: string) {
 }
 
 /**
- * Calculates live daily & total metrics directly from orders
+ * Calculates live daily & total metrics directly from delivered orders.
+ * Delivery completion time (delivered_at) is the authoritative date for
+ * earnings windows so dashboard and settlement views stay aligned.
  */
 export async function getRiderOrderStats(riderId: string) {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
 
-  // 1. Fetch completed orders today
   const { data: todayOrders, error: todayErr } = await supabase
     .from('orders')
     .select('rider_earning')
@@ -93,7 +94,6 @@ export async function getRiderOrderStats(riderId: string) {
   );
   const ordersCompletedToday = todayOrders?.length || 0;
 
-  // 2. Fetch total lifetime delivered earnings
   const { data: totalOrders, error: totalErr } = await supabase
     .from('orders')
     .select('rider_earning')
