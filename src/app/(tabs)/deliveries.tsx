@@ -636,7 +636,7 @@ export default function DeliveriesScreen() {
 
   const openCompletionModal = (order: Order) => {
     setSelectedOrder(order);
-    setPaymentMethod('cash');
+    setPaymentMethod(String(order.payment_status || '').toLowerCase() === 'paid' ? 'upi' : 'cash');
     setAmountReceived('');
     setTransactionRef('');
     setModalVisible(true);
@@ -650,7 +650,12 @@ export default function DeliveriesScreen() {
     let cashReceivedNum = 0;
     let changeReturnedNum = 0;
 
-    if (paymentMethod === 'cash') {
+    const orderAlreadyPaid = String(selectedOrder.payment_status || '').toLowerCase() === 'paid';
+
+    if (orderAlreadyPaid) {
+      cashReceivedNum = 0;
+      changeReturnedNum = 0;
+    } else if (paymentMethod === 'cash') {
       cashReceivedNum = parseFloat(amountReceived);
       if (isNaN(cashReceivedNum) || cashReceivedNum < totalAmount) {
         Alert.alert('Invalid Amount', 'Amount received must be greater than or equal to the order total.');
@@ -667,9 +672,9 @@ export default function DeliveriesScreen() {
         .update({
           order_status: 'delivered',
           payment_status: 'paid',
-          collection_method: paymentMethod,
-          cash_received: paymentMethod === 'cash' ? cashReceivedNum : null,
-          change_returned: paymentMethod === 'cash' ? changeReturnedNum : null,
+          collection_method: orderAlreadyPaid ? 'prepaid' : paymentMethod,
+          cash_received: orderAlreadyPaid ? null : (paymentMethod === 'cash' ? cashReceivedNum : null),
+          change_returned: orderAlreadyPaid ? null : (paymentMethod === 'cash' ? changeReturnedNum : null),
           collected_by_rider: currentRiderId,
           delivered_at: nowIso,
         })
