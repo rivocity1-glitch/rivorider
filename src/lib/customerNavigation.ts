@@ -5,35 +5,31 @@ export type NavigationLocation = {
   longitude: number | null | undefined;
 };
 
-/**
- * Opens Google Maps navigation from the assigned vendor/store to the customer.
- * Google Maps URLs do not require a Google Maps API key.
- */
-export async function navigateToCustomer(
-  vendorLocation: NavigationLocation,
-  customerLocation: NavigationLocation,
+async function openGoogleMapsNavigation(
+  origin: NavigationLocation | null,
+  destination: NavigationLocation,
 ) {
   if (
-    vendorLocation.latitude == null ||
-    vendorLocation.longitude == null ||
-    customerLocation.latitude == null ||
-    customerLocation.longitude == null
+    destination.latitude == null ||
+    destination.longitude == null ||
+    (origin && (origin.latitude == null || origin.longitude == null))
   ) {
     Alert.alert(
       'Location Unavailable',
-      'The vendor or customer location is not available for this order.',
+      'The required vendor or customer location is not available for this order.',
     );
     return false;
   }
 
-  const origin = `${vendorLocation.latitude},${vendorLocation.longitude}`;
-  const destination = `${customerLocation.latitude},${customerLocation.longitude}`;
+  const destinationValue = `${destination.latitude},${destination.longitude}`;
   const mapsUrl =
-    `https://www.google.com/maps/dir/?api=1` +
-    `&origin=${encodeURIComponent(origin)}` +
-    `&destination=${encodeURIComponent(destination)}` +
-    `&travelmode=two-wheeler` +
-    `&dir_action=navigate`;
+    'https://www.google.com/maps/dir/?api=1' +
+    (origin
+      ? `&origin=${encodeURIComponent(`${origin.latitude},${origin.longitude}`)}`
+      : '') +
+    `&destination=${encodeURIComponent(destinationValue)}` +
+    '&travelmode=two-wheeler' +
+    '&dir_action=navigate';
 
   try {
     const canOpen = await Linking.canOpenURL(mapsUrl);
@@ -55,4 +51,36 @@ export async function navigateToCustomer(
     );
     return false;
   }
+}
+
+/**
+ * Pickup: rider's current GPS location -> assigned vendor/store.
+ * Origin is intentionally omitted so Google Maps uses the rider's live location.
+ */
+export async function navigateToVendor(
+  vendorLocation: NavigationLocation,
+) {
+  return openGoogleMapsNavigation(null, vendorLocation);
+}
+
+/**
+ * Delivery: assigned vendor/store -> customer.
+ * The vendor coordinates are the explicit origin for this stage.
+ */
+export async function navigateToCustomer(
+  vendorLocation: NavigationLocation,
+  customerLocation: NavigationLocation,
+) {
+  return openGoogleMapsNavigation(vendorLocation, customerLocation);
+}
+
+/**
+ * Return: customer -> the same assigned vendor/store.
+ * The customer coordinates are the explicit origin for this stage.
+ */
+export async function navigateToVendorFromCustomer(
+  customerLocation: NavigationLocation,
+  vendorLocation: NavigationLocation,
+) {
+  return openGoogleMapsNavigation(customerLocation, vendorLocation);
 }
