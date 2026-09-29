@@ -418,8 +418,8 @@ export default function RegisterScreen() {
           height: 21,
           borderRadius: 6,
           borderWidth: 2,
-          borderColor: checked ? '#A8E63A' : '#555555',
-          backgroundColor: checked ? '#A8E63A' : 'transparent',
+          borderColor: checked ? COLORS.limeGreen : theme.textMuted,
+          backgroundColor: checked ? COLORS.limeGreen : 'transparent',
           alignItems: 'center',
           justifyContent: 'center',
           marginRight: 10,
@@ -564,7 +564,7 @@ export default function RegisterScreen() {
                 );
               })}
             </View>
-            <TouchableOpacity activeOpacity={0.8} onPress={() => { const next = !isSpeciallyAbled; setIsSpeciallyAbled(next); setShowDisabilityDropdown(next); }} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isSpeciallyAbled ? '#242424' : '#0D0D0D', borderWidth: 1, borderColor: isSpeciallyAbled ? '#A8E63A' : '#333333', borderRadius: 12, padding: 14 }}>
+            <TouchableOpacity activeOpacity={0.8} onPress={() => { const next = !isSpeciallyAbled; setIsSpeciallyAbled(next); setShowDisabilityDropdown(next); }} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isSpeciallyAbled ? '#242424' : '#0D0D0D', borderWidth: 1, borderColor: isSpeciallyAbled ? COLORS.limeGreen : theme.border, borderRadius: 12, padding: 14 }}>
               <View style={{ flex: 1, paddingRight: 10 }}>
                 <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>Blessed by Nature / Specially Abled </Text>
                 <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 3, lineHeight: 16 }}>Select this if you require accessible delivery assignments.</Text>
