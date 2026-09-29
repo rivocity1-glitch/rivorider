@@ -1,6 +1,5 @@
 ﻿// src/app/(auth)/register.tsx
 
-import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -15,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { COLORS, useTheme } from '../../context/ThemeContext';
 import { registerRider } from '../../services/auth';
 
 // ============================================================
@@ -25,27 +25,22 @@ const VEHICLE_OPTIONS = [
   {
     id: 'bike',
     label: 'Bike (Motorcycle)',
-    icon: 'ðŸï¸',
   },
   {
     id: 'scooty',
     label: 'Scooty / Scooter',
-    icon: 'ðŸ›µ',
   },
   {
     id: 'ev',
     label: 'Electric Vehicle (EV)',
-    icon: 'âš¡',
   },
   {
     id: 'ev_gear',
     label: 'EV Gearbike',
-    icon: 'ðŸ”‹',
   },
   {
     id: 'bicycle',
     label: 'Bicycle / Cycle',
-    icon: 'ðŸš²',
   },
 ];
 
@@ -99,6 +94,7 @@ const DISABILITY_OPTIONS = [
 // ============================================================
 
 export default function RegisterScreen() {
+  const { theme } = useTheme();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -164,7 +160,7 @@ export default function RegisterScreen() {
 
   const passwordStrength = (() => {
     if (!password) {
-      return { label: '', color: '#555555', score: 0 };
+      return { label: '', color: theme.textMuted, score: 0 };
     }
     if (password.length <= 2) {
       return { label: 'Weak', color: '#E74C3C', score: 1 };
@@ -175,7 +171,7 @@ export default function RegisterScreen() {
     if (password.length === 5) {
       return { label: 'Good', color: '#EAB308', score: 3 };
     }
-    return { label: 'Strong', color: '#A8E63A', score: 4 };
+    return { label: 'Strong', color: COLORS.limeGreen, score: 4 };
   })();
 
   const handlePressIn = () => {
@@ -381,14 +377,14 @@ export default function RegisterScreen() {
     }
   ) => (
     <View style={{ marginBottom: 14 }}>
-      <Text style={{ color: '#E0E0E0', fontSize: 13, fontWeight: '700', marginBottom: 6 }}>
+      <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700', marginBottom: 6 }}>
         {label}
       </Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor="#555555"
+        placeholderTextColor={theme.textMuted}
         keyboardType={options?.keyboardType || 'default'}
         autoCapitalize={options?.autoCapitalize || 'sentences'}
         secureTextEntry={options?.secureTextEntry || false}
@@ -396,14 +392,14 @@ export default function RegisterScreen() {
         multiline={options?.multiline || false}
         textAlignVertical={options?.multiline ? 'top' : 'center'}
         style={{
-          backgroundColor: '#0D0D0D',
+          backgroundColor: theme.bg,
           borderWidth: 1,
-          borderColor: '#333333',
+          borderColor: theme.border,
           borderRadius: 12,
           paddingHorizontal: 14,
           paddingVertical: options?.multiline ? 14 : 13,
           minHeight: options?.multiline ? 85 : undefined,
-          color: '#FFFFFF',
+          color: theme.text,
           fontSize: 14,
         }}
       />
@@ -430,30 +426,25 @@ export default function RegisterScreen() {
           marginTop: 1,
         }}
       >
-        {checked && (
-          <Text style={{ color: '#0D0D0D', fontSize: 12, fontWeight: '900' }}>✓</Text>
-        )}
+        
       </View>
-      <Text style={{ flex: 1, color: '#CCCCCC', fontSize: 13, lineHeight: 19 }}>
+      <Text style={{ flex: 1, color: theme.text, fontSize: 13, lineHeight: 19 }}>
         {children}
       </Text>
     </TouchableOpacity>
   );
 
-  const renderSectionHeader = (icon: any, title: string, subtitle: string) => (
+  const renderSectionHeader = (title: string, subtitle: string) => (
     <View style={{ marginBottom: 18 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-        <Ionicons name={icon} size={19} color="#A8E63A" style={{ marginRight: 8 }} />
-        <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '900' }}>{title}</Text>
-      </View>
-      <Text style={{ color: '#888888', fontSize: 12, lineHeight: 18 }}>{subtitle}</Text>
+      <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900', marginBottom: 4 }}>{title}</Text>
+      <Text style={{ color: theme.textMuted, fontSize: 12, lineHeight: 18 }}>{subtitle}</Text>
     </View>
   );
 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1, backgroundColor: '#0D0D0D' }}
+      style={{ flex: 1, backgroundColor: theme.bg }}
     >
       <ScrollView
         keyboardShouldPersistTaps="handled"
@@ -469,54 +460,54 @@ export default function RegisterScreen() {
                 width: 40,
                 height: 40,
                 borderRadius: 12,
-                backgroundColor: '#1A1A1A',
+                backgroundColor: theme.cardBg,
                 borderWidth: 1,
-                borderColor: '#262626',
+                borderColor: theme.border,
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginBottom: 20,
               }}
             >
-              <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
+              <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800' }}>Back</Text>
             </TouchableOpacity>
 
-            <Text style={{ color: '#FFFFFF', fontSize: 28, fontWeight: '900', letterSpacing: -0.5 }}>
+            <Text style={{ color: theme.text, fontSize: 28, fontWeight: '900', letterSpacing: -0.5 }}>
               Create Rider Account
             </Text>
-            <Text style={{ color: '#888888', fontSize: 13, marginTop: 7, lineHeight: 19 }}>
+            <Text style={{ color: theme.textMuted, fontSize: 13, marginTop: 7, lineHeight: 19 }}>
               Complete your rider profile to get started with Rivo.
             </Text>
           </View>
 
-          <View style={{ backgroundColor: '#1A1A1A', borderRadius: 24, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: '#262626' }}>
-            {renderSectionHeader('person-circle-outline', 'Account Information', 'Create your login and basic account information.')}
+          <View style={{ backgroundColor: theme.cardBg, borderRadius: 24, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: theme.border }}>
+            {renderSectionHeader('Account Information', 'Create your login and basic account information.')}
             {renderInput('Full Name *', fullName, setFullName, 'Enter your full name')}
             {renderInput('Email Address *', email, (value) => setEmail(value.trim()), 'you@example.com', { keyboardType: 'email-address', autoCapitalize: 'none' })}
             {renderInput('Mobile Number *', phone, (value) => setPhone(normalizePhone(value)), '10-digit mobile number', { keyboardType: 'phone-pad', maxLength: 10 })}
 
-            <Text style={{ color: '#E0E0E0', fontSize: 13, fontWeight: '700', marginBottom: 6 }}>
+            <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700', marginBottom: 6 }}>
               Password *
             </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#0D0D0D', borderWidth: 1, borderColor: '#333333', borderRadius: 12, paddingLeft: 14, paddingRight: 12, marginBottom: 7 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: 12, paddingLeft: 14, paddingRight: 12, marginBottom: 7 }}>
               <TextInput
                 value={password}
                 onChangeText={setPassword}
                 placeholder="6-character password"
-                placeholderTextColor="#555555"
+                placeholderTextColor={theme.textMuted}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 maxLength={6}
-                style={{ flex: 1, color: '#FFFFFF', paddingVertical: 13, fontSize: 14 }}
+                style={{ flex: 1, color: theme.text, paddingVertical: 13, fontSize: 14 }}
               />
               <TouchableOpacity onPress={() => setShowPassword((value) => !value)}>
-                <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={21} color="#888888" />
+                <Text style={{ color: COLORS.emeraldGreen, fontSize: 12, fontWeight: '800' }}>{showPassword ? 'HIDE' : 'SHOW'}</Text>
               </TouchableOpacity>
             </View>
 
             {password.length > 0 && (
               <View style={{ marginBottom: 14 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
-                  <Text style={{ color: '#777777', fontSize: 11 }}>Password strength</Text>
+                  <Text style={{ color: theme.textMuted, fontSize: 11 }}>Password strength</Text>
                   <Text style={{ color: passwordStrength.color, fontSize: 11, fontWeight: '800' }}>
                     {passwordStrength.label}
                   </Text>
@@ -529,29 +520,29 @@ export default function RegisterScreen() {
               </View>
             )}
 
-            <Text style={{ color: '#E0E0E0', fontSize: 13, fontWeight: '700', marginBottom: 6 }}>
+            <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700', marginBottom: 6 }}>
               Confirm Password *
             </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#0D0D0D', borderWidth: 1, borderColor: '#333333', borderRadius: 12, paddingLeft: 14, paddingRight: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: 12, paddingLeft: 14, paddingRight: 12 }}>
               <TextInput
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 placeholder="Re-enter password"
-                placeholderTextColor="#555555"
+                placeholderTextColor={theme.textMuted}
                 secureTextEntry={!showConfirmPassword}
                 autoCapitalize="none"
                 maxLength={6}
-                style={{ flex: 1, color: '#FFFFFF', paddingVertical: 13, fontSize: 14 }}
+                style={{ flex: 1, color: theme.text, paddingVertical: 13, fontSize: 14 }}
               />
               <TouchableOpacity onPress={() => setShowConfirmPassword((value) => !value)}>
-                <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={21} color="#888888" />
+                <Text style={{ color: COLORS.emeraldGreen, fontSize: 12, fontWeight: '800' }}>{showConfirmPassword ? 'HIDE' : 'SHOW'}</Text>
               </TouchableOpacity>
             </View>
           </View>
 
-          <View style={{ backgroundColor: '#1A1A1A', borderRadius: 24, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: '#262626' }}>
-            {renderSectionHeader('male-female-outline', 'Personal Details', 'Provide your personal information.')}
-            <Text style={{ color: '#E0E0E0', fontSize: 13, fontWeight: '700', marginBottom: 8 }}>Gender *</Text>
+          <View style={{ backgroundColor: theme.cardBg, borderRadius: 24, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: theme.border }}>
+            {renderSectionHeader('Personal Details', 'Provide your personal information.')}
+            <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700', marginBottom: 8 }}>Gender *</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
               {GENDER_OPTIONS.map((option) => {
                 const selected = gender === option.id;
@@ -562,7 +553,7 @@ export default function RegisterScreen() {
                 );
               })}
             </View>
-            <Text style={{ color: '#E0E0E0', fontSize: 13, fontWeight: '700', marginBottom: 8 }}>Blood Group *</Text>
+            <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700', marginBottom: 8 }}>Blood Group *</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
               {BLOOD_GROUP_OPTIONS.map((group) => {
                 const selected = bloodGroup === group;
@@ -575,21 +566,21 @@ export default function RegisterScreen() {
             </View>
             <TouchableOpacity activeOpacity={0.8} onPress={() => { const next = !isSpeciallyAbled; setIsSpeciallyAbled(next); setShowDisabilityDropdown(next); }} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isSpeciallyAbled ? '#242424' : '#0D0D0D', borderWidth: 1, borderColor: isSpeciallyAbled ? '#A8E63A' : '#333333', borderRadius: 12, padding: 14 }}>
               <View style={{ flex: 1, paddingRight: 10 }}>
-                <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>Blessed by Nature / Specially Abled ðŸ’š</Text>
-                <Text style={{ color: '#777777', fontSize: 11, marginTop: 3, lineHeight: 16 }}>Select this if you require accessible delivery assignments.</Text>
+                <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>Blessed by Nature / Specially Abled </Text>
+                <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 3, lineHeight: 16 }}>Select this if you require accessible delivery assignments.</Text>
               </View>
               <View style={{ width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: isSpeciallyAbled ? '#A8E63A' : '#555555', backgroundColor: isSpeciallyAbled ? '#A8E63A' : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
-                {isSpeciallyAbled && <Text style={{ color: '#0D0D0D', fontWeight: '900' }}>✓</Text>}
+                
               </View>
             </TouchableOpacity>
             {isSpeciallyAbled && (
-              <View style={{ marginTop: 12, backgroundColor: '#0D0D0D', borderRadius: 12, borderWidth: 1, borderColor: '#333333', padding: 12 }}>
+              <View style={{ marginTop: 12, backgroundColor: theme.bg, borderRadius: 12, borderWidth: 1, borderColor: theme.border, padding: 12 }}>
                 <TouchableOpacity onPress={() => setShowDisabilityDropdown((value) => !value)} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: '#777777', fontSize: 10, fontWeight: '800', textTransform: 'uppercase' }}>Disability Category</Text>
-                    <Text style={{ color: '#A8E63A', fontSize: 13, fontWeight: '700', marginTop: 3 }}>{DISABILITY_OPTIONS.find((item) => item.id === disabilityType)?.label}</Text>
+                    <Text style={{ color: theme.textMuted, fontSize: 10, fontWeight: '800', textTransform: 'uppercase' }}>Disability Category</Text>
+                    <Text style={{ color: COLORS.limeGreen, fontSize: 13, fontWeight: '700', marginTop: 3 }}>{DISABILITY_OPTIONS.find((item) => item.id === disabilityType)?.label}</Text>
                   </View>
-                  <Ionicons name={showDisabilityDropdown ? 'chevron-up' : 'chevron-down'} size={18} color="#A8E63A" />
+                  <Text style={{ color: COLORS.limeGreen, fontSize: 11, fontWeight: '800' }}>{showDisabilityDropdown ? 'HIDE' : 'SHOW'}</Text>
                 </TouchableOpacity>
                 {showDisabilityDropdown && DISABILITY_OPTIONS.map((option) => (
                   <TouchableOpacity key={option.id} onPress={() => { setDisabilityType(option.id); setShowDisabilityDropdown(false); }} style={{ paddingVertical: 10, paddingHorizontal: 8 }}>
@@ -600,26 +591,25 @@ export default function RegisterScreen() {
             )}
           </View>
 
-          <View style={{ backgroundColor: '#1A1A1A', borderRadius: 24, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: '#262626' }}>
-            {renderSectionHeader('bicycle-outline', 'Vehicle Details', 'Select your vehicle and provide its registration information.')}
-            <Text style={{ color: '#E0E0E0', fontSize: 13, fontWeight: '700', marginBottom: 8 }}>Vehicle Type *</Text>
+          <View style={{ backgroundColor: theme.cardBg, borderRadius: 24, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: theme.border }}>
+            {renderSectionHeader('Vehicle Details', 'Select your vehicle and provide its registration information.')}
+            <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700', marginBottom: 8 }}>Vehicle Type *</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
               {VEHICLE_OPTIONS.map((option) => {
                 const selected = vehicleType === option.id;
                 return (
                   <TouchableOpacity key={option.id} activeOpacity={0.8} onPress={() => setVehicleType(option.id)} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: selected ? '#A8E63A' : '#0D0D0D', borderWidth: 1, borderColor: selected ? '#A8E63A' : '#333333', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10 }}>
-                    <Text style={{ fontSize: 15, marginRight: 6 }}>{option.icon}</Text>
-                    <Text style={{ color: selected ? '#0D0D0D' : '#CCCCCC', fontSize: 12, fontWeight: '700' }}>{option.label}</Text>
+                                        <Text style={{ color: selected ? '#0D0D0D' : '#CCCCCC', fontSize: 12, fontWeight: '700' }}>{option.label}</Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
             {renderInput(`Vehicle Registration Number ${isNoPlateRequired ? '(Optional)' : '*'}`, vehicleNumber, (value) => setVehicleNumber(value.toUpperCase()), isNoPlateRequired ? 'Optional for this vehicle' : 'e.g. MH12AB1234', { autoCapitalize: 'characters' })}
-            {isNoPlateRequired && <Text style={{ color: '#777777', fontSize: 11, marginTop: -8 }}>Vehicle registration number is optional for Bicycle and EV.</Text>}
+            {isNoPlateRequired && <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: -8 }}>Vehicle registration number is optional for Bicycle and EV.</Text>}
           </View>
 
-          <View style={{ backgroundColor: '#1A1A1A', borderRadius: 24, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: '#262626' }}>
-            {renderSectionHeader('location-outline', 'Address Details', 'Enter your residential address and contact information.')}
+          <View style={{ backgroundColor: theme.cardBg, borderRadius: 24, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: theme.border }}>
+            {renderSectionHeader('Address Details', 'Enter your residential address and contact information.')}
             {renderInput('Address *', address, setAddress, 'House / Flat / Street / Area', { multiline: true })}
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>{renderInput('City *', city, setCity, 'City')}</View>
@@ -628,14 +618,14 @@ export default function RegisterScreen() {
             {renderInput('PIN Code *', pinCode, (value) => setPinCode(value.replace(/[^0-9]/g, '').slice(0, 6)), '6-digit PIN code', { keyboardType: 'number-pad', maxLength: 6 })}
           </View>
 
-          <View style={{ backgroundColor: '#1A1A1A', borderRadius: 24, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: '#262626' }}>
-            {renderSectionHeader('call-outline', 'Emergency Contact', 'Keep an emergency contact available for rider safety.')}
+          <View style={{ backgroundColor: theme.cardBg, borderRadius: 24, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: theme.border }}>
+            {renderSectionHeader('Emergency Contact', 'Keep an emergency contact available for rider safety.')}
             {renderInput('Emergency Contact Number', emergencyContact, (value) => setEmergencyContact(normalizePhone(value)), '10-digit emergency number', { keyboardType: 'phone-pad', maxLength: 10 })}
             {renderInput('Alternate Contact', alternateContact, (value) => setAlternateContact(normalizePhone(value)), 'Optional alternate number', { keyboardType: 'phone-pad', maxLength: 10 })}
           </View>
 
-          <View style={{ backgroundColor: '#1A1A1A', borderRadius: 24, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: '#262626' }}>
-            {renderSectionHeader('wallet-outline', 'Bank Details *', 'Bank details are required for rider payments and settlements. UPI is optional.')}
+          <View style={{ backgroundColor: theme.cardBg, borderRadius: 24, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: theme.border }}>
+            {renderSectionHeader('Bank Details *', 'Bank details are required for rider payments and settlements. UPI is optional.')}
             {renderInput('Account Holder Name *', accountHolderName, setAccountHolderName, 'Name as per bank records')}
             {renderInput('Bank Name *', bankName, setBankName, 'e.g. HDFC Bank')}
             {renderInput('Account Number *', accountNumber, (value) => setAccountNumber(normalizeAccountNumber(value)), 'Bank account number', { keyboardType: 'number-pad' })}
@@ -643,29 +633,29 @@ export default function RegisterScreen() {
             {renderInput('UPI ID', upiId, (value) => setUpiId(normalizeUpi(value)), 'example@upi', { autoCapitalize: 'none' })}
           </View>
 
-          <View style={{ backgroundColor: '#1A1A1A', borderRadius: 24, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: '#262626' }}>
+          <View style={{ backgroundColor: theme.cardBg, borderRadius: 24, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: theme.border }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
               <View style={{ flex: 1, paddingRight: 10 }}>
-                {renderSectionHeader('shield-checkmark-outline', 'KYC Information', 'Provide KYC numbers now if available.')}
+                {renderSectionHeader('KYC Information', 'Provide KYC numbers now if available.')}
               </View>
-              <View style={{ backgroundColor: '#24351E', borderRadius: 8, paddingHorizontal: 9, paddingVertical: 5 }}>
-                <Text style={{ color: '#A8E63A', fontSize: 9, fontWeight: '900' }}>OPTIONAL</Text>
+              <View style={{ backgroundColor: theme.bg, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 5 }}>
+                <Text style={{ color: COLORS.limeGreen, fontSize: 9, fontWeight: '900' }}>OPTIONAL</Text>
               </View>
             </View>
-            <View style={{ backgroundColor: '#101810', borderWidth: 1, borderColor: '#31402B', borderRadius: 12, padding: 13, marginBottom: 16 }}>
-              <Text style={{ color: '#A8E63A', fontSize: 12, fontWeight: '800', marginBottom: 4 }}>KYC can be completed later</Text>
-              <Text style={{ color: '#888888', fontSize: 11, lineHeight: 17 }}>You do not need to provide KYC during registration. Missing Aadhaar, PAN, driving licence, RC or selfie documents can be completed later from your rider profile.</Text>
+            <View style={{ backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: 12, padding: 13, marginBottom: 16 }}>
+              <Text style={{ color: COLORS.limeGreen, fontSize: 12, fontWeight: '800', marginBottom: 4 }}>KYC can be completed later</Text>
+              <Text style={{ color: theme.textMuted, fontSize: 11, lineHeight: 17 }}>You do not need to provide KYC during registration. Missing Aadhaar, PAN, driving licence, RC or selfie documents can be completed later from your rider profile.</Text>
             </View>
             {renderInput('Aadhaar Number', aadhaarNumber, (value) => setAadhaarNumber(normalizeAadhaar(value)), '12-digit Aadhaar number', { keyboardType: 'number-pad', maxLength: 12 })}
             {renderInput('PAN Number', panNumber, (value) => setPanNumber(normalizePan(value)), '10-character PAN number', { autoCapitalize: 'characters', maxLength: 10 })}
             {renderInput('Driving Licence Number', drivingLicenseNumber, setDrivingLicenseNumber, 'Driving licence number', { autoCapitalize: 'characters' })}
             <View style={{ borderTopWidth: 1, borderTopColor: '#292929', paddingTop: 14 }}>
-              <Text style={{ color: '#777777', fontSize: 11, lineHeight: 17 }}>ðŸ“‹ Document uploads are intentionally handled after registration. This prevents a storage upload failure from preventing rider account creation.</Text>
+              <Text style={{ color: theme.textMuted, fontSize: 11, lineHeight: 17 }}>Document uploads are intentionally handled after registration. This prevents a storage upload failure from preventing rider account creation.</Text>
             </View>
           </View>
 
-          <View style={{ backgroundColor: '#1A1A1A', borderRadius: 24, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: '#262626' }}>
-            <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '900', marginBottom: 16 }}>Declaration & Confirmation</Text>
+          <View style={{ backgroundColor: theme.cardBg, borderRadius: 24, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: theme.border }}>
+            <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900', marginBottom: 16 }}>Declaration & Confirmation</Text>
             {renderCheckbox(confirmAccurate, () => setConfirmAccurate((value) => !value), 'I confirm that all information provided by me is accurate.')}
             {renderCheckbox(agreeTerms, () => setAgreeTerms((value) => !value), 'I agree to the Rivo Terms & Conditions and Privacy Policy.')}
             {renderCheckbox(understandKycOptional, () => setUnderstandKycOptional((value) => !value), 'I understand that KYC documents are optional during registration and that I can complete missing KYC documents later from my rider profile. I understand that bank details are required for rider payments and settlements.')}
@@ -689,13 +679,13 @@ export default function RegisterScreen() {
           </Animated.View>
 
           <TouchableOpacity disabled={loading} onPress={() => router.replace('/login')} style={{ alignItems: 'center', marginTop: 20, marginBottom: 24 }}>
-            <Text style={{ color: '#777777', fontSize: 13 }}>
+            <Text style={{ color: theme.textMuted, fontSize: 13 }}>
               Already have a rider account?{' '}
-              <Text style={{ color: '#A8E63A', fontWeight: '800' }}>Login</Text>
+              <Text style={{ color: COLORS.limeGreen, fontWeight: '800' }}>Login</Text>
             </Text>
           </TouchableOpacity>
 
-          <Text style={{ color: '#555555', fontSize: 10, lineHeight: 15, textAlign: 'center', paddingHorizontal: 20 }}>
+          <Text style={{ color: theme.textMuted, fontSize: 10, lineHeight: 15, textAlign: 'center', paddingHorizontal: 20 }}>
             By creating a rider account, you agree to Rivo's terms and privacy policy.
           </Text>
         </Animated.View>
