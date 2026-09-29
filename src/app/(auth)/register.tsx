@@ -163,13 +163,13 @@ export default function RegisterScreen() {
       return { label: '', color: theme.textMuted, score: 0 };
     }
     if (password.length <= 2) {
-      return { label: 'Weak', color: '#E74C3C', score: 1 };
+      return { label: 'Weak', color: COLORS.danger, score: 1 };
     }
     if (password.length <= 4) {
-      return { label: 'Fair', color: '#F39C12', score: 2 };
+      return { label: 'Fair', color: COLORS.limeGreen, score: 2 };
     }
     if (password.length === 5) {
-      return { label: 'Good', color: '#EAB308', score: 3 };
+      return { label: 'Good', color: COLORS.limeGreen, score: 3 };
     }
     return { label: 'Strong', color: COLORS.limeGreen, score: 4 };
   })();
@@ -514,7 +514,7 @@ export default function RegisterScreen() {
                 </View>
                 <View style={{ flexDirection: 'row', gap: 4 }}>
                   {[1, 2, 3, 4].map((step) => (
-                    <View key={step} style={{ flex: 1, height: 4, borderRadius: 3, backgroundColor: step <= passwordStrength.score ? passwordStrength.color : '#292929' }} />
+                    <View key={step} style={{ flex: 1, height: 4, borderRadius: 3, backgroundColor: step <= passwordStrength.score ? passwordStrength.color : theme.border }} />
                   ))}
                 </View>
               </View>
@@ -547,8 +547,8 @@ export default function RegisterScreen() {
               {GENDER_OPTIONS.map((option) => {
                 const selected = gender === option.id;
                 return (
-                  <TouchableOpacity key={option.id} onPress={() => setGender(option.id)} activeOpacity={0.8} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: selected ? '#A8E63A' : '#0D0D0D', borderWidth: 1, borderColor: selected ? '#A8E63A' : '#333333' }}>
-                    <Text style={{ color: selected ? '#0D0D0D' : '#CCCCCC', fontSize: 13, fontWeight: '700' }}>{option.label}</Text>
+                  <TouchableOpacity key={option.id} onPress={() => setGender(option.id)} activeOpacity={0.8} style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: selected ? COLORS.limeGreen : theme.bg, borderWidth: 1, borderColor: selected ? COLORS.limeGreen : theme.border }}>
+                    <Text style={{ color: selected ? COLORS.jetBlack : theme.text, fontSize: 13, fontWeight: '700' }}>{option.label}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -558,18 +558,18 @@ export default function RegisterScreen() {
               {BLOOD_GROUP_OPTIONS.map((group) => {
                 const selected = bloodGroup === group;
                 return (
-                  <TouchableOpacity key={group} onPress={() => setBloodGroup(group)} style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: selected ? '#A8E63A' : '#0D0D0D', borderWidth: 1, borderColor: selected ? '#A8E63A' : '#333333' }}>
-                    <Text style={{ color: selected ? '#0D0D0D' : '#CCCCCC', fontSize: 13, fontWeight: '700' }}>{group}</Text>
+                  <TouchableOpacity key={group} onPress={() => setBloodGroup(group)} style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: selected ? COLORS.limeGreen : theme.bg, borderWidth: 1, borderColor: selected ? COLORS.limeGreen : theme.border }}>
+                    <Text style={{ color: selected ? COLORS.jetBlack : theme.text, fontSize: 13, fontWeight: '700' }}>{group}</Text>
                   </TouchableOpacity>
                 );
               })}
             </View>
-            <TouchableOpacity activeOpacity={0.8} onPress={() => { const next = !isSpeciallyAbled; setIsSpeciallyAbled(next); setShowDisabilityDropdown(next); }} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isSpeciallyAbled ? '#242424' : '#0D0D0D', borderWidth: 1, borderColor: isSpeciallyAbled ? COLORS.limeGreen : theme.border, borderRadius: 12, padding: 14 }}>
+            <TouchableOpacity activeOpacity={0.8} onPress={() => { const next = !isSpeciallyAbled; setIsSpeciallyAbled(next); setShowDisabilityDropdown(next); }} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isSpeciallyAbled ? theme.cardBg : theme.bg, borderWidth: 1, borderColor: isSpeciallyAbled ? COLORS.limeGreen : theme.border, borderRadius: 12, padding: 14 }}>
               <View style={{ flex: 1, paddingRight: 10 }}>
                 <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>Blessed by Nature / Specially Abled </Text>
                 <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 3, lineHeight: 16 }}>Select this if you require accessible delivery assignments.</Text>
               </View>
-              <View style={{ width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: isSpeciallyAbled ? '#A8E63A' : '#555555', backgroundColor: isSpeciallyAbled ? '#A8E63A' : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: isSpeciallyAbled ? COLORS.limeGreen : theme.textMuted, backgroundColor: isSpeciallyAbled ? COLORS.limeGreen : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
                 
               </View>
             </TouchableOpacity>
@@ -584,7 +584,7 @@ export default function RegisterScreen() {
                 </TouchableOpacity>
                 {showDisabilityDropdown && DISABILITY_OPTIONS.map((option) => (
                   <TouchableOpacity key={option.id} onPress={() => { setDisabilityType(option.id); setShowDisabilityDropdown(false); }} style={{ paddingVertical: 10, paddingHorizontal: 8 }}>
-                    <Text style={{ color: disabilityType === option.id ? '#A8E63A' : '#CCCCCC', fontSize: 13, fontWeight: disabilityType === option.id ? '800' : '500' }}>{option.label}</Text>
+                    <Text style={{ color: disabilityType === option.id ? COLORS.limeGreen : theme.text, fontSize: 13, fontWeight: disabilityType === option.id ? '800' : '500' }}>{option.label}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -598,8 +598,8 @@ export default function RegisterScreen() {
               {VEHICLE_OPTIONS.map((option) => {
                 const selected = vehicleType === option.id;
                 return (
-                  <TouchableOpacity key={option.id} activeOpacity={0.8} onPress={() => setVehicleType(option.id)} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: selected ? '#A8E63A' : '#0D0D0D', borderWidth: 1, borderColor: selected ? '#A8E63A' : '#333333', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10 }}>
-                                        <Text style={{ color: selected ? '#0D0D0D' : '#CCCCCC', fontSize: 12, fontWeight: '700' }}>{option.label}</Text>
+                  <TouchableOpacity key={option.id} activeOpacity={0.8} onPress={() => setVehicleType(option.id)} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: selected ? COLORS.limeGreen : theme.bg, borderWidth: 1, borderColor: selected ? COLORS.limeGreen : theme.border, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10 }}>
+                                        <Text style={{ color: selected ? COLORS.jetBlack : theme.text, fontSize: 12, fontWeight: '700' }}>{option.label}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -649,7 +649,7 @@ export default function RegisterScreen() {
             {renderInput('Aadhaar Number', aadhaarNumber, (value) => setAadhaarNumber(normalizeAadhaar(value)), '12-digit Aadhaar number', { keyboardType: 'number-pad', maxLength: 12 })}
             {renderInput('PAN Number', panNumber, (value) => setPanNumber(normalizePan(value)), '10-character PAN number', { autoCapitalize: 'characters', maxLength: 10 })}
             {renderInput('Driving Licence Number', drivingLicenseNumber, setDrivingLicenseNumber, 'Driving licence number', { autoCapitalize: 'characters' })}
-            <View style={{ borderTopWidth: 1, borderTopColor: '#292929', paddingTop: 14 }}>
+            <View style={{ borderTopWidth: 1, borderTopColor: theme.border, paddingTop: 14 }}>
               <Text style={{ color: theme.textMuted, fontSize: 11, lineHeight: 17 }}>Document uploads are intentionally handled after registration. This prevents a storage upload failure from preventing rider account creation.</Text>
             </View>
           </View>
@@ -668,12 +668,12 @@ export default function RegisterScreen() {
               onPressOut={handlePressOut}
               onPress={handleRegister}
               disabled={loading || !allDeclarationsChecked}
-              style={{ height: 56, borderRadius: 14, backgroundColor: allDeclarationsChecked ? '#A8E63A' : '#333333', opacity: allDeclarationsChecked ? 1 : 0.6, alignItems: 'center', justifyContent: 'center' }}
+              style={{ height: 56, borderRadius: 14, backgroundColor: allDeclarationsChecked ? COLORS.limeGreen : theme.border, opacity: allDeclarationsChecked ? 1 : 0.6, alignItems: 'center', justifyContent: 'center' }}
             >
               {loading ? (
-                <ActivityIndicator size="small" color="#0D0D0D" />
+                <ActivityIndicator size="small" color={COLORS.jetBlack} />
               ) : (
-                <Text style={{ color: allDeclarationsChecked ? '#0D0D0D' : '#888888', fontSize: 16, fontWeight: '900' }}>Create Rider Account</Text>
+                <Text style={{ color: allDeclarationsChecked ? COLORS.jetBlack : theme.textMuted, fontSize: 16, fontWeight: '900' }}>Create Rider Account</Text>
               )}
             </TouchableOpacity>
           </Animated.View>
