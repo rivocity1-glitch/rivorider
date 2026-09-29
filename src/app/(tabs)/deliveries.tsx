@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import { COLORS, useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../lib/supabase';
-import { navigateToCustomer } from '../../lib/customerNavigation';
+import { navigateToCustomer, navigateToVendor, navigateToVendorFromCustomer } from '../../lib/customerNavigation';
 
 const RUPEE = String.fromCharCode(0x20B9);
 
@@ -444,6 +444,14 @@ export default function DeliveriesScreen() {
     }
   };
 
+  const handleNavigateToVendor = async (order: Order) => {
+    const opened = await navigateToVendor(order.vendor_location || {});
+
+    if (opened) {
+      showSuccessToast('Opening Navigation To Vendor');
+    }
+  };
+
   const handleNavigateToCustomer = async (order: Order) => {
     const opened = await navigateToCustomer(
       order.vendor_location || {},
@@ -451,7 +459,18 @@ export default function DeliveriesScreen() {
     );
 
     if (opened) {
-      showSuccessToast('Opening Google Maps Navigation');
+      showSuccessToast('Opening Navigation To Customer');
+    }
+  };
+
+  const handleNavigateBackToVendor = async (order: Order) => {
+    const opened = await navigateToVendorFromCustomer(
+      order.customer_addresses || {},
+      order.vendor_location || {}
+    );
+
+    if (opened) {
+      showSuccessToast('Opening Navigation Back To Vendor');
     }
   };
 
@@ -905,7 +924,15 @@ export default function DeliveriesScreen() {
                     {isReturning && (
                       <View style={[styles.completedFinancialBox, { backgroundColor: theme.bg, borderColor: theme.border }]}>
                         <TouchableOpacity
-                          style={[styles.completeButton, { backgroundColor: COLORS.emeraldGreen, alignItems: 'center' }]}
+                          style={[styles.completeButton, { backgroundColor: COLORS.emeraldGreen, alignItems: 'center', marginBottom: 10 }]}
+                          disabled={submitting}
+                          onPress={() => handleNavigateBackToVendor(item)}
+                        >
+                          <Text style={styles.completeButtonText}>Navigate Back To Vendor</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[styles.completeButton, { backgroundColor: COLORS.jetBlack, alignItems: 'center' }]}
                           disabled={submitting}
                           onPress={() => handleConfirmReturn(item)}
                         >
@@ -989,6 +1016,15 @@ export default function DeliveriesScreen() {
                             activeOpacity={0.8}
                             style={[styles.completeButton, { backgroundColor: COLORS.emeraldGreen }]}
                             disabled={submitting}
+                            onPress={() => handleNavigateToVendor(item)}
+                          >
+                            <Text style={styles.completeButtonText}>Navigate To Vendor</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            style={[styles.completeButton, { backgroundColor: COLORS.jetBlack }]}
+                            disabled={submitting}
                             onPress={() => updateOrderStatusDirectly(item.id, 'picked_up')}
                           >
                             <Text style={styles.completeButtonText}>Accept Pickup</Text>
@@ -1021,7 +1057,6 @@ export default function DeliveriesScreen() {
                             onPress={() => handleNavigateToCustomer(item)}
                             disabled={submitting}
                           >
-                            <Ionicons name="navigate-outline" size={18} color={COLORS.white} style={{ marginRight: 6 }} />
                             <Text style={styles.completeButtonText}>Navigate</Text>
                           </TouchableOpacity>
 
