@@ -479,7 +479,11 @@ export default function DeliveriesScreen() {
       return;
     }
 
-    const buttons = [
+    const buttons: Array<{
+      text: string;
+      onPress?: () => void;
+      style?: 'default' | 'cancel' | 'destructive';
+    }> = [
       {
         text: 'Rider → Customer (from my current location)',
         onPress: () => { void handleNavigateToCustomer(order); },
@@ -493,7 +497,7 @@ export default function DeliveriesScreen() {
       });
     }
 
-    buttons.push({ text: 'Cancel', style: 'cancel' as const, onPress: () => {} });
+    buttons.push({ text: 'Cancel', style: 'cancel' });
     Alert.alert('Choose Delivery Route', 'Select which route to open in Google Maps.', buttons);
   };
 
