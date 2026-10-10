@@ -1069,9 +1069,20 @@ export default function DeliveriesScreen() {
                         <Text style={[styles.amountValue, { color: COLORS.emeraldGreen, fontSize: 18, fontWeight: '900' }]}>{RUPEE}{item.rider_earning || 0}</Text>
                       </View>
                     </View>
-                    <Text style={{ color: theme.textMuted, fontSize: 10, marginTop: 5 }}>
-                      Customer bill: delivery {RUPEE}{item.delivery_fee || 0} + platform fee {RUPEE}{item.platform_fee || 0}. Delivery pricing uses vendor-to-customer distance; your {RUPEE}{item.rider_earning || 0} earning is separate and does not change with your current GPS location.
-                    </Text>
+                    <View style={{ backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: 10, padding: 10, marginTop: 8, gap: 4 }}>
+                      <Text style={{ color: theme.text, fontSize: 11, fontWeight: '800' }}>
+                        Customer delivery charge: {RUPEE}{item.delivery_fee || 0}
+                      </Text>
+                      <Text style={{ color: theme.textMuted, fontSize: 10 }}>
+                        Platform fee: {RUPEE}{item.platform_fee || 0}
+                      </Text>
+                      <Text style={{ color: theme.textMuted, fontSize: 10 }}>
+                        Your rider earning: {RUPEE}{item.rider_earning || 0} (separate from the customer delivery charge)
+                      </Text>
+                      <Text style={{ color: theme.textMuted, fontSize: 10 }}>
+                        Pricing is based on store → customer distance ({Number(item.actual_distance_km ?? item.delivery_distance_km ?? 0).toFixed(1)} km), not your current location. The order's saved amounts are used; rider GPS does not recalculate the customer's charge.
+                      </Text>
+                    </View>
 
                     <View style={styles.actionsContainer}>
                       {isPacked && (
