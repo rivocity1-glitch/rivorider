@@ -1074,7 +1074,7 @@ export default function DeliveriesScreen() {
                             onPress={() => handleNavigateToCustomer(item)}
                             disabled={submitting}
                           >
-                            <Text style={styles.completeButtonText}>Navigate</Text>
+                            <Text style={styles.completeButtonText}>Navigate to Customer</Text>
                           </TouchableOpacity>
 
                           <TouchableOpacity
@@ -1114,7 +1114,7 @@ export default function DeliveriesScreen() {
                             disabled={submitting}
                           >
                             <Ionicons name="navigate-outline" size={18} color={COLORS.white} style={{ marginRight: 6 }} />
-                            <Text style={styles.completeButtonText}>Navigate</Text>
+                            <Text style={styles.completeButtonText}>Navigate to Customer</Text>
                           </TouchableOpacity>
 
                           <TouchableOpacity
