@@ -40,6 +40,7 @@ interface Order {
   vendor_commission: number;
   rivo_delivery_margin: number;
   delivery_fee: number;
+  platform_fee: number;
   delivery_distance_km: number;
   collection_method?: string | null;
   cash_received?: number | null;
@@ -291,6 +292,7 @@ export default function DeliveriesScreen() {
           vendor_commission,
           rivo_delivery_margin,
           delivery_fee,
+          platform_fee,
           delivery_distance_km,
           collection_method,
           cash_received,
@@ -418,6 +420,7 @@ export default function DeliveriesScreen() {
           vendor_commission: order.vendor_commission || 0,
           rivo_delivery_margin: order.rivo_delivery_margin || 0,
           delivery_fee: order.delivery_fee || 0,
+          platform_fee: order.platform_fee || 0,
           delivery_distance_km: order.delivery_distance_km || 0,
           collection_method: order.collection_method || null,
           cash_received: order.cash_received !== undefined ? order.cash_received : null,
@@ -1015,7 +1018,7 @@ export default function DeliveriesScreen() {
                       </View>
                     </View>
                     <Text style={{ color: theme.textMuted, fontSize: 10, marginTop: 5 }}>
-                      Customer delivery fee is based on vendor-to-customer distance. Your earnings are calculated separately and do not change with your current GPS location.
+                      Customer bill: delivery {RUPEE}{item.delivery_fee || 0} + platform fee {RUPEE}{item.platform_fee || 0}. Delivery pricing uses vendor-to-customer distance; your {RUPEE}{item.rider_earning || 0} earning is separate and does not change with your current GPS location.
                     </Text>
 
                     <View style={styles.actionsContainer}>
