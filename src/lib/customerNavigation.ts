@@ -48,21 +48,23 @@ async function openGoogleMapsNavigation(
 /**
  * Pickup: rider's current GPS location -> assigned vendor/store.
  * Omitting an explicit origin lets Google Maps use the rider's live location.
+ * Open route preview first so the rider can compare available routes before starting.
  */
 export async function navigateToVendor(
   vendorLocation: NavigationLocation,
 ) {
-  return openGoogleMapsNavigation(null, vendorLocation);
+  return openGoogleMapsNavigation(null, vendorLocation, false);
 }
 
 /**
  * Delivery navigation: rider's current location -> customer.
  * Do not use the vendor as origin because the rider may be somewhere else.
+ * Show the route overview so the rider can choose an appropriate route.
  */
 export async function navigateFromRiderToCustomer(
   customerLocation: NavigationLocation,
 ) {
-  return openGoogleMapsNavigation(null, customerLocation);
+  return openGoogleMapsNavigation(null, customerLocation, false);
 }
 
 /**
