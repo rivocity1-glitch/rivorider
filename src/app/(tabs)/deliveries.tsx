@@ -491,7 +491,7 @@ export default function DeliveriesScreen() {
       style?: 'default' | 'cancel' | 'destructive';
     }> = [
       {
-        text: 'Rider → Customer (from my current location)',
+        text: 'Rider → Customer (live location)',
         onPress: () => { void handleNavigateToCustomer(order); },
       },
     ];
@@ -504,7 +504,7 @@ export default function DeliveriesScreen() {
     }
 
     buttons.push({ text: 'Cancel', style: 'cancel' });
-    Alert.alert('Choose Delivery Route', 'Select which route to open in Google Maps.', buttons);
+    Alert.alert('Choose Delivery Route', 'Choose the route you want to preview in Google Maps.', buttons);
   };
 
   const handlePreviewVendorToCustomer = async (order: Order) => {
