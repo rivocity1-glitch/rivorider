@@ -42,6 +42,8 @@ interface Order {
   delivery_fee: number;
   platform_fee: number;
   delivery_distance_km: number;
+  actual_distance_km?: number | null;
+  chargeable_distance_km?: number | null;
   collection_method?: string | null;
   cash_received?: number | null;
   change_returned?: number | null;
@@ -294,6 +296,8 @@ export default function DeliveriesScreen() {
           delivery_fee,
           platform_fee,
           delivery_distance_km,
+          actual_distance_km,
+          chargeable_distance_km,
           collection_method,
           cash_received,
           change_returned,
@@ -422,6 +426,8 @@ export default function DeliveriesScreen() {
           delivery_fee: order.delivery_fee || 0,
           platform_fee: order.platform_fee || 0,
           delivery_distance_km: order.delivery_distance_km || 0,
+          actual_distance_km: order.actual_distance_km ?? order.delivery_distance_km ?? null,
+          chargeable_distance_km: order.chargeable_distance_km ?? null,
           collection_method: order.collection_method || null,
           cash_received: order.cash_received !== undefined ? order.cash_received : null,
           change_returned: order.change_returned !== undefined ? order.change_returned : null,
