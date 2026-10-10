@@ -29,7 +29,7 @@ async function openGoogleMapsNavigation(
       ? `&origin=${encodeURIComponent(`${origin.latitude},${origin.longitude}`)}`
       : '') +
     `&destination=${encodeURIComponent(destinationValue)}` +
-    '&travelmode=two-wheeler' +
+    '&travelmode=driving' +
     (startNavigation ? '&dir_action=navigate' : '');
 
   try {
