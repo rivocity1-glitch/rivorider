@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import { COLORS, useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../lib/supabase';
-import { navigateToCustomer, navigateToVendor, navigateToVendorFromCustomer } from '../../lib/customerNavigation';
+import { navigateFromRiderToCustomer, navigateToVendor, navigateToVendorFromCustomer, previewVendorToCustomer } from '../../lib/customerNavigation';
 
 const RUPEE = String.fromCharCode(0x20B9);
 
@@ -453,13 +453,23 @@ export default function DeliveriesScreen() {
   };
 
   const handleNavigateToCustomer = async (order: Order) => {
-    const opened = await navigateToCustomer(
+    const opened = await navigateFromRiderToCustomer(
+      order.customer_addresses || {}
+    );
+
+    if (opened) {
+      showSuccessToast('Navigating from your current location to the customer');
+    }
+  };
+
+  const handlePreviewVendorToCustomer = async (order: Order) => {
+    const opened = await previewVendorToCustomer(
       order.vendor_location || {},
       order.customer_addresses || {}
     );
 
     if (opened) {
-      showSuccessToast('Opening Navigation To Customer');
+      showSuccessToast('Showing vendor-to-customer route options');
     }
   };
 
@@ -990,16 +1000,23 @@ export default function DeliveriesScreen() {
                   <View style={[styles.cardDivider, { backgroundColor: theme.border }]} />
 
                   <View style={styles.cardFooter}>
-                    <View style={styles.amountSection}>
-                      <View style={styles.amountBox}>
-                        <Text style={[styles.amountLabel, { color: theme.textMuted, fontSize: 12 }]}>Total Order</Text>
-                        <Text style={[styles.amountValue, { color: theme.text, fontSize: 18 }]}>{RUPEE}{item.total_amount}</Text>
+                    <View style={[styles.amountSection, { gap: 8 }]}>
+                      <View style={[styles.amountBox, { flex: 1 }]}>
+                        <Text style={[styles.amountLabel, { color: theme.textMuted, fontSize: 10 }]}>Total Order</Text>
+                        <Text style={[styles.amountValue, { color: theme.text, fontSize: 16 }]}>{RUPEE}{item.total_amount}</Text>
                       </View>
-                      <View style={[styles.amountBox, { alignItems: 'flex-end' }]}>
-                        <Text style={[styles.amountLabel, { color: COLORS.emeraldGreen, fontWeight: '700', fontSize: 12 }]}>Your Earnings</Text>
-                        <Text style={[styles.amountValue, { color: COLORS.emeraldGreen, fontSize: 20, fontWeight: '900' }]}>{RUPEE}{item.rider_earning || 0}</Text>
+                      <View style={[styles.amountBox, { flex: 1, alignItems: 'center' }]}>
+                        <Text style={[styles.amountLabel, { color: theme.textMuted, fontWeight: '700', fontSize: 10 }]}>Customer Delivery</Text>
+                        <Text style={[styles.amountValue, { color: theme.text, fontSize: 16, fontWeight: '800' }]}>{RUPEE}{item.delivery_fee || 0}</Text>
+                      </View>
+                      <View style={[styles.amountBox, { flex: 1, alignItems: 'flex-end' }]}>
+                        <Text style={[styles.amountLabel, { color: COLORS.emeraldGreen, fontWeight: '700', fontSize: 10 }]}>Your Earnings</Text>
+                        <Text style={[styles.amountValue, { color: COLORS.emeraldGreen, fontSize: 18, fontWeight: '900' }]}>{RUPEE}{item.rider_earning || 0}</Text>
                       </View>
                     </View>
+                    <Text style={{ color: theme.textMuted, fontSize: 10, marginTop: 5 }}>
+                      Customer delivery fee is based on vendor-to-customer distance. Your earnings are calculated separately and do not change with your current GPS location.
+                    </Text>
 
                     <View style={styles.actionsContainer}>
                       {isPacked && (
@@ -1110,6 +1127,16 @@ export default function DeliveriesScreen() {
                         </>
                       )}
                     </View>
+                    {(isPickedUp || isOutForDelivery) && (
+                      <TouchableOpacity
+                        activeOpacity={0.8}
+                        style={[styles.callButton, { borderColor: theme.border, backgroundColor: theme.bg, marginTop: 8, alignSelf: 'stretch' }]}
+                        onPress={() => handlePreviewVendorToCustomer(item)}
+                        disabled={submitting}
+                      >
+                        <Text style={[styles.callButtonText, { color: theme.text }]}>View Vendor → Customer Route Options</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
               );
