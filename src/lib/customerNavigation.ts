@@ -8,6 +8,7 @@ export type NavigationLocation = {
 async function openGoogleMapsNavigation(
   origin: NavigationLocation | null,
   destination: NavigationLocation,
+  startNavigation = true,
 ) {
   if (
     destination.latitude == null ||
@@ -16,7 +17,7 @@ async function openGoogleMapsNavigation(
   ) {
     Alert.alert(
       'Location Unavailable',
-      'The required vendor or customer location is not available for this order.',
+      'The required start or destination location is not available for this order.',
     );
     return false;
   }
@@ -29,18 +30,9 @@ async function openGoogleMapsNavigation(
       : '') +
     `&destination=${encodeURIComponent(destinationValue)}` +
     '&travelmode=two-wheeler' +
-    '&dir_action=navigate';
+    (startNavigation ? '&dir_action=navigate' : '');
 
   try {
-    const canOpen = await Linking.canOpenURL(mapsUrl);
-    if (!canOpen) {
-      Alert.alert(
-        'Navigation Unavailable',
-        'Unable to open Google Maps on this device.',
-      );
-      return false;
-    }
-
     await Linking.openURL(mapsUrl);
     return true;
   } catch (error) {
@@ -55,7 +47,7 @@ async function openGoogleMapsNavigation(
 
 /**
  * Pickup: rider's current GPS location -> assigned vendor/store.
- * Origin is intentionally omitted so Google Maps uses the rider's live location.
+ * Omitting an explicit origin lets Google Maps use the rider's live location.
  */
 export async function navigateToVendor(
   vendorLocation: NavigationLocation,
@@ -64,14 +56,24 @@ export async function navigateToVendor(
 }
 
 /**
- * Delivery: assigned vendor/store -> customer.
- * The vendor coordinates are the explicit origin for this stage.
+ * Delivery navigation: rider's current location -> customer.
+ * Do not use the vendor as origin because the rider may be somewhere else.
  */
-export async function navigateToCustomer(
+export async function navigateFromRiderToCustomer(
+  customerLocation: NavigationLocation,
+) {
+  return openGoogleMapsNavigation(null, customerLocation);
+}
+
+/**
+ * Route preview: vendor/store -> customer, shown as a route overview rather than
+ * pretending the rider is starting at the vendor.
+ */
+export async function previewVendorToCustomer(
   vendorLocation: NavigationLocation,
   customerLocation: NavigationLocation,
 ) {
-  return openGoogleMapsNavigation(vendorLocation, customerLocation);
+  return openGoogleMapsNavigation(vendorLocation, customerLocation, false);
 }
 
 /**
