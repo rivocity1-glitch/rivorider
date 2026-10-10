@@ -448,7 +448,12 @@ export default function DeliveriesScreen() {
   };
 
   const handleNavigateToVendor = async (order: Order) => {
-    const opened = await navigateToVendor(order.vendor_location || {});
+    if (!order.vendor_location) {
+      Alert.alert('Location Unavailable', 'The vendor location is not available for this order.');
+      return;
+    }
+
+    const opened = await navigateToVendor(order.vendor_location);
 
     if (opened) {
       showSuccessToast('Opening Navigation To Vendor');
@@ -456,9 +461,12 @@ export default function DeliveriesScreen() {
   };
 
   const handleNavigateToCustomer = async (order: Order) => {
-    const opened = await navigateFromRiderToCustomer(
-      order.customer_addresses || {}
-    );
+    if (!order.customer_addresses) {
+      Alert.alert('Location Unavailable', 'The customer address is not available for this order.');
+      return;
+    }
+
+    const opened = await navigateFromRiderToCustomer(order.customer_addresses);
 
     if (opened) {
       showSuccessToast('Navigating from your current location to the customer');
@@ -466,9 +474,14 @@ export default function DeliveriesScreen() {
   };
 
   const handlePreviewVendorToCustomer = async (order: Order) => {
+    if (!order.vendor_location || !order.customer_addresses) {
+      Alert.alert('Location Unavailable', 'The vendor or customer coordinates are not available for this order.');
+      return;
+    }
+
     const opened = await previewVendorToCustomer(
-      order.vendor_location || {},
-      order.customer_addresses || {}
+      order.vendor_location,
+      order.customer_addresses
     );
 
     if (opened) {
@@ -477,9 +490,14 @@ export default function DeliveriesScreen() {
   };
 
   const handleNavigateBackToVendor = async (order: Order) => {
+    if (!order.customer_addresses || !order.vendor_location) {
+      Alert.alert('Location Unavailable', 'The customer or vendor coordinates are not available for this order.');
+      return;
+    }
+
     const opened = await navigateToVendorFromCustomer(
-      order.customer_addresses || {},
-      order.vendor_location || {}
+      order.customer_addresses,
+      order.vendor_location
     );
 
     if (opened) {
