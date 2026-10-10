@@ -473,6 +473,30 @@ export default function DeliveriesScreen() {
     }
   };
 
+  const handleShowDeliveryRouteChoices = (order: Order) => {
+    if (!order.customer_addresses) {
+      Alert.alert('Location Unavailable', 'The customer coordinates are not available for this order.');
+      return;
+    }
+
+    const buttons = [
+      {
+        text: 'Rider → Customer (from my current location)',
+        onPress: () => { void handleNavigateToCustomer(order); },
+      },
+    ];
+
+    if (order.vendor_location) {
+      buttons.push({
+        text: 'Vendor → Customer (store route)',
+        onPress: () => { void handlePreviewVendorToCustomer(order); },
+      });
+    }
+
+    buttons.push({ text: 'Cancel', style: 'cancel' as const, onPress: () => {} });
+    Alert.alert('Choose Delivery Route', 'Select which route to open in Google Maps.', buttons);
+  };
+
   const handlePreviewVendorToCustomer = async (order: Order) => {
     if (!order.vendor_location || !order.customer_addresses) {
       Alert.alert('Location Unavailable', 'The vendor or customer coordinates are not available for this order.');
@@ -1092,10 +1116,10 @@ export default function DeliveriesScreen() {
                               backgroundColor: COLORS.emeraldGreen,
                               marginRight: 8,
                             }}
-                            onPress={() => handleNavigateToCustomer(item)}
+                            onPress={() => handleShowDeliveryRouteChoices(item)}
                             disabled={submitting}
                           >
-                            <Text style={styles.completeButtonText}>Navigate to Customer</Text>
+                            <Text style={styles.completeButtonText}>Choose Delivery Route</Text>
                           </TouchableOpacity>
 
                           <TouchableOpacity
@@ -1131,11 +1155,11 @@ export default function DeliveriesScreen() {
                               backgroundColor: COLORS.emeraldGreen,
                               marginRight: 8,
                             }}
-                            onPress={() => handleNavigateToCustomer(item)}
+                            onPress={() => handleShowDeliveryRouteChoices(item)}
                             disabled={submitting}
                           >
                             <Ionicons name="navigate-outline" size={18} color={COLORS.white} style={{ marginRight: 6 }} />
-                            <Text style={styles.completeButtonText}>Navigate to Customer</Text>
+                            <Text style={styles.completeButtonText}>Choose Delivery Route</Text>
                           </TouchableOpacity>
 
                           <TouchableOpacity
@@ -1148,16 +1172,7 @@ export default function DeliveriesScreen() {
                         </>
                       )}
                     </View>
-                    {(isPickedUp || isOutForDelivery) && (
-                      <TouchableOpacity
-                        activeOpacity={0.8}
-                        style={[styles.callButton, { borderColor: theme.border, backgroundColor: theme.bg, marginTop: 8, alignSelf: 'stretch' }]}
-                        onPress={() => handlePreviewVendorToCustomer(item)}
-                        disabled={submitting}
-                      >
-                        <Text style={[styles.callButtonText, { color: theme.text }]}>View Vendor → Customer Route Options</Text>
-                      </TouchableOpacity>
-                    )}
+
                   </View>
                 </View>
               );
