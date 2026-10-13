@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import { COLORS, useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../lib/supabase';
-import { navigateFromRiderToCustomer, navigateToVendor, navigateToVendorFromCustomer, previewVendorToCustomer } from '../../lib/customerNavigation';
+import { navigateToVendor, navigateToVendorFromCustomer, previewVendorToCustomer } from '../../lib/customerNavigation';
 
 const RUPEE = String.fromCharCode(0x20B9);
 
@@ -442,45 +442,8 @@ export default function DeliveriesScreen() {
     }
   };
 
-  const handleNavigateToCustomer = async (order: Order) => {
-    if (!order.customer_addresses) {
-      Alert.alert('Location Unavailable', 'The customer address is not available for this order.');
-      return;
-    }
-
-    const opened = await navigateFromRiderToCustomer(order.customer_addresses);
-
-    if (opened) {
-      showSuccessToast('Navigating from your current location to the customer');
-    }
-  };
-
   const handleShowDeliveryRouteChoices = (order: Order) => {
-    if (!order.customer_addresses) {
-      Alert.alert('Location Unavailable', 'The customer coordinates are not available for this order.');
-      return;
-    }
-
-    const buttons: Array<{
-      text: string;
-      onPress?: () => void;
-      style?: 'default' | 'cancel' | 'destructive';
-    }> = [
-      {
-        text: 'Rider → Customer (live location)',
-        onPress: () => { void handleNavigateToCustomer(order); },
-      },
-    ];
-
-    if (order.vendor_location) {
-      buttons.push({
-        text: 'Vendor → Customer (store route)',
-        onPress: () => { void handlePreviewVendorToCustomer(order); },
-      });
-    }
-
-    buttons.push({ text: 'Cancel', style: 'cancel' });
-    Alert.alert('Choose Delivery Route', 'Choose the route you want to preview in Google Maps.', buttons);
+    void handlePreviewVendorToCustomer(order);
   };
 
   const handlePreviewVendorToCustomer = async (order: Order) => {
@@ -1095,7 +1058,7 @@ export default function DeliveriesScreen() {
                               backgroundColor: COLORS.emeraldGreen,
                               marginRight: 8,
                             }}
-                            onPress={() => handleShowDeliveryRouteChoices(item)}
+                            onPress={() => handlePreviewVendorToCustomer(item)}
                             disabled={submitting}
                           >
                             <Text style={styles.completeButtonText}>Choose Delivery Route</Text>
