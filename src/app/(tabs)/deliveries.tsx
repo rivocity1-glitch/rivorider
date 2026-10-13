@@ -35,15 +35,7 @@ interface Order {
   vendor_id: string;
   customer_id?: string;
   rider_id: string | null;
-  vendor_earning: number;
   rider_earning: number;
-  vendor_commission: number;
-  rivo_delivery_margin: number;
-  delivery_fee: number;
-  platform_fee: number;
-  delivery_distance_km: number;
-  actual_distance_km?: number | null;
-  chargeable_distance_km?: number | null;
   collection_method?: string | null;
   cash_received?: number | null;
   change_returned?: number | null;
@@ -289,15 +281,7 @@ export default function DeliveriesScreen() {
           vendor_id,
           customer_id,
           rider_id,
-          vendor_earning,
           rider_earning,
-          vendor_commission,
-          rivo_delivery_margin,
-          delivery_fee,
-          platform_fee,
-          delivery_distance_km,
-          actual_distance_km,
-          chargeable_distance_km,
           collection_method,
           cash_received,
           change_returned,
@@ -419,15 +403,7 @@ export default function DeliveriesScreen() {
           vendor_id: order.vendor_id,
           customer_id: order.customer_id,
           rider_id: order.rider_id,
-          vendor_earning: order.vendor_earning || 0,
           rider_earning: order.rider_earning || 0,
-          vendor_commission: order.vendor_commission || 0,
-          rivo_delivery_margin: order.rivo_delivery_margin || 0,
-          delivery_fee: order.delivery_fee || 0,
-          platform_fee: order.platform_fee || 0,
-          delivery_distance_km: order.delivery_distance_km || 0,
-          actual_distance_km: order.actual_distance_km ?? order.delivery_distance_km ?? null,
-          chargeable_distance_km: order.chargeable_distance_km ?? null,
           collection_method: order.collection_method || null,
           cash_received: order.cash_received !== undefined ? order.cash_received : null,
           change_returned: order.change_returned !== undefined ? order.change_returned : null,
@@ -1060,28 +1036,10 @@ export default function DeliveriesScreen() {
                         <Text style={[styles.amountLabel, { color: theme.textMuted, fontSize: 10 }]}>Total Order</Text>
                         <Text style={[styles.amountValue, { color: theme.text, fontSize: 16 }]}>{RUPEE}{item.total_amount}</Text>
                       </View>
-                      <View style={[styles.amountBox, { flex: 1, alignItems: 'center' }]}>
-                        <Text style={[styles.amountLabel, { color: theme.textMuted, fontWeight: '700', fontSize: 10 }]}>Customer Delivery</Text>
-                        <Text style={[styles.amountValue, { color: theme.text, fontSize: 16, fontWeight: '800' }]}>{RUPEE}{item.delivery_fee || 0}</Text>
-                      </View>
                       <View style={[styles.amountBox, { flex: 1, alignItems: 'flex-end' }]}>
                         <Text style={[styles.amountLabel, { color: COLORS.emeraldGreen, fontWeight: '700', fontSize: 10 }]}>Your Earnings</Text>
                         <Text style={[styles.amountValue, { color: COLORS.emeraldGreen, fontSize: 18, fontWeight: '900' }]}>{RUPEE}{item.rider_earning || 0}</Text>
                       </View>
-                    </View>
-                    <View style={{ backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: 10, padding: 10, marginTop: 8, gap: 4 }}>
-                      <Text style={{ color: theme.text, fontSize: 11, fontWeight: '800' }}>
-                        Customer delivery charge: {RUPEE}{item.delivery_fee || 0}
-                      </Text>
-                      <Text style={{ color: theme.textMuted, fontSize: 10 }}>
-                        Platform fee: {RUPEE}{item.platform_fee || 0}
-                      </Text>
-                      <Text style={{ color: theme.textMuted, fontSize: 10 }}>
-                        Your rider earning: {RUPEE}{item.rider_earning || 0} (separate from the customer delivery charge)
-                      </Text>
-                      <Text style={{ color: theme.textMuted, fontSize: 10 }}>
-                        Pricing is based on store → customer distance ({Number(item.actual_distance_km ?? item.delivery_distance_km ?? 0).toFixed(1)} km), not your current location. The order's saved amounts are used; rider GPS does not recalculate the customer's charge.
-                      </Text>
                     </View>
 
                     <View style={styles.actionsContainer}>
