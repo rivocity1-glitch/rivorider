@@ -509,6 +509,101 @@ export default function DeliveriesScreen() {
     );
   };
 
+  const recordDeliveryIssue = async (order: Order, reason: string, eventStatus: string) => {
+    try {
+      setSubmitting(true);
+      const { error } = await supabase.from('order_tracking').insert({
+        order_id: order.id,
+        status: eventStatus,
+        remarks: reason,
+        created_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+      showSuccessToast(eventStatus === 'delivery_delay_reported' ? 'Delay reason recorded' : 'Return request recorded');
+      fetchRiderOrders();
+    } catch (error) {
+      console.error('Unable to record delivery issue:', error);
+      Alert.alert('Unable to save', 'The issue could not be recorded. Check your connection and try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleReportDelay = (order: Order) => {
+    const reasons = [
+      'Road traffic or congestion',
+      'Accident or road blocked',
+      'Heavy rain or unsafe road conditions',
+      'Customer not at delivery location',
+      'Customer not answering calls',
+      'Vendor preparation or pickup delay',
+      'Vehicle problem',
+      'Other delay',
+    ];
+    Alert.alert('Report Delivery Delay', 'Select the main reason so support can understand what happened.', [
+      ...reasons.map((reason) => ({
+        text: reason,
+        onPress: () => { void recordDeliveryIssue(order, `Delay reason: ${reason}`, 'delivery_delay_reported'); },
+      })),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
+
+  const handleStartReturn = (order: Order) => {
+    const reasons = [
+      'Customer cancelled after rider arrived',
+      'Customer not at delivery location',
+      'Customer unreachable after repeated calls',
+      'Incorrect or incomplete address',
+      'Customer refused the order',
+      'Road blocked or unsafe to continue',
+      'Other customer-side delivery failure',
+    ];
+    Alert.alert(
+      'Return Order to Vendor',
+      'Choose the reason. The return will be logged for review. Do not discard or hand over the order elsewhere.',
+      [
+        ...reasons.map((reason) => ({
+          text: reason,
+          onPress: () => { void beginOrderReturn(order, reason); },
+        })),
+        { text: 'Cancel', style: 'cancel' as const },
+      ],
+    );
+  };
+
+  const beginOrderReturn = async (order: Order, reason: string) => {
+    if (!currentRiderId) return;
+    try {
+      setSubmitting(true);
+      const nowIso = new Date().toISOString();
+      const { error: collectionError } = await supabase.from('rider_collections').insert({
+        order_id: order.id,
+        rider_id: currentRiderId,
+        status: 'returning_to_store',
+        return_started_at: nowIso,
+        created_at: nowIso,
+      });
+      if (collectionError) throw collectionError;
+
+      const { error: trackingError } = await supabase.from('order_tracking').insert({
+        order_id: order.id,
+        status: 'customer_cancelled_return',
+        remarks: `Return initiated by rider. Reason: ${reason}. Rider must return the order to the assigned vendor. Existing rider_earning retained for settlement review.`,
+        created_at: nowIso,
+      });
+      if (trackingError) throw trackingError;
+
+      showSuccessToast('Return logged — navigate back to vendor');
+      fetchRiderOrders();
+    } catch (error) {
+      console.error('Unable to start order return:', error);
+      Alert.alert('Return not started', 'Could not record the return. Check your connection. If this order already has a return record, contact support rather than submitting again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleConfirmReturn = async (order: Order) => {
     if (!order.rider_collection?.id) return;
     try {
@@ -527,7 +622,23 @@ export default function DeliveriesScreen() {
 
       if (error) throw error;
 
-      showSuccessToast('Return Confirmed Successfully');
+      const { error: trackingError } = await supabase.from('order_tracking').insert({
+        order_id: order.id,
+        status: 'returned_to_vendor',
+        remarks: 'Rider confirmed physical handover of returned order to the assigned vendor.',
+        created_at: nowIso,
+      });
+      if (trackingError) throw trackingError;
+
+      if (order.order_status?.toLowerCase() !== 'delivered') {
+        const { error: statusError } = await supabase
+          .from('orders')
+          .update({ order_status: 'cancelled' })
+          .eq('id', order.id);
+        if (statusError) throw statusError;
+      }
+
+      showSuccessToast('Return handover confirmed');
       fetchRiderOrders();
     } catch (err) {
       console.error('Error confirming return:', err);
@@ -743,7 +854,7 @@ export default function DeliveriesScreen() {
       matchesTab = isNormalActive || isDeliveredStillReturning;
     } else if (activeTab === 'completed') {
       const isFullyReturned = currentStatus === 'delivered' && colStatus === 'returned_to_store';
-      matchesTab = isFullyReturned;
+      matchesTab = isFullyReturned || (currentStatus === 'cancelled' && colStatus === 'returned_to_store');
     } else if (activeTab === 'cancelled') {
       matchesTab = currentStatus === 'cancelled';
     }
@@ -882,8 +993,8 @@ export default function DeliveriesScreen() {
               const isOutForDelivery = item.order_status?.toLowerCase() === 'out_for_delivery';
 
               const collection = item.rider_collection;
-              const isReturning = isDelivered && collection?.status === 'returning_to_store';
-              const isReturned = isDelivered && collection?.status === 'returned_to_store';
+              const isReturning = collection?.status === 'returning_to_store';
+              const isReturned = collection?.status === 'returned_to_store';
 
               return (
                 <View key={item.id} style={[styles.orderCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
@@ -927,6 +1038,8 @@ export default function DeliveriesScreen() {
 
                     {isReturning && (
                       <View style={[styles.completedFinancialBox, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+                        <Text style={[styles.completedFinancialHeaderTitle, { color: theme.text }]}>Return in progress</Text>
+                        <Text style={{ color: theme.textMuted, fontSize: 12, lineHeight: 18 }}>Keep the order secure and return it to the same vendor. Rider earnings remain recorded on the order for settlement review.</Text>
                         <TouchableOpacity
                           style={[styles.completeButton, { backgroundColor: COLORS.emeraldGreen, alignItems: 'center', marginBottom: 10 }]}
                           disabled={submitting}
@@ -1061,7 +1174,7 @@ export default function DeliveriesScreen() {
                             onPress={() => handlePreviewVendorToCustomer(item)}
                             disabled={submitting}
                           >
-                            <Text style={styles.completeButtonText}>Choose Delivery Route</Text>
+                            <Text style={styles.completeButtonText}>Navigate Vendor → Customer</Text>
                           </TouchableOpacity>
 
                           <TouchableOpacity
@@ -1102,6 +1215,24 @@ export default function DeliveriesScreen() {
                           >
                             <Ionicons name="navigate-outline" size={18} color={COLORS.white} style={{ marginRight: 6 }} />
                             <Text style={styles.completeButtonText}>Choose Delivery Route</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            style={[styles.callButton, { borderColor: theme.border, backgroundColor: theme.bg }]}
+                            onPress={() => handleReportDelay(item)}
+                            disabled={submitting}
+                          >
+                            <Text style={[styles.callButtonText, { color: theme.text }]}>Report Delay</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            style={[styles.callButton, { borderColor: COLORS.danger, backgroundColor: theme.bg }]}
+                            onPress={() => handleStartReturn(item)}
+                            disabled={submitting}
+                          >
+                            <Text style={[styles.callButtonText, { color: COLORS.danger }]}>Return Order</Text>
                           </TouchableOpacity>
 
                           <TouchableOpacity
