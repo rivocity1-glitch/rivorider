@@ -75,7 +75,7 @@ export async function previewVendorToCustomer(
   vendorLocation: NavigationLocation,
   customerLocation: NavigationLocation,
 ) {
-  return openGoogleMapsNavigation(vendorLocation, customerLocation, false);
+  return openGoogleMapsNavigation(vendorLocation, customerLocation, true);
 }
 
 /**
