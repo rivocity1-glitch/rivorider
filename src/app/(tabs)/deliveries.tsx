@@ -1206,11 +1206,11 @@ export default function DeliveriesScreen() {
                               backgroundColor: COLORS.emeraldGreen,
                               marginRight: 8,
                             }}
-                            onPress={() => handleShowDeliveryRouteChoices(item)}
+                            onPress={() => handlePreviewVendorToCustomer(item)}
                             disabled={submitting}
                           >
                             <Ionicons name="navigate-outline" size={18} color={COLORS.white} style={{ marginRight: 6 }} />
-                            <Text style={styles.completeButtonText}>Choose Delivery Route</Text>
+                            <Text style={styles.completeButtonText}>Navigate Vendor → Customer</Text>
                           </TouchableOpacity>
 
                           <TouchableOpacity
