@@ -990,7 +990,7 @@ export default function DeliveriesScreen() {
 
               const collection = item.rider_collection;
               const isReturning = collection?.status === 'returning_to_store';
-              const isReturned = collection?.status === 'returned_to_store';
+              const isReturned = isDelivered && collection?.status === 'returned_to_store';
 
               return (
                 <View key={item.id} style={[styles.orderCard, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
@@ -1051,6 +1051,16 @@ export default function DeliveriesScreen() {
                         >
                           <Text style={styles.completeButtonText}>Confirm Returned To Store</Text>
                         </TouchableOpacity>
+                      </View>
+                    )}
+
+                    {item.order_status?.toLowerCase() === 'cancelled' && collection?.status === 'returned_to_store' && (
+                      <View style={[styles.completedFinancialBox, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Ionicons name="checkmark-circle" size={18} color={COLORS.emeraldGreen} />
+                          <Text style={[styles.completedFinancialHeaderTitle, { color: theme.text, marginBottom: 0 }]}>Returned to vendor</Text>
+                        </View>
+                        <Text style={{ color: theme.textMuted, fontSize: 12, lineHeight: 18 }}>Return handover is recorded. Rider earnings remain attached to this order for admin settlement review.</Text>
                       </View>
                     )}
 
