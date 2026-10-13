@@ -442,10 +442,6 @@ export default function DeliveriesScreen() {
     }
   };
 
-  const handleShowDeliveryRouteChoices = (order: Order) => {
-    void handlePreviewVendorToCustomer(order);
-  };
-
   const handlePreviewVendorToCustomer = async (order: Order) => {
     if (!order.vendor_location || !order.customer_addresses) {
       Alert.alert('Location Unavailable', 'The vendor or customer coordinates are not available for this order.');
