@@ -1167,20 +1167,20 @@ export default function DeliveriesScreen() {
 
                           <TouchableOpacity
                             activeOpacity={0.8}
-                            style={{
-                              flex: 1,
-                              flexDirection: 'row',
-                              paddingVertical: 10,
-                              borderRadius: 99,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              backgroundColor: COLORS.emeraldGreen,
-                              marginRight: 8,
-                            }}
+                            style={[
+                              styles.completeButton,
+                              {
+                                backgroundColor: COLORS.emeraldGreen,
+                                minWidth: 0,
+                                paddingHorizontal: 8,
+                                flexDirection: 'row',
+                              },
+                            ]}
                             onPress={() => handlePreviewVendorToCustomer(item)}
                             disabled={submitting}
                           >
-                            <Text style={styles.completeButtonText}>Navigate Vendor → Customer</Text>
+                            <Ionicons name="navigate-outline" size={18} color={COLORS.white} style={{ marginRight: 6 }} />
+                            <Text style={styles.completeButtonText}>Navigate</Text>
                           </TouchableOpacity>
 
                           <TouchableOpacity
@@ -1206,21 +1206,20 @@ export default function DeliveriesScreen() {
 
                           <TouchableOpacity
                             activeOpacity={0.8}
-                            style={{
-                              flex: 1,
-                              flexDirection: 'row',
-                              paddingVertical: 10,
-                              borderRadius: 99,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              backgroundColor: COLORS.emeraldGreen,
-                              marginRight: 8,
-                            }}
+                            style={[
+                              styles.completeButton,
+                              {
+                                backgroundColor: COLORS.emeraldGreen,
+                                minWidth: 0,
+                                paddingHorizontal: 8,
+                                flexDirection: 'row',
+                              },
+                            ]}
                             onPress={() => handlePreviewVendorToCustomer(item)}
                             disabled={submitting}
                           >
                             <Ionicons name="navigate-outline" size={18} color={COLORS.white} style={{ marginRight: 6 }} />
-                            <Text style={styles.completeButtonText}>Navigate Vendor → Customer</Text>
+                            <Text style={styles.completeButtonText}>Navigate</Text>
                           </TouchableOpacity>
 
                           <TouchableOpacity
