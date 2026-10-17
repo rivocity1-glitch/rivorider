@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import { COLORS, useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../lib/supabase';
-import { navigateToCustomer } from '../../lib/customerNavigation';
+import { navigateToVendor, navigateToVendorFromCustomer, previewVendorToCustomer } from '../../lib/customerNavigation';
 
 const RUPEE = String.fromCharCode(0x20B9);
 
@@ -35,12 +35,7 @@ interface Order {
   vendor_id: string;
   customer_id?: string;
   rider_id: string | null;
-  vendor_earning: number;
   rider_earning: number;
-  vendor_commission: number;
-  rivo_delivery_margin: number;
-  delivery_fee: number;
-  delivery_distance_km: number;
   collection_method?: string | null;
   cash_received?: number | null;
   change_returned?: number | null;
@@ -91,6 +86,10 @@ export default function DeliveriesScreen() {
   const [amountReceived, setAmountReceived] = useState('');
   const [transactionRef, setTransactionRef] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [issueModalVisible, setIssueModalVisible] = useState(false);
+  const [issueModalType, setIssueModalType] = useState<'delay' | 'return'>('delay');
+  const [issueOrder, setIssueOrder] = useState<Order | null>(null);
+
 
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
@@ -286,12 +285,7 @@ export default function DeliveriesScreen() {
           vendor_id,
           customer_id,
           rider_id,
-          vendor_earning,
           rider_earning,
-          vendor_commission,
-          rivo_delivery_margin,
-          delivery_fee,
-          delivery_distance_km,
           collection_method,
           cash_received,
           change_returned,
@@ -413,12 +407,7 @@ export default function DeliveriesScreen() {
           vendor_id: order.vendor_id,
           customer_id: order.customer_id,
           rider_id: order.rider_id,
-          vendor_earning: order.vendor_earning || 0,
           rider_earning: order.rider_earning || 0,
-          vendor_commission: order.vendor_commission || 0,
-          rivo_delivery_margin: order.rivo_delivery_margin || 0,
-          delivery_fee: order.delivery_fee || 0,
-          delivery_distance_km: order.delivery_distance_km || 0,
           collection_method: order.collection_method || null,
           cash_received: order.cash_received !== undefined ? order.cash_received : null,
           change_returned: order.change_returned !== undefined ? order.change_returned : null,
@@ -444,14 +433,48 @@ export default function DeliveriesScreen() {
     }
   };
 
-  const handleNavigateToCustomer = async (order: Order) => {
-    const opened = await navigateToCustomer(
-      order.vendor_location || {},
-      order.customer_addresses || {}
+  const handleNavigateToVendor = async (order: Order) => {
+    if (!order.vendor_location) {
+      Alert.alert('Location Unavailable', 'The vendor location is not available for this order.');
+      return;
+    }
+
+    const opened = await navigateToVendor(order.vendor_location);
+
+    if (opened) {
+      showSuccessToast('Opening Navigation To Vendor');
+    }
+  };
+
+  const handlePreviewVendorToCustomer = async (order: Order) => {
+    if (!order.vendor_location || !order.customer_addresses) {
+      Alert.alert('Location Unavailable', 'The vendor or customer coordinates are not available for this order.');
+      return;
+    }
+
+    const opened = await previewVendorToCustomer(
+      order.vendor_location,
+      order.customer_addresses
     );
 
     if (opened) {
-      showSuccessToast('Opening Google Maps Navigation');
+      showSuccessToast('Showing vendor-to-customer route options');
+    }
+  };
+
+  const handleNavigateBackToVendor = async (order: Order) => {
+    if (!order.customer_addresses || !order.vendor_location) {
+      Alert.alert('Location Unavailable', 'The customer or vendor coordinates are not available for this order.');
+      return;
+    }
+
+    const opened = await navigateToVendorFromCustomer(
+      order.customer_addresses,
+      order.vendor_location
+    );
+
+    if (opened) {
+      showSuccessToast('Opening Navigation Back To Vendor');
     }
   };
 
@@ -486,6 +509,72 @@ export default function DeliveriesScreen() {
     );
   };
 
+  const recordDeliveryIssue = async (order: Order, reason: string, eventStatus: string) => {
+    try {
+      setSubmitting(true);
+      const { error } = await supabase.from('order_tracking').insert({
+        order_id: order.id,
+        status: eventStatus,
+        remarks: reason,
+        created_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+      showSuccessToast(eventStatus === 'delivery_delay_reported' ? 'Delay reason recorded' : 'Return request recorded');
+      fetchRiderOrders();
+    } catch (error) {
+      console.error('Unable to record delivery issue:', error);
+      Alert.alert('Unable to save', 'The issue could not be recorded. Check your connection and try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openIssueReasonPicker = (order: Order, type: 'delay' | 'return') => {
+    setIssueOrder(order);
+    setIssueModalType(type);
+    setIssueModalVisible(true);
+  };
+
+  const handleReportDelay = (order: Order) => {
+    openIssueReasonPicker(order, 'delay');
+  };
+
+  const handleStartReturn = (order: Order) => {
+    openIssueReasonPicker(order, 'return');
+  };
+
+  const beginOrderReturn = async (order: Order, reason: string) => {
+    if (!currentRiderId) return;
+    try {
+      setSubmitting(true);
+      const nowIso = new Date().toISOString();
+      const { error: collectionError } = await supabase.from('rider_collections').insert({
+        order_id: order.id,
+        rider_id: currentRiderId,
+        status: 'returning_to_store',
+        return_started_at: nowIso,
+        created_at: nowIso,
+      });
+      if (collectionError) throw collectionError;
+
+      const { error: trackingError } = await supabase.from('order_tracking').insert({
+        order_id: order.id,
+        status: 'customer_cancelled_return',
+        remarks: `Return initiated by rider. Reason: ${reason}. Rider must return the order to the assigned vendor. Existing rider_earning retained for settlement review.`,
+        created_at: nowIso,
+      });
+      if (trackingError) throw trackingError;
+
+      showSuccessToast('Return logged — navigate back to vendor');
+      fetchRiderOrders();
+    } catch (error) {
+      console.error('Unable to start order return:', error);
+      Alert.alert('Return not started', 'Could not record the return. Check your connection. If this order already has a return record, contact support rather than submitting again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleConfirmReturn = async (order: Order) => {
     if (!order.rider_collection?.id) return;
     try {
@@ -504,7 +593,23 @@ export default function DeliveriesScreen() {
 
       if (error) throw error;
 
-      showSuccessToast('Return Confirmed Successfully');
+      const { error: trackingError } = await supabase.from('order_tracking').insert({
+        order_id: order.id,
+        status: 'returned_to_vendor',
+        remarks: 'Rider confirmed physical handover of returned order to the assigned vendor.',
+        created_at: nowIso,
+      });
+      if (trackingError) throw trackingError;
+
+      if (order.order_status?.toLowerCase() !== 'delivered') {
+        const { error: statusError } = await supabase
+          .from('orders')
+          .update({ order_status: 'cancelled' })
+          .eq('id', order.id);
+        if (statusError) throw statusError;
+      }
+
+      showSuccessToast('Return handover confirmed');
       fetchRiderOrders();
     } catch (err) {
       console.error('Error confirming return:', err);
@@ -636,7 +741,7 @@ export default function DeliveriesScreen() {
 
   const openCompletionModal = (order: Order) => {
     setSelectedOrder(order);
-    setPaymentMethod('cash');
+    setPaymentMethod(String(order.payment_status || '').toLowerCase() === 'paid' ? 'upi' : 'cash');
     setAmountReceived('');
     setTransactionRef('');
     setModalVisible(true);
@@ -650,7 +755,12 @@ export default function DeliveriesScreen() {
     let cashReceivedNum = 0;
     let changeReturnedNum = 0;
 
-    if (paymentMethod === 'cash') {
+    const orderAlreadyPaid = String(selectedOrder.payment_status || '').toLowerCase() === 'paid';
+
+    if (orderAlreadyPaid) {
+      cashReceivedNum = 0;
+      changeReturnedNum = 0;
+    } else if (paymentMethod === 'cash') {
       cashReceivedNum = parseFloat(amountReceived);
       if (isNaN(cashReceivedNum) || cashReceivedNum < totalAmount) {
         Alert.alert('Invalid Amount', 'Amount received must be greater than or equal to the order total.');
@@ -667,9 +777,9 @@ export default function DeliveriesScreen() {
         .update({
           order_status: 'delivered',
           payment_status: 'paid',
-          collection_method: paymentMethod,
-          cash_received: paymentMethod === 'cash' ? cashReceivedNum : null,
-          change_returned: paymentMethod === 'cash' ? changeReturnedNum : null,
+          collection_method: orderAlreadyPaid ? 'prepaid' : paymentMethod,
+          cash_received: orderAlreadyPaid ? null : (paymentMethod === 'cash' ? cashReceivedNum : null),
+          change_returned: orderAlreadyPaid ? null : (paymentMethod === 'cash' ? changeReturnedNum : null),
           collected_by_rider: currentRiderId,
           delivered_at: nowIso,
         })
@@ -715,7 +825,7 @@ export default function DeliveriesScreen() {
       matchesTab = isNormalActive || isDeliveredStillReturning;
     } else if (activeTab === 'completed') {
       const isFullyReturned = currentStatus === 'delivered' && colStatus === 'returned_to_store';
-      matchesTab = isFullyReturned;
+      matchesTab = isFullyReturned || (currentStatus === 'cancelled' && colStatus === 'returned_to_store');
     } else if (activeTab === 'cancelled') {
       matchesTab = currentStatus === 'cancelled';
     }
@@ -854,7 +964,7 @@ export default function DeliveriesScreen() {
               const isOutForDelivery = item.order_status?.toLowerCase() === 'out_for_delivery';
 
               const collection = item.rider_collection;
-              const isReturning = isDelivered && collection?.status === 'returning_to_store';
+              const isReturning = collection?.status === 'returning_to_store';
               const isReturned = isDelivered && collection?.status === 'returned_to_store';
 
               return (
@@ -899,13 +1009,33 @@ export default function DeliveriesScreen() {
 
                     {isReturning && (
                       <View style={[styles.completedFinancialBox, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+                        <Text style={[styles.completedFinancialHeaderTitle, { color: theme.text }]}>Return in progress</Text>
+                        <Text style={{ color: theme.textMuted, fontSize: 12, lineHeight: 18 }}>Keep the order secure and return it to the same vendor. Rider earnings remain recorded on the order for settlement review.</Text>
                         <TouchableOpacity
-                          style={[styles.completeButton, { backgroundColor: COLORS.emeraldGreen, alignItems: 'center' }]}
+                          style={[styles.completeButton, { backgroundColor: COLORS.emeraldGreen, alignItems: 'center', marginBottom: 10 }]}
+                          disabled={submitting}
+                          onPress={() => handleNavigateBackToVendor(item)}
+                        >
+                          <Text style={styles.completeButtonText}>Navigate Back To Vendor</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[styles.completeButton, { backgroundColor: COLORS.jetBlack, alignItems: 'center' }]}
                           disabled={submitting}
                           onPress={() => handleConfirmReturn(item)}
                         >
                           <Text style={styles.completeButtonText}>Confirm Returned To Store</Text>
                         </TouchableOpacity>
+                      </View>
+                    )}
+
+                    {item.order_status?.toLowerCase() === 'cancelled' && collection?.status === 'returned_to_store' && (
+                      <View style={[styles.completedFinancialBox, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Ionicons name="checkmark-circle" size={18} color={COLORS.emeraldGreen} />
+                          <Text style={[styles.completedFinancialHeaderTitle, { color: theme.text, marginBottom: 0 }]}>Returned to vendor</Text>
+                        </View>
+                        <Text style={{ color: theme.textMuted, fontSize: 12, lineHeight: 18 }}>Return handover is recorded. Rider earnings remain attached to this order for admin settlement review.</Text>
                       </View>
                     )}
 
@@ -958,14 +1088,14 @@ export default function DeliveriesScreen() {
                   <View style={[styles.cardDivider, { backgroundColor: theme.border }]} />
 
                   <View style={styles.cardFooter}>
-                    <View style={styles.amountSection}>
-                      <View style={styles.amountBox}>
-                        <Text style={[styles.amountLabel, { color: theme.textMuted, fontSize: 12 }]}>Total Order</Text>
-                        <Text style={[styles.amountValue, { color: theme.text, fontSize: 18 }]}>{RUPEE}{item.total_amount}</Text>
+                    <View style={[styles.amountSection, { gap: 8 }]}>
+                      <View style={[styles.amountBox, { flex: 1 }]}>
+                        <Text style={[styles.amountLabel, { color: theme.textMuted, fontSize: 10 }]}>Total Order</Text>
+                        <Text style={[styles.amountValue, { color: theme.text, fontSize: 16 }]}>{RUPEE}{item.total_amount}</Text>
                       </View>
-                      <View style={[styles.amountBox, { alignItems: 'flex-end' }]}>
-                        <Text style={[styles.amountLabel, { color: COLORS.emeraldGreen, fontWeight: '700', fontSize: 12 }]}>Your Earnings</Text>
-                        <Text style={[styles.amountValue, { color: COLORS.emeraldGreen, fontSize: 20, fontWeight: '900' }]}>{RUPEE}{item.rider_earning || 0}</Text>
+                      <View style={[styles.amountBox, { flex: 1, alignItems: 'flex-end' }]}>
+                        <Text style={[styles.amountLabel, { color: COLORS.emeraldGreen, fontWeight: '700', fontSize: 10 }]}>Your Earnings</Text>
+                        <Text style={[styles.amountValue, { color: COLORS.emeraldGreen, fontSize: 18, fontWeight: '900' }]}>{RUPEE}{item.rider_earning || 0}</Text>
                       </View>
                     </View>
 
@@ -983,6 +1113,15 @@ export default function DeliveriesScreen() {
                           <TouchableOpacity
                             activeOpacity={0.8}
                             style={[styles.completeButton, { backgroundColor: COLORS.emeraldGreen }]}
+                            disabled={submitting}
+                            onPress={() => handleNavigateToVendor(item)}
+                          >
+                            <Text style={styles.completeButtonText}>Navigate To Vendor</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            style={[styles.completeButton, { backgroundColor: COLORS.jetBlack }]}
                             disabled={submitting}
                             onPress={() => updateOrderStatusDirectly(item.id, 'picked_up')}
                           >
@@ -1003,17 +1142,17 @@ export default function DeliveriesScreen() {
 
                           <TouchableOpacity
                             activeOpacity={0.8}
-                            style={{
-                              flex: 1,
-                              flexDirection: 'row',
-                              paddingVertical: 10,
-                              borderRadius: 99,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              backgroundColor: COLORS.emeraldGreen,
-                              marginRight: 8,
-                            }}
-                            onPress={() => handleNavigateToCustomer(item)}
+                            style={[
+                              styles.completeButton,
+                              {
+                                backgroundColor: COLORS.emeraldGreen,
+                                flexBasis: '30%',
+                                minWidth: 100,
+                                paddingHorizontal: 10,
+                                flexDirection: 'row',
+                              },
+                            ]}
+                            onPress={() => handlePreviewVendorToCustomer(item)}
                             disabled={submitting}
                           >
                             <Ionicons name="navigate-outline" size={18} color={COLORS.white} style={{ marginRight: 6 }} />
@@ -1043,21 +1182,39 @@ export default function DeliveriesScreen() {
 
                           <TouchableOpacity
                             activeOpacity={0.8}
-                            style={{
-                              flex: 1,
-                              flexDirection: 'row',
-                              paddingVertical: 10,
-                              borderRadius: 99,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              backgroundColor: COLORS.emeraldGreen,
-                              marginRight: 8,
-                            }}
-                            onPress={() => handleNavigateToCustomer(item)}
+                            style={[
+                              styles.completeButton,
+                              {
+                                backgroundColor: COLORS.emeraldGreen,
+                                flexBasis: '30%',
+                                minWidth: 100,
+                                paddingHorizontal: 10,
+                                flexDirection: 'row',
+                              },
+                            ]}
+                            onPress={() => handlePreviewVendorToCustomer(item)}
                             disabled={submitting}
                           >
                             <Ionicons name="navigate-outline" size={18} color={COLORS.white} style={{ marginRight: 6 }} />
                             <Text style={styles.completeButtonText}>Navigate</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            style={[styles.callButton, { borderColor: theme.border, backgroundColor: theme.bg }]}
+                            onPress={() => handleReportDelay(item)}
+                            disabled={submitting}
+                          >
+                            <Text style={[styles.callButtonText, { color: theme.text }]}>Report Delay</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            style={[styles.callButton, { borderColor: COLORS.danger, backgroundColor: theme.bg }]}
+                            onPress={() => handleStartReturn(item)}
+                            disabled={submitting}
+                          >
+                            <Text style={[styles.callButtonText, { color: COLORS.danger }]}>Return Order</Text>
                           </TouchableOpacity>
 
                           <TouchableOpacity
@@ -1070,6 +1227,7 @@ export default function DeliveriesScreen() {
                         </>
                       )}
                     </View>
+
                   </View>
                 </View>
               );
@@ -1077,6 +1235,110 @@ export default function DeliveriesScreen() {
           )}
         </ScrollView>
       )}
+
+      <Modal
+        animationType="slide"
+        transparent
+        visible={issueModalVisible}
+        onRequestClose={() => setIssueModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalDismissArea}
+            activeOpacity={1}
+            onPress={() => setIssueModalVisible(false)}
+          />
+          <View style={[styles.bottomSheetContainer, { backgroundColor: theme.cardBg, maxHeight: '82%' }]}>
+            <View style={[styles.modalKnob, { backgroundColor: theme.border }]} />
+            <Text style={[styles.modalTitle, { color: theme.text }]}>
+              {issueModalType === 'delay' ? 'Report Delivery Delay' : 'Return Order to Vendor'}
+            </Text>
+            <Text style={[styles.modalSubtitle, { color: theme.textMuted }]}>
+              {issueModalType === 'delay'
+                ? 'Choose the main reason for the delay.'
+                : 'Choose a reason. The return will be logged for review. Return the order only to the assigned vendor.'}
+            </Text>
+            <ScrollView
+              style={{ flexShrink: 1, marginBottom: 16 }}
+              contentContainerStyle={{ gap: 8, paddingBottom: 4 }}
+              showsVerticalScrollIndicator
+              keyboardShouldPersistTaps="handled"
+            >
+              {(issueModalType === 'delay'
+                ? [
+                    'Road traffic or congestion',
+                    'Accident or road blocked',
+                    'Heavy rain or unsafe road conditions',
+                    'Customer not at delivery location',
+                    'Customer not answering calls',
+                    'Vendor preparation or pickup delay',
+                    'Vehicle problem',
+                    'Other delay',
+                  ]
+                : [
+                    'Customer cancelled after rider arrived',
+                    'Customer not at delivery location',
+                    'Customer unreachable after repeated calls',
+                    'Incorrect or incomplete address',
+                    'Customer refused the order',
+                    'Road blocked or unsafe to continue',
+                    'Other customer-side delivery failure',
+                  ]
+              ).map((reason) => (
+                <TouchableOpacity
+                  key={reason}
+                  activeOpacity={0.75}
+                  disabled={submitting || !issueOrder}
+                  style={{
+                    minHeight: 48,
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    backgroundColor: theme.bg,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    opacity: submitting ? 0.6 : 1,
+                  }}
+                  onPress={() => {
+                    if (!issueOrder) return;
+                    const order = issueOrder;
+                    const type = issueModalType;
+                    setIssueModalVisible(false);
+                    if (type === 'delay') {
+                      void recordDeliveryIssue(order, `Delay reason: ${reason}`, 'delivery_delay_reported');
+                    } else {
+                      void beginOrderReturn(order, reason);
+                    }
+                  }}
+                >
+                  <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600', flex: 1, paddingRight: 8 }}>
+                    {reason}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => setIssueModalVisible(false)}
+              style={{
+                height: 50,
+                borderRadius: 99,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: 1,
+                borderColor: theme.border,
+                backgroundColor: theme.bg,
+              }}
+            >
+              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>Back / Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Modal animationType="slide" transparent={true} visible={otpModalVisible} onRequestClose={() => setOtpModalVisible(false)}>
         <View style={styles.modalOverlay}>
@@ -1268,12 +1530,12 @@ const styles = StyleSheet.create({
   cardFooter: { flexDirection: 'column', gap: 12 },
   amountSection: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' },
   amountBox: { justifyContent: 'center' },
-  actionsContainer: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%' },
-  callButton: { flex: 1, paddingVertical: 10, borderRadius: 99, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  actionsContainer: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 8, width: '100%' },
+  callButton: { flexGrow: 1, flexShrink: 1, flexBasis: '30%', minWidth: 100, minHeight: 48, paddingHorizontal: 10, paddingVertical: 10, borderRadius: 99, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   callButtonText: { fontSize: 13, fontWeight: '700' },
   amountLabel: { fontSize: 14 },
   amountValue: { fontSize: 20, fontWeight: '800' },
-  completeButton: { flex: 1, paddingVertical: 10, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
+  completeButton: { flexGrow: 1, flexShrink: 1, flexBasis: '30%', minWidth: 100, minHeight: 48, paddingHorizontal: 10, paddingVertical: 10, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
   completeButtonText: { color: COLORS.white, fontSize: 13, fontWeight: '700' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalDismissArea: { flex: 1 },
