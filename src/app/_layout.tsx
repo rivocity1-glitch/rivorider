@@ -2,10 +2,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemeProvider } from '../context/ThemeContext';
+import AnimatedSplash from '../../components/splash/AnimatedSplash';
 import { supabase } from '../lib/supabase';
 
 function getHashParams(url: string) {
@@ -28,6 +29,8 @@ export default function RootLayout() {
   const [loaded, error] = useFonts({ ...Ionicons.font });
   const [session, setSession] = useState<any>(null);
   const [authInitialized, setAuthInitialized] = useState(false);
+  const [splashFinished, setSplashFinished] = useState(false);
+  const finishSplash = useCallback(() => setSplashFinished(true), []);
   const router = useRouter();
   const segments = useSegments();
   const insets = useSafeAreaInsets();
@@ -107,8 +110,8 @@ export default function RootLayout() {
     }
   }, [session, authInitialized, loaded, error, segments, router]);
 
-  if ((!loaded && !error) || !authInitialized) {
-    return <View style={styles.loading}><ActivityIndicator size="small" color="#A8E63A" /></View>;
+  if (!splashFinished || ((!loaded && !error) || !authInitialized)) {
+    return <AnimatedSplash onAnimationComplete={finishSplash} />;
   }
 
   const section = String(segments[0] ?? '');
