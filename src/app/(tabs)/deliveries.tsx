@@ -86,6 +86,10 @@ export default function DeliveriesScreen() {
   const [amountReceived, setAmountReceived] = useState('');
   const [transactionRef, setTransactionRef] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [issueModalVisible, setIssueModalVisible] = useState(false);
+  const [issueModalType, setIssueModalType] = useState<'delay' | 'return'>('delay');
+  const [issueOrder, setIssueOrder] = useState<Order | null>(null);
+
 
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
@@ -525,47 +529,18 @@ export default function DeliveriesScreen() {
     }
   };
 
+  const openIssueReasonPicker = (order: Order, type: 'delay' | 'return') => {
+    setIssueOrder(order);
+    setIssueModalType(type);
+    setIssueModalVisible(true);
+  };
+
   const handleReportDelay = (order: Order) => {
-    const reasons = [
-      'Road traffic or congestion',
-      'Accident or road blocked',
-      'Heavy rain or unsafe road conditions',
-      'Customer not at delivery location',
-      'Customer not answering calls',
-      'Vendor preparation or pickup delay',
-      'Vehicle problem',
-      'Other delay',
-    ];
-    Alert.alert('Report Delivery Delay', 'Select the main reason so support can understand what happened.', [
-      ...reasons.map((reason) => ({
-        text: reason,
-        onPress: () => { void recordDeliveryIssue(order, `Delay reason: ${reason}`, 'delivery_delay_reported'); },
-      })),
-      { text: 'Cancel', style: 'cancel' as const },
-    ]);
+    openIssueReasonPicker(order, 'delay');
   };
 
   const handleStartReturn = (order: Order) => {
-    const reasons = [
-      'Customer cancelled after rider arrived',
-      'Customer not at delivery location',
-      'Customer unreachable after repeated calls',
-      'Incorrect or incomplete address',
-      'Customer refused the order',
-      'Road blocked or unsafe to continue',
-      'Other customer-side delivery failure',
-    ];
-    Alert.alert(
-      'Return Order to Vendor',
-      'Choose the reason. The return will be logged for review. Do not discard or hand over the order elsewhere.',
-      [
-        ...reasons.map((reason) => ({
-          text: reason,
-          onPress: () => { void beginOrderReturn(order, reason); },
-        })),
-        { text: 'Cancel', style: 'cancel' as const },
-      ],
-    );
+    openIssueReasonPicker(order, 'return');
   };
 
   const beginOrderReturn = async (order: Order, reason: string) => {
@@ -1258,6 +1233,110 @@ export default function DeliveriesScreen() {
           )}
         </ScrollView>
       )}
+
+      <Modal
+        animationType="slide"
+        transparent
+        visible={issueModalVisible}
+        onRequestClose={() => setIssueModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalDismissArea}
+            activeOpacity={1}
+            onPress={() => setIssueModalVisible(false)}
+          />
+          <View style={[styles.bottomSheetContainer, { backgroundColor: theme.cardBg, maxHeight: '82%' }]}>
+            <View style={[styles.modalKnob, { backgroundColor: theme.border }]} />
+            <Text style={[styles.modalTitle, { color: theme.text }]}>
+              {issueModalType === 'delay' ? 'Report Delivery Delay' : 'Return Order to Vendor'}
+            </Text>
+            <Text style={[styles.modalSubtitle, { color: theme.textMuted }]}>
+              {issueModalType === 'delay'
+                ? 'Choose the main reason for the delay.'
+                : 'Choose a reason. The return will be logged for review. Return the order only to the assigned vendor.'}
+            </Text>
+            <ScrollView
+              style={{ flexShrink: 1, marginBottom: 16 }}
+              contentContainerStyle={{ gap: 8, paddingBottom: 4 }}
+              showsVerticalScrollIndicator
+              keyboardShouldPersistTaps="handled"
+            >
+              {(issueModalType === 'delay'
+                ? [
+                    'Road traffic or congestion',
+                    'Accident or road blocked',
+                    'Heavy rain or unsafe road conditions',
+                    'Customer not at delivery location',
+                    'Customer not answering calls',
+                    'Vendor preparation or pickup delay',
+                    'Vehicle problem',
+                    'Other delay',
+                  ]
+                : [
+                    'Customer cancelled after rider arrived',
+                    'Customer not at delivery location',
+                    'Customer unreachable after repeated calls',
+                    'Incorrect or incomplete address',
+                    'Customer refused the order',
+                    'Road blocked or unsafe to continue',
+                    'Other customer-side delivery failure',
+                  ]
+              ).map((reason) => (
+                <TouchableOpacity
+                  key={reason}
+                  activeOpacity={0.75}
+                  disabled={submitting || !issueOrder}
+                  style={{
+                    minHeight: 48,
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    backgroundColor: theme.bg,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    opacity: submitting ? 0.6 : 1,
+                  }}
+                  onPress={() => {
+                    if (!issueOrder) return;
+                    const order = issueOrder;
+                    const type = issueModalType;
+                    setIssueModalVisible(false);
+                    if (type === 'delay') {
+                      void recordDeliveryIssue(order, `Delay reason: ${reason}`, 'delivery_delay_reported');
+                    } else {
+                      void beginOrderReturn(order, reason);
+                    }
+                  }}
+                >
+                  <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600', flex: 1, paddingRight: 8 }}>
+                    {reason}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => setIssueModalVisible(false)}
+              style={{
+                height: 50,
+                borderRadius: 99,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: 1,
+                borderColor: theme.border,
+                backgroundColor: theme.bg,
+              }}
+            >
+              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>Back / Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Modal animationType="slide" transparent={true} visible={otpModalVisible} onRequestClose={() => setOtpModalVisible(false)}>
         <View style={styles.modalOverlay}>
