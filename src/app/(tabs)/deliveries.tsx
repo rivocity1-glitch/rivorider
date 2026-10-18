@@ -27,6 +27,7 @@ interface Order {
   id: string;
   order_number: string;
   total_amount: number;
+  handling_fee?: number;
   payment_method: string;
   order_status: string;
   payment_status?: string;
@@ -277,6 +278,7 @@ export default function DeliveriesScreen() {
           id,
           order_number,
           total_amount,
+          handling_fee,
           payment_method,
           payment_status,
           order_status,
