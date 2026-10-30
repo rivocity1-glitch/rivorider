@@ -658,6 +658,9 @@ export default function RegisterScreen() {
             <Text style={{ color: theme.text, fontSize: 16, fontWeight: '900', marginBottom: 16 }}>Declaration & Confirmation</Text>
             {renderCheckbox(confirmAccurate, () => setConfirmAccurate((value) => !value), 'I confirm that all information provided by me is accurate.')}
             {renderCheckbox(agreeTerms, () => setAgreeTerms((value) => !value), 'I agree to the Rivo Terms & Conditions and Privacy Policy.')}
+            <TouchableOpacity onPress={() => router.push('/legal/terms')} activeOpacity={0.7} style={{ marginLeft: 31, marginTop: -8, marginBottom: 12 }}>
+              <Text style={{ color: COLORS.emeraldGreen, fontSize: 12, fontWeight: '800', textDecorationLine: 'underline' }}>Read Rider Terms & Conditions</Text>
+            </TouchableOpacity>
             {renderCheckbox(understandKycOptional, () => setUnderstandKycOptional((value) => !value), 'I understand that KYC documents are optional during registration and that I can complete missing KYC documents later from my rider profile. I understand that bank details are required for rider payments and settlements.')}
           </View>
 
