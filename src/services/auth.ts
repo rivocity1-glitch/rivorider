@@ -94,7 +94,8 @@ export async function registerRider(payload: RegisterRiderPayload) {
 
   if (!cleanEmail) throw new Error('Email address is required.');
   if (!cleanPhone) throw new Error('Phone number is required.');
-  if (!payload.rider_name?.trim()) throw new Error('Rider name is required.');
+  // The rider's full name is collected in the post-registration profile flow.
+  const initialRiderName = payload.rider_name?.trim() || 'Profile pending';
 
   const emergencyContact = payload.emergency_contact?.trim() || payload.emergency_contact_phone?.trim() || null;
   const alternateContact = payload.alternate_contact?.trim() || null;
@@ -113,7 +114,7 @@ export async function registerRider(payload: RegisterRiderPayload) {
     .from('riders')
     .insert({
       auth_user_id: authUserId,
-      rider_name: payload.rider_name.trim(),
+      rider_name: initialRiderName,
       email: cleanEmail,
       phone: cleanPhone,
       vehicle_type: payload.vehicle_type?.trim() || null,
