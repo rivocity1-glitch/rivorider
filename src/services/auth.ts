@@ -4,8 +4,10 @@ export interface RegisterRiderPayload {
   rider_name: string;
   email: string;
   phone: string;
-  vehicle_type: string;
+  vehicle_type?: string;
   vehicle_number?: string;
+  registration_latitude?: number;
+  registration_longitude?: number;
   is_specially_abled?: boolean;
   password?: string;
   gender?: string | null;
@@ -123,6 +125,8 @@ export async function registerRider(payload: RegisterRiderPayload) {
       gender: payload.gender?.trim() || null,
       blood_group: payload.blood_group?.trim() || null,
       address: payload.address?.trim() || null,
+      ...(payload.registration_latitude != null ? { registration_latitude: payload.registration_latitude } : {}),
+      ...(payload.registration_longitude != null ? { registration_longitude: payload.registration_longitude } : {}),
       city: payload.city?.trim() || null,
       state: payload.state?.trim() || null,
       pin_code: payload.pin_code?.trim() || null,
