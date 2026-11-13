@@ -16,6 +16,7 @@ import { registerRider } from '../../services/auth';
 
 export default function RegisterScreen() {
   const { theme } = useTheme();
+  const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
@@ -37,10 +38,15 @@ export default function RegisterScreen() {
 
   const handleRegister = async () => {
     if (loading) return;
+    const cleanName = name.trim();
     const cleanPhone = phone.replace(/[^0-9]/g, '').slice(0, 10);
     const cleanEmail = email.trim().toLowerCase();
     const cleanAddress = address.trim();
 
+    if (cleanName.length < 2) {
+      Alert.alert('Name required', 'Enter your full name.');
+      return;
+    }
     if (cleanPhone.length !== 10) {
       Alert.alert('Invalid mobile number', 'Enter a valid 10-digit mobile number.');
       return;
@@ -61,7 +67,7 @@ export default function RegisterScreen() {
     setLoading(true);
     try {
       await registerRider({
-        rider_name: 'Profile pending',
+        rider_name: cleanName,
         email: cleanEmail,
         phone: cleanPhone,
         address: cleanAddress,
@@ -101,6 +107,16 @@ export default function RegisterScreen() {
         </Text>
 
         <View style={{ backgroundColor: theme.cardBg, borderRadius: 22, borderWidth: 1, borderColor: theme.border, padding: 20 }}>
+          <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800', marginBottom: 7 }}>Full name</Text>
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            placeholder="Your full name"
+            placeholderTextColor={theme.textMuted}
+            autoCapitalize="words"
+            style={inputStyle}
+          />
+
           <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800', marginBottom: 7 }}>Mobile number</Text>
           <TextInput
             value={phone}
