@@ -32,6 +32,7 @@ import {
 import { supabase } from '../lib/supabase';
 
 interface FormData {
+  fullName: string;
   address: string;
   city: string;
   state: string;
@@ -86,6 +87,7 @@ const EMPTY_DOCUMENTS: DocumentState = {
 };
 
 const EMPTY_FORM: FormData = {
+  fullName: '',
   address: '',
   city: '',
   state: '',
@@ -197,6 +199,7 @@ export default function CompleteKycScreen() {
         setRiderId(rider.id);
 
         let loadedForm: FormData = {
+          fullName: rider.rider_name && rider.rider_name !== 'Profile pending' ? rider.rider_name : '',
           address: rider.address || '',
           city: rider.city || '',
           state: rider.state || '',
@@ -1142,6 +1145,7 @@ export default function CompleteKycScreen() {
       await supabase
         .from('riders')
         .update({
+          rider_name: formData.fullName.trim() || 'Profile pending',
           address:
             formData.address.trim() ||
             null,
@@ -2258,6 +2262,13 @@ export default function CompleteKycScreen() {
                   emergency contact information
                   up to date.
                 </Text>
+
+                <RenderInput
+                  label="Full name"
+                  value={formData.fullName}
+                  onChangeText={(value) => updateField('fullName', value)}
+                  placeholder="Enter your full name"
+                />
 
                 <RenderInput
                   label="Address"
