@@ -132,7 +132,8 @@ export default function LoginScreen() {
                 placeholder="Enter your password"
                 placeholderTextColor={theme.textMuted}
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={(value) => setPassword(value.slice(0, 6))}
+                maxLength={6}
                 secureTextEntry={secureText}
                 autoCapitalize="none"
                 style={{
