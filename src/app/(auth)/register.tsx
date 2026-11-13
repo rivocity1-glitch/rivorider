@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
+import * as Location from 'expo-location';
 import {
   ActivityIndicator,
   Alert,
@@ -20,6 +21,8 @@ export default function RegisterScreen() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
+  const [locationCoords, setLocationCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [gettingLocation, setGettingLocation] = useState(false);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -35,6 +38,39 @@ export default function RegisterScreen() {
     fontSize: 15,
     marginBottom: 16,
   } as const;
+
+  const handleGetLocation = async () => {
+    if (gettingLocation) return;
+    setGettingLocation(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Location permission required', 'Allow location access to use your current location.');
+        return;
+      }
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const { latitude, longitude } = position.coords;
+      setLocationCoords({ latitude, longitude });
+      const results = await Location.reverseGeocodeAsync({ latitude, longitude });
+      const place = results[0];
+      if (place) {
+        const generatedAddress = [
+          place.name,
+          place.street,
+          place.subregion,
+          place.city,
+          place.district,
+          place.region,
+          place.postalCode,
+        ].filter(Boolean).filter((value, index, values) => values.indexOf(value) === index).join(', ');
+        if (generatedAddress) setAddress(generatedAddress);
+      }
+    } catch (error: any) {
+      Alert.alert('Unable to get location', error?.message || 'Enter your address manually.');
+    } finally {
+      setGettingLocation(false);
+    }
+  };
 
   const handleRegister = async () => {
     if (loading) return;
@@ -71,6 +107,8 @@ export default function RegisterScreen() {
         email: cleanEmail,
         phone: cleanPhone,
         address: cleanAddress,
+        registration_latitude: locationCoords?.latitude,
+        registration_longitude: locationCoords?.longitude,
         password,
       });
 
@@ -140,7 +178,12 @@ export default function RegisterScreen() {
             style={inputStyle}
           />
 
-          <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800', marginBottom: 7 }}>Residential address</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ color: theme.text, fontSize: 13, fontWeight: '800', marginBottom: 7 }}>Residential address</Text>
+            <TouchableOpacity onPress={handleGetLocation} disabled={gettingLocation} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 7 }}>
+              {gettingLocation ? <ActivityIndicator size="small" color={COLORS.emeraldGreen} /> : <Text style={{ color: COLORS.emeraldGreen, fontSize: 12, fontWeight: '800' }}>◎ Get my location</Text>}
+            </TouchableOpacity>
+          </View>
           <TextInput
             value={address}
             onChangeText={setAddress}
