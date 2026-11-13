@@ -142,7 +142,7 @@ export default function RootLayout() {
   const section = String(segments[0] ?? '');
   const inProfileCompletion = section === 'complete-kyc';
   const showSupportButton = Boolean(session) && section !== '(auth)' && section !== 'feedback' && section !== 'support' && section !== 'support-lite';
-  const showReminder = Boolean(session) && Boolean(checklist?.pending.length) && !inProfileCompletion;
+  const showReminder = Boolean(session) && Boolean(checklist?.pending.length) && !inProfileCompletion && section === '(tabs)';
 
   return (
     <ThemeProvider>
@@ -156,29 +156,6 @@ export default function RootLayout() {
           <Stack.Screen name="support" options={{ headerShown: false }} />
           <Stack.Screen name="support-lite" options={{ headerShown: false }} />
         </Stack>
-
-        {showReminder && !promptDismissed && showProfilePrompt && (
-          <View style={[styles.promptCard, { bottom: Math.max(insets.bottom, 12) + 82 }]}>
-            <View style={styles.promptHeader}>
-              <View style={styles.promptIcon}><Ionicons name="person-add-outline" size={20} color="#0D0D0D" /></View>
-              <Pressable onPress={() => setPromptDismissed(true)} hitSlop={10}>
-                <Ionicons name="close" size={21} color="#64748B" />
-              </Pressable>
-            </View>
-            <Text style={styles.promptTitle}>Complete your rider profile</Text>
-            <Text style={styles.promptDescription}>
-              {checklist?.completed ?? 0} of {checklist?.total ?? 7} sections completed · {checklist?.pending.length ?? 0} pending
-            </Text>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${((checklist?.completed ?? 0) / (checklist?.total ?? 7)) * 100}%` }]} />
-            </View>
-            <Text style={styles.pendingText}>Pending: {checklist?.pending.slice(0, 3).join(', ')}{(checklist?.pending.length ?? 0) > 3 ? ', and more' : ''}</Text>
-            <Pressable onPress={() => router.push('/complete-kyc' as any)} style={styles.promptButton}>
-              <Text style={styles.promptButtonText}>Complete profile</Text>
-              <Ionicons name="arrow-forward" size={16} color="#0D0D0D" />
-            </Pressable>
-          </View>
-        )}
 
         {showReminder && promptDismissed && (
           <Pressable onPress={() => setPromptDismissed(false)} style={[styles.floatingReminder, { bottom: Math.max(insets.bottom, 12) + 82 }]}>
