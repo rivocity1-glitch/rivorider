@@ -772,6 +772,36 @@ export default function DeliveriesScreen() {
     try {
       setSubmitting(true);
 
+      // Upsert by order_id: delivery completion must create exactly one collection
+      // record, including the cash tender/change and the pre-calculated split.
+      const collectionPayload = {
+        order_id: selectedOrder.id,
+        rider_id: currentRiderId,
+        collection_method: orderAlreadyPaid ? 'prepaid' : paymentMethod,
+        order_amount: totalAmount,
+        amount_received: orderAlreadyPaid ? 0 : (paymentMethod === 'cash' ? cashReceivedNum : totalAmount),
+        change_returned: orderAlreadyPaid ? 0 : (paymentMethod === 'cash' ? changeReturnedNum : 0),
+        transaction_reference: paymentMethod === 'upi' ? transactionRef.trim() || null : null,
+        rider_earning: Number(selectedOrder.rider_earning || 0),
+        rivo_margin: 0,
+        status: 'returning_to_store',
+        return_started_at: nowIso,
+        created_at: nowIso,
+      };
+
+      const { data: existingCollection, error: existingCollectionError } = await supabase
+        .from('rider_collections')
+        .select('id')
+        .eq('order_id', selectedOrder.id)
+        .maybeSingle();
+      if (existingCollectionError) throw existingCollectionError;
+
+      const collectionQuery = existingCollection?.id
+        ? supabase.from('rider_collections').update(collectionPayload).eq('id', existingCollection.id)
+        : supabase.from('rider_collections').insert(collectionPayload);
+      const { error: collectionError } = await collectionQuery;
+      if (collectionError) throw collectionError;
+
       const { error: orderUpdateError } = await supabase
         .from('orders')
         .update({
@@ -784,23 +814,7 @@ export default function DeliveriesScreen() {
           delivered_at: nowIso,
         })
         .eq('id', selectedOrder.id);
-
       if (orderUpdateError) throw orderUpdateError;
-
-      const { error: collectionError } = await supabase
-        .from('rider_collections')
-        .insert({
-          order_id: selectedOrder.id,
-          rider_id: currentRiderId,
-          status: 'returning_to_store',
-          return_started_at: nowIso,
-          transaction_reference: paymentMethod === 'upi' ? transactionRef : null,
-          created_at: nowIso,
-        });
-
-      if (collectionError) {
-        console.warn('Rider collections entry warning:', collectionError);
-      }
 
       setModalVisible(false);
       showSuccessToast('Delivery Completed Successfully');
