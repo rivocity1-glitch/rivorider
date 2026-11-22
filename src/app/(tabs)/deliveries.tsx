@@ -625,7 +625,7 @@ export default function DeliveriesScreen() {
       setSubmitting(true);
       const nowIso = new Date().toISOString();
 
-      const { error: orderUpdateError } = await supabase
+      const { data: updatedOrder, error: orderUpdateError } = await supabase
         .from('orders')
         .update({ order_status: nextStatus })
         .eq('id', orderId);
@@ -832,7 +832,7 @@ export default function DeliveriesScreen() {
         .select('id')
         .maybeSingle();
       if (orderUpdateError) throw orderUpdateError;
-      if (!data) throw new Error('Order was not updated. Check rider assignment and Supabase update permissions, then refresh the order.');
+      if (!updatedOrder) throw new Error('Order was not updated. Check rider assignment and Supabase update permissions, then refresh the order.');
 
       const trackingRemarks = orderAlreadyPaid
         ? 'Delivery completed by rider. Order was already paid online.'
