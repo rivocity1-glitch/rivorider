@@ -310,13 +310,7 @@ export default function DeliveriesScreen() {
         .order('created_at', { ascending: false });
 
       if (ordersError) throw ordersError;
-
-      console.log(
-        "RAW ORDERS",
-        JSON.stringify(ordersData, null, 2)
-      );
-
-      const vendorIds = Array.from(
+const vendorIds = Array.from(
         new Set(
           (ordersData || [])
             .map((order: any) => order.vendor_id)
@@ -420,13 +414,7 @@ export default function DeliveriesScreen() {
           rider_collection: collectionsMap[order.id] || null,
         };
       });
-
-      console.log(
-        "PARSED ORDERS",
-        JSON.stringify(parsedOrders, null, 2)
-      );
-
-      setOrders(parsedOrders);
+setOrders(parsedOrders);
     } catch (error) {
       console.error('Error fetching deliveries:', error);
     } finally {
