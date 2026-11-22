@@ -828,8 +828,11 @@ export default function DeliveriesScreen() {
           delivered_at: nowIso,
         })
         .eq('id', selectedOrder.id)
-        .eq('rider_id', currentRiderId);
+        .eq('rider_id', currentRiderId)
+        .select('id')
+        .maybeSingle();
       if (orderUpdateError) throw orderUpdateError;
+      if (!data) throw new Error('Order was not updated. Check rider assignment and Supabase update permissions, then refresh the order.');
 
       const trackingRemarks = orderAlreadyPaid
         ? 'Delivery completed by rider. Order was already paid online.'
