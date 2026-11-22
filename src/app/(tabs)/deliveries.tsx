@@ -817,7 +817,7 @@ export default function DeliveriesScreen() {
         : await supabase.from('rider_collections').insert(collectionPayload);
       if (collectionWrite.error) throw collectionWrite.error;
 
-      const { error: orderUpdateError } = await supabase
+      const { data: updatedOrder, error: orderUpdateError } = await supabase
         .from('orders')
         .update({
           order_status: 'delivered',
