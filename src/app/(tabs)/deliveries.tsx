@@ -2,10 +2,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
+import QRCode from 'react-native-qrcode-svg';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Animated,
   Linking,
   Modal,
@@ -22,6 +22,7 @@ import { supabase } from '../../lib/supabase';
 import { navigateToVendor, navigateToVendorFromCustomer, previewVendorToCustomer } from '../../lib/customerNavigation';
 
 const RUPEE = String.fromCharCode(0x20B9);
+const RIVO_UPI_ID = 'atharvavedpanditrao-1@okicici';
 
 interface Order {
   id: string;
@@ -747,41 +748,56 @@ export default function DeliveriesScreen() {
     setModalVisible(true);
   };
 
-  const handleCompleteDelivery = async () => {
-    if (!selectedOrder || !currentRiderId) return;
+  const upiQrValue = selectedOrder
+    ? 'upi://pay?pa=' + encodeURIComponent(RIVO_UPI_ID)
+      + '&pn=' + encodeURIComponent('RivoCity')
+      + '&am=' + Number(selectedOrder.total_amount || 0).toFixed(2)
+      + '&cu=INR'
+      + '&tn=' + encodeURIComponent('RivoCity Order ' + selectedOrder.order_number)
+    : '';
 
-    const totalAmount = selectedOrder.total_amount;
-    const nowIso = new Date().toISOString();
+  const handleCompleteDelivery = async () => {
+    if (!selectedOrder || !currentRiderId) {
+      Alert.alert('Unable to complete', 'Rider session or selected order is missing. Please refresh and try again.');
+      return;
+    }
+    if (submitting) return;
+
+    const totalAmount = Number(selectedOrder.total_amount);
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+      Alert.alert('Invalid order amount', 'The order total is not valid. Contact support before completing this order.');
+      return;
+    }
+
+    const orderAlreadyPaid = String(selectedOrder.payment_status || '').toLowerCase() === 'paid';
     let cashReceivedNum = 0;
     let changeReturnedNum = 0;
 
-    const orderAlreadyPaid = String(selectedOrder.payment_status || '').toLowerCase() === 'paid';
-
-    if (orderAlreadyPaid) {
-      cashReceivedNum = 0;
-      changeReturnedNum = 0;
-    } else if (paymentMethod === 'cash') {
-      cashReceivedNum = parseFloat(amountReceived);
-      if (isNaN(cashReceivedNum) || cashReceivedNum < totalAmount) {
+    if (!orderAlreadyPaid && paymentMethod === 'cash') {
+      cashReceivedNum = Number(amountReceived);
+      if (!Number.isFinite(cashReceivedNum) || cashReceivedNum < totalAmount) {
         Alert.alert('Invalid Amount', 'Amount received must be greater than or equal to the order total.');
         return;
       }
       changeReturnedNum = cashReceivedNum - totalAmount;
     }
 
+    if (!orderAlreadyPaid && paymentMethod === 'upi' && !transactionRef.trim()) {
+      Alert.alert('UPI reference required', 'Verify the successful payment in the customer’s UPI app, then enter its transaction reference before completing this order.');
+      return;
+    }
+
     try {
       setSubmitting(true);
-
-      // Upsert by order_id: delivery completion must create exactly one collection
-      // record, including the cash tender/change and the pre-calculated split.
+      const nowIso = new Date().toISOString();
       const collectionPayload = {
         order_id: selectedOrder.id,
         rider_id: currentRiderId,
         collection_method: orderAlreadyPaid ? 'prepaid' : paymentMethod,
         order_amount: totalAmount,
-        amount_received: orderAlreadyPaid ? 0 : (paymentMethod === 'cash' ? cashReceivedNum : totalAmount),
-        change_returned: orderAlreadyPaid ? 0 : (paymentMethod === 'cash' ? changeReturnedNum : 0),
-        transaction_reference: paymentMethod === 'upi' ? transactionRef.trim() || null : null,
+        amount_received: orderAlreadyPaid ? 0 : totalAmount,
+        change_returned: paymentMethod === 'cash' && !orderAlreadyPaid ? changeReturnedNum : 0,
+        transaction_reference: !orderAlreadyPaid && paymentMethod === 'upi' ? transactionRef.trim() : null,
         rider_earning: Number(selectedOrder.rider_earning || 0),
         rivo_margin: 0,
         status: 'returning_to_store',
@@ -796,15 +812,48 @@ export default function DeliveriesScreen() {
         .maybeSingle();
       if (existingCollectionError) throw existingCollectionError;
 
-      const collectionQuery = existingCollection?.id
-        ? supabase.from('rider_collections').update(collectionPayload).eq('id', existingCollection.id)
-        : supabase.from('rider_collections').insert(collectionPayload);
-      const { error: collectionError } = await collectionQuery;
-      if (collectionError) throw collectionError;
+      const collectionWrite = existingCollection?.id
+        ? await supabase.from('rider_collections').update(collectionPayload).eq('id', existingCollection.id)
+        : await supabase.from('rider_collections').insert(collectionPayload);
+      if (collectionWrite.error) throw collectionWrite.error;
 
-    } catch (error) {
+      const { error: orderUpdateError } = await supabase
+        .from('orders')
+        .update({
+          order_status: 'delivered',
+          payment_status: 'paid',
+          collection_method: orderAlreadyPaid ? 'prepaid' : paymentMethod,
+          cash_received: !orderAlreadyPaid && paymentMethod === 'cash' ? cashReceivedNum : 0,
+          change_returned: !orderAlreadyPaid && paymentMethod === 'cash' ? changeReturnedNum : 0,
+          delivered_at: nowIso,
+        })
+        .eq('id', selectedOrder.id)
+        .eq('rider_id', currentRiderId);
+      if (orderUpdateError) throw orderUpdateError;
+
+      const trackingRemarks = orderAlreadyPaid
+        ? 'Delivery completed by rider. Order was already paid online.'
+        : paymentMethod === 'upi'
+          ? 'Delivery completed. UPI payment collected; reference: ' + transactionRef.trim() + '.'
+          : 'Delivery completed. Cash received: ' + cashReceivedNum.toFixed(2) + '; change returned: ' + changeReturnedNum.toFixed(2) + '.';
+      const { error: trackingError } = await supabase.from('order_tracking').insert({
+        order_id: selectedOrder.id,
+        status: 'delivered',
+        remarks: trackingRemarks,
+        created_at: nowIso,
+      });
+      if (trackingError) console.warn('Delivery tracking entry was not saved:', trackingError);
+
+      setModalVisible(false);
+      setSelectedOrder(null);
+      setAmountReceived('');
+      setTransactionRef('');
+      showSuccessToast('Order completed successfully');
+      await fetchRiderOrders();
+    } catch (error: any) {
       console.error('Error completing delivery:', error);
-      Alert.alert('Error', 'Failed to complete delivery. Please try again.');
+      const detail = error?.message || error?.details || 'Unknown Supabase error';
+      Alert.alert('Could not complete order', detail);
     } finally {
       setSubmitting(false);
     }
@@ -897,7 +946,8 @@ export default function DeliveriesScreen() {
     return parts.length > 0 ? parts.join(', ') : 'No Address Available';
   };
 
-  const isSubmitDisabled = paymentMethod === 'cash' && !receivedInputValid();
+  const orderIsPaidForButton = selectedOrder && String(selectedOrder.payment_status || '').toLowerCase() === 'paid';
+  const isSubmitDisabled = paymentMethod === 'cash' ? (!selectedOrder || (!orderIsPaidForButton && !receivedInputValid())) : (!selectedOrder || (!orderIsPaidForButton && !transactionRef.trim()));
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -1450,7 +1500,7 @@ export default function DeliveriesScreen() {
                   <Text style={[styles.upiAmountLabel, { color: theme.textMuted }]}>Amount To Collect</Text>
                   <Text style={[styles.upiAmountValue, { color: COLORS.emeraldGreen }]}>{RUPEE}{selectedOrder?.total_amount}</Text>
                   <View style={[styles.qrContainerBox, { backgroundColor: '#FFFFFF', borderColor: theme.border }]}>
-                    <Image source={require('../../../assets/images/upi-qr.png')} style={{ width: 220, height: 220 }} resizeMode="contain" />
+                    <QRCode value={upiQrValue} size={220} backgroundColor="#FFFFFF" color="#000000" />
                   </View>
                   <View style={styles.upiDetailsMetaBox}>
                     <View style={styles.upiMetaRowItem}>
@@ -1459,13 +1509,13 @@ export default function DeliveriesScreen() {
                     </View>
                     <View style={styles.upiMetaRowItem}>
                       <Text style={[styles.upiMetaLabelText, { color: theme.textMuted }]}>UPI ID</Text>
-                      <Text style={[styles.upiMetaValueText, { color: theme.text }]}>atharvavedpanditrao-1@okicici</Text>
+                      <Text style={[styles.upiMetaValueText, { color: theme.text }]}>{RIVO_UPI_ID}</Text>
                     </View>
                   </View>
                   <Text style={[styles.upiHelperNoteText, { color: theme.textMuted }]}>"Ask the customer to scan this QR using any UPI app."</Text>
                 </View>
 
-                <Text style={[styles.fieldLabel, { color: theme.text, marginTop: 16 }]}>Transaction Reference (Optional)</Text>
+                <Text style={[styles.fieldLabel, { color: theme.text, marginTop: 16 }]}>UPI Transaction Reference</Text>
                 <TextInput style={[styles.modalInput, { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text }]} placeholder="Enter transaction reference number" placeholderTextColor={theme.textMuted} value={transactionRef} onChangeText={setTransactionRef} />
               </View>
             )}
